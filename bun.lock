@@ -46,7 +46,10 @@
       "version": "0.0.0",
       "dependencies": {
         "@cerium/backend": "workspace:*",
+        "@cerium/protocol": "workspace:*",
+        "@cerium/rpc": "workspace:*",
         "@sentry/electron": "8.3.0",
+        "effect": "4.0.5",
         "electron-updater": "6.8.10",
         "koffi": "3.3.3",
       },

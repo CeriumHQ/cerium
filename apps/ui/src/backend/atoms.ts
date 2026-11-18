@@ -525,18 +525,6 @@ export const readCloudSearchHistory = Atom.family((key: string) =>
   ),
 );
 
-/**
- * Whether this computer's own agents are working while the window drives another machine; the
- * shell keeps this computer awake for them. Undefined while the window drives this computer, whose
- * threads say so already.
- */
-export const localWorkingAtom = LocalBackend.runtime.atom((get) => {
-  if (get(machineAtom) === undefined) return Stream.succeed<boolean | undefined>(undefined);
-  return Stream.unwrap(LocalBackend.use((client) => Effect.succeed(client("WatchWorking", undefined)))).pipe(
-    resubscribe,
-  );
-});
-
 /** The user's settings the backend applies, re-read after a reconnect. */
 export const settingsAtom = Backend.runtime.atom((get) => {
   get(connectionEpochAtom);

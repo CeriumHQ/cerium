@@ -24,6 +24,3 @@ export const handling = (
   if (looking.atWindow && looking.viewing === notification.threadId) return "ignore";
   return looking.atWindow ? "count" : "show";
 };
-
-/** What the taskbar badge reads for this many threads. */
-export const badgeText = (count: number) => (count > 9 ? "9+" : String(count));

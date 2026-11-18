@@ -9,6 +9,7 @@ import {
   type CdpSession,
   type Listener,
 } from "@cerium/browser";
+import type { BrowserOutcome } from "@cerium/rpc";
 import {
   BaseWindow,
   ipcMain,
@@ -29,8 +30,8 @@ import { releasablePreviews } from "./previewRetention.ts";
 // window's bounds draws nothing, and the agents' screenshots need it drawn. Once they stop it goes
 // back to Cerium's window, hidden. Pages live
 // in a session of their own: they share no storage with Cerium's window, get no preload, may open
-// http and https only, and are granted no permission. The agents' calls reach the shell through the
-// UI (`HostBrowser` in @cerium/rpc), which hands them to `run` here.
+// http and https only, and are granted no permission. The shell receives the agents' calls over
+// its own connection to the backend.
 
 /** The pages' own session: none of Cerium's storage, kept across launches like a browser's. */
 const PARTITION = "persist:cerium-preview";
@@ -56,13 +57,19 @@ export interface PreviewState {
   readonly error?: string;
 }
 
+export interface PreviewThread {
+  readonly id: string;
+  readonly active: boolean;
+  readonly retired: boolean;
+}
+
 interface Preview {
   readonly threadId: string;
   readonly view: WebContentsView;
   /** Where the pane shows it, in window pixels, or none while it's away. */
   shown: Rectangle | undefined;
   /** The window the view is in now: Cerium's, or the parking window off screen. */
-  parent: BaseWindow;
+  parent: BaseWindow | undefined;
   size: { width: number; height: number };
   parkedUntil: number;
   page: Promise<Page> | undefined;
@@ -218,26 +225,24 @@ export const previews = (window: () => BrowserWindow | undefined) => {
   };
 
   /** Moves the view into `parent`, if it isn't there already. */
-  const moveTo = (preview: Preview, parent: BaseWindow) => {
+  const moveTo = (preview: Preview, parent: BaseWindow | undefined) => {
     if (preview.parent === parent) return;
-    if (!preview.parent.isDestroyed()) preview.parent.contentView.removeChildView(preview.view);
-    parent.contentView.addChildView(preview.view);
+    if (preview.parent?.isDestroyed() === false) preview.parent.contentView.removeChildView(preview.view);
+    parent?.contentView.addChildView(preview.view);
     preview.parent = parent;
   };
 
   /** Puts the view where it belongs now: in its pane, in the parking window for agents, or hidden. */
   const place = (preview: Preview) => {
     const owner = window();
-    if (owner === undefined || owner.isDestroyed()) return;
     const { view } = preview;
-    view.webContents.setBackgroundThrottling(
-      preview.calls === 0 && !activeThreads.has(preview.threadId) && Date.now() >= preview.parkedUntil,
-    );
-    if (preview.shown !== undefined) {
+    const needsFrames = preview.calls > 0 || Date.now() < preview.parkedUntil;
+    view.webContents.setBackgroundThrottling(!needsFrames && !activeThreads.has(preview.threadId));
+    if (preview.shown !== undefined && owner?.isVisible() === true) {
       moveTo(preview, owner);
       view.setBounds(preview.shown);
       view.setVisible(true);
-    } else if (Date.now() < preview.parkedUntil) {
+    } else if (needsFrames) {
       // At the size the pane gave it, so the agents see the page as the user would.
       const parked = parkingWindow();
       moveTo(preview, parked);
@@ -267,8 +272,6 @@ export const previews = (window: () => BrowserWindow | undefined) => {
   };
 
   const create = (threadId: string): Preview => {
-    const owner = window();
-    if (owner === undefined || owner.isDestroyed()) throw new CdpError("Cerium's window isn't open.");
     const view = new WebContentsView({
       webPreferences: {
         session: previewSession(),
@@ -281,12 +284,11 @@ export const previews = (window: () => BrowserWindow | undefined) => {
     view.setBackgroundColor("#ffffff");
     view.setBorderRadius(8);
     view.setVisible(false);
-    owner.contentView.addChildView(view);
     const preview: Preview = {
       threadId,
       view,
       shown: undefined,
-      parent: owner,
+      parent: undefined,
       size: FIRST_SIZE,
       parkedUntil: 0,
       page: undefined,
@@ -360,7 +362,7 @@ export const previews = (window: () => BrowserWindow | undefined) => {
       if (saved.size > 100) saved.delete(saved.keys().next().value!);
     }
     if (!preview.view.webContents.isDestroyed()) preview.view.webContents.close();
-    if (!preview.parent.isDestroyed()) preview.parent.contentView.removeChildView(preview.view);
+    moveTo(preview, undefined);
     releaseParking();
     const owner = window();
     if (owner === undefined || owner.isDestroyed()) return;
@@ -466,16 +468,13 @@ export const previews = (window: () => BrowserWindow | undefined) => {
     }
   };
 
-  ipcMain.handle("cerium:preview-run", async (_event, threadId: unknown, command: unknown) => {
-    if (!isThread(threadId) || typeof command !== "object" || command === null) {
-      return { _tag: "Failed", message: "That isn't a call the browser takes." };
-    }
+  const answer = async (threadId: string, command: BrowserCommand): Promise<BrowserOutcome> => {
     try {
       return { _tag: "Done", ...(await run(threadId, command as BrowserCommand)) };
     } catch (error) {
       return { _tag: "Failed", message: error instanceof Error ? error.message : String(error) };
     }
-  });
+  };
 
   /** Where the pane shows `threadId`'s page, in the window's CSS pixels, or `null` while it's away. */
   ipcMain.on("cerium:preview-place", (event, threadId: unknown, bounds: unknown) => {
@@ -536,22 +535,7 @@ export const previews = (window: () => BrowserWindow | undefined) => {
     if (all.get(threadId)!.calls === 0) close(threadId, true);
   });
 
-  // Only the main window hosts the local backend's browser; remote and other windows own none.
-  ipcMain.on("cerium:preview-threads", (event, threads: unknown) => {
-    const owner = window();
-    if (owner === undefined || event.sender !== owner.webContents || !Array.isArray(threads)) return;
-    if (
-      !threads.every(
-        (thread: unknown) =>
-          typeof thread === "object" &&
-          thread !== null &&
-          isThread((thread as { id?: unknown }).id) &&
-          typeof (thread as { active?: unknown }).active === "boolean" &&
-          typeof (thread as { retired?: unknown }).retired === "boolean",
-      )
-    )
-      return;
-    const known = threads as Array<{ id: string; active: boolean; retired: boolean }>;
+  const updateThreads = (known: ReadonlyArray<PreviewThread>) => {
     activeThreads = new Set(known.filter((thread) => thread.active).map((thread) => thread.id));
     const archived = new Set(known.filter((thread) => thread.retired).map((thread) => thread.id));
     for (const thread of known) {
@@ -566,7 +550,7 @@ export const previews = (window: () => BrowserWindow | undefined) => {
     lifecycleKnown = true;
     cleanup();
     for (const preview of all.values()) place(preview);
-  });
+  };
 
   /** What the page shows now, as a PNG data URL, for the pane to draw while something covers it. */
   ipcMain.handle("cerium:preview-still", async (_event, threadId: unknown) => {
@@ -580,11 +564,17 @@ export const previews = (window: () => BrowserWindow | undefined) => {
   ipcMain.handle("cerium:preview-states", () => [...all.values()].map(stateOf));
 
   return {
+    answer,
+    updateThreads,
+    syncPlacement: () => {
+      for (const preview of all.values()) place(preview);
+    },
     /** Whether `contents` is one of the previews' pages, which the app window's own rules leave alone. */
     owns: (contents: WebContents) => contents.session === session.fromPartition(PARTITION),
     /** The window's page reloads: its panes are gone until it lays them out again; the pages stay. */
     unplaceAll: () => {
       for (const preview of all.values()) {
+        if (preview.shown !== undefined) preview.lastUsed = Date.now();
         preview.shown = undefined;
         place(preview);
       }

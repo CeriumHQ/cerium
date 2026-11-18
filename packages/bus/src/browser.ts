@@ -15,20 +15,20 @@ import { randomUUID } from "node:crypto";
 import { BusRegistry } from "./registry.ts";
 
 // The browser a thread's agents share with its user, who watches it in the Preview pane. The page
-// lives in the desktop shell; the bus reaches it through the desktop window, which hosts it over its
-// own connection (`HostBrowser` in @cerium/rpc). Without a window here, the tools say so. Registered
+// lives in the desktop shell, which hosts it over its own connection (`HostBrowser` in @cerium/rpc).
+// Without a shell here, the tools say so. Registered
 // on the server directly, as `artifact_preview` is, since a screenshot answers with an image.
 
 /** Told to an agent whose thread has no browser to drive. */
 export const BROWSER_UNAVAILABLE =
-  "The browser isn't available here: it opens in Cerium's desktop app, and no desktop window of this" +
-  " computer is connected (Cerium is used from a browser or a phone, or runs without its window)." +
+  "The browser isn't available here: it opens in Cerium's desktop app, and the desktop app on this" +
+  " computer isn't connected." +
   " Carry on without it, or ask the user to open Cerium on this computer.";
 
 /** How long one call may take before the agent hears it didn't finish. */
 const CALL_TIMEOUT = "2 minutes";
 
-/** A window hosting the browser: where its calls go. */
+/** A shell hosting the browser: where its calls go. */
 type Host = Queue.Queue<BrowserCall, Cause.Done>;
 
 interface Pending {
@@ -36,14 +36,14 @@ interface Pending {
   readonly host: Host;
 }
 
-/** The desktop windows hosting the browser, and the calls they owe answers. */
+/** The desktop shells hosting the browser, and the calls they owe answers. */
 export class BrowserHost extends Context.Service<
   BrowserHost,
   {
     /** Hosts the browser while it's subscribed: each call to run arrives here. */
     readonly host: Stream.Stream<BrowserCall>;
     readonly answer: (requestId: string, outcome: BrowserOutcome) => Effect.Effect<void>;
-    /** Runs `command` in `threadId`'s browser, on the window that started hosting last. */
+    /** Runs `command` in `threadId`'s browser, on the shell that started hosting last. */
     readonly call: (threadId: ThreadId, command: BrowserCommand) => Effect.Effect<BrowserOutcome>;
   }
 >()("cerium/bus/BrowserHost") {
@@ -61,7 +61,7 @@ export class BrowserHost extends Context.Service<
       host: Stream.callback<BrowserCall>((queue) =>
         Effect.gen(function* () {
           hosts.push(queue);
-          // A window that goes away leaves its calls unanswered: they fail rather than wait it out.
+          // Calls to a disconnected shell fail immediately.
           yield* Effect.addFinalizer(() =>
             Effect.sync(() => {
               hosts.splice(hosts.indexOf(queue), 1);
@@ -69,7 +69,7 @@ export class BrowserHost extends Context.Service<
                 if (call.host === queue) {
                   settle(requestId, {
                     _tag: "Failed",
-                    message: "Cerium's window closed before it answered.",
+                    message: "Cerium's desktop app disconnected before it answered.",
                   });
                 }
               }

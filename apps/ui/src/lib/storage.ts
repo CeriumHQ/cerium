@@ -16,10 +16,10 @@ export const remember = (key: string, value: string): void => {
   }
 };
 
-/** What this tab remembers until it closes: it survives a reload, and other tabs don't see it. */
+/** Per-tab state survives a reload, and the desktop's main tab also keeps it through hibernation. */
 export const storedForTab = (key: string): string | undefined => {
   try {
-    return sessionStorage.getItem(key) ?? undefined;
+    return sessionStorage.getItem(key) ?? window.cerium?.tabState?.(key);
   } catch {
     return undefined;
   }
@@ -28,6 +28,7 @@ export const storedForTab = (key: string): string | undefined => {
 export const rememberForTab = (key: string, value: string): void => {
   try {
     sessionStorage.setItem(key, value);
+    window.cerium?.rememberTabState?.(key, value);
   } catch {
     // Not remembered this time.
   }

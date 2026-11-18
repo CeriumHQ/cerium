@@ -81,7 +81,7 @@ const groups: ReadonlyArray<{ readonly label: string; readonly pages: ReadonlyAr
         "Notifications",
         "Alerts on this device",
         settingsGlyphs.notifications,
-        WEB || window.cerium?.notify !== undefined,
+        WEB || window.cerium?.testNotification !== undefined,
       ),
       ...page("keyboard", "Keyboard", "Send key and shortcuts", settingsGlyphs.keyboard),
       ...page("dictation", "Dictation", "Language and speech model", settingsGlyphs.dictation, desktop),

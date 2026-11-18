@@ -2,6 +2,7 @@ import { useAtom, useAtomValue } from "@effect/atom-react";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { shellBridge } from "../../backend/shell.ts";
+import { holdRenderer } from "../../desktop/hibernation.ts";
 import { microphoneProblem, cleanTranscript, hasSound, pieceEnd, type DictationProblem } from "./model.ts";
 import { openMicrophone, type Microphone } from "./microphone.ts";
 import { dictationLanguageAtom, dictationModelAtom, downloadedModelsAtom } from "./preferences.ts";
@@ -162,6 +163,8 @@ export function useDictation(onText: (text: string) => void): Dictation {
     heard.current = heard.current.slice(end);
   });
   const recording = state.phase === "recording";
+  const busy = recording || state.phase === "starting" || state.phase === "finishing";
+  useEffect(() => (busy ? holdRenderer() : undefined), [busy]);
   useEffect(() => {
     if (!recording) return;
     const timer = setInterval(check, CHECK_MS);

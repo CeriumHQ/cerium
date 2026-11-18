@@ -30,6 +30,7 @@ import {
   type RefObject,
 } from "react";
 
+import { holdRenderer } from "../../desktop/hibernation.ts";
 import { harnessesAtom, manifestsAtom, settingsAtom } from "../../backend/atoms.ts";
 import { saveAttachment } from "../../backend/files.ts";
 import { machineAtom } from "../../backend/machine.ts";
@@ -675,14 +676,17 @@ export function Composer({
           },
         ],
       }));
-      prepareAttachment(file, (payload) => saveAttachment(registry, id, payload)).then(
-        (attachment) => setAttachment(key, id, { _tag: "Ready", attachment }),
-        (error: unknown) =>
-          setAttachment(key, id, {
-            _tag: "Failed",
-            message: error instanceof Error ? error.message : `${file.name} couldn't be attached.`,
-          }),
-      );
+      const release = holdRenderer();
+      void prepareAttachment(file, (payload) => saveAttachment(registry, id, payload))
+        .then(
+          (attachment) => setAttachment(key, id, { _tag: "Ready", attachment }),
+          (error: unknown) =>
+            setAttachment(key, id, {
+              _tag: "Failed",
+              message: error instanceof Error ? error.message : `${file.name} couldn't be attached.`,
+            }),
+        )
+        .finally(release);
     }
   };
 
@@ -894,20 +898,23 @@ export function Composer({
     setDrafts((current) => withoutDraft(current, key));
     setEpoch((current) => current + 1);
     setTrigger(undefined);
+    const release = holdRenderer();
     void onSend({ text: message, attachments: ready, mentions: draftMentions(draft.segments) }, [
       setupOf(first),
       ...rest.map(setupOf),
-    ]).then((delivered) => {
-      if (delivered) {
-        for (const attachment of sent.attachments) {
-          if (attachment.preview) URL.revokeObjectURL(attachment.preview);
+    ])
+      .then((delivered) => {
+        if (delivered) {
+          for (const attachment of sent.attachments) {
+            if (attachment.preview) URL.revokeObjectURL(attachment.preview);
+          }
+          return;
         }
-        return;
-      }
-      // Give an undelivered message back, unless the user has started writing another.
-      setDrafts((current) => (hasContent(current[key]) ? current : { ...current, [key]: sent }));
-      setEpoch((current) => current + 1);
-    });
+        // Give an undelivered message back, unless the user has started writing another.
+        setDrafts((current) => (hasContent(current[key]) ? current : { ...current, [key]: sent }));
+        setEpoch((current) => current + 1);
+      })
+      .finally(release);
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {

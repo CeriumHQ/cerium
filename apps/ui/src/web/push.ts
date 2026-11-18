@@ -183,18 +183,12 @@ export function useNotificationOpens<T>(
       history.replaceState(history.state, "", location.pathname);
     // The desktop's own notifications come through its shell (desktop/notifications.ts), and so do
     // `cerium://thread/<id>` links.
-    const shell = window.cerium?.onOpenThread;
-    if (shell !== undefined) {
-      const stopLinks = onLaunchRequest((request) => {
+    if (window.cerium !== undefined) {
+      return onLaunchRequest((request) => {
         if (request.kind !== "thread") return false;
         setTapped({ threadId: request.id, tap: ++taps });
         return true;
       });
-      const stop = shell((threadId) => setTapped({ threadId, tap: ++taps }));
-      return () => {
-        stop();
-        stopLinks();
-      };
     }
     if (!WEB || !("serviceWorker" in navigator)) return;
     const listener = (event: MessageEvent) => {

@@ -243,13 +243,7 @@ function DesktopNotificationSettings() {
   const on = kinds.length > 0;
 
   const sendTest = () => {
-    window.cerium?.notify?.({
-      threadId: "",
-      title: "Cerium",
-      body: "Notifications are on for this computer.",
-      silent: sound === "off",
-      attention: false,
-    });
+    window.cerium?.testNotification?.(sound === "off");
     setTestSent(true);
     setTimeout(() => setTestSent(false), 2000);
   };

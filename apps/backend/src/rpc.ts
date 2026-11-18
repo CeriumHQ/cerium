@@ -714,7 +714,7 @@ const DeviceHandlers = deviceHandlers({
     const router = yield* EffortRouter;
     return (key: string) => router.save(key).pipe(Effect.mapError(refuseDecision));
   }),
-  // The desktop window hosts the browser its threads' agents drive through the bus.
+  // The desktop shell hosts the browser its threads' agents drive through the bus.
   browser: Effect.service(BrowserHost),
 });
 

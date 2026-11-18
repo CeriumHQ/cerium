@@ -1,128 +1,75 @@
-import { notificationBody } from "@cerium/protocol";
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
-import { useContext, useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } from "react";
+import { useContext, useEffect } from "react";
 
-import { notificationsAtom, type Arrived } from "../backend/atoms.ts";
-import { shellBridge } from "../backend/shell.ts";
+import { notificationsAtom } from "../backend/atoms.ts";
 import {
   cueSoundsAtom,
   notifyBadgeAtom,
   notifyKindsAtom,
   notifySoundAtom,
+  themeAtom,
 } from "../features/settings/preferences.ts";
-import { badgeText, handling } from "./model.ts";
 import { cueOfBatch, playCue } from "./sounds.ts";
 
-// The desktop's own notifications about this computer's threads. The backend says when a thread
-// needs the user, finished or failed (apps/backend/src/notify.ts); the window decides whether the
-// user would see it anyway, and the shell shows it (apps/desktop/src/notifications.ts). The web
-// client's come by Web Push instead (web/push.ts).
-
-/** The badge, drawn in the theme's accent: a PNG data URL Windows lays over the taskbar icon. */
-const drawBadge = (count: number): string | undefined => {
-  const size = 32;
+/** Draws the badge icons Windows needs, in the UI's accent, including while the UI is hibernating. */
+const drawBadges = (): string[] => {
   const canvas = document.createElement("canvas");
-  canvas.width = size;
-  canvas.height = size;
+  const size = (canvas.width = canvas.height = 32);
   const context = canvas.getContext("2d");
-  if (context === null) return undefined;
-  // Read from the tokens through an element, which resolves them to colours a canvas takes.
+  if (context === null) return [];
   const probe = document.createElement("span");
   probe.className = "bg-accent text-accent-fg";
   document.body.append(probe);
   const { backgroundColor, color, fontFamily } = getComputedStyle(probe);
   probe.remove();
-  context.fillStyle = backgroundColor;
-  context.beginPath();
-  context.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
-  context.fill();
-  const text = badgeText(count);
-  context.fillStyle = color;
-  context.font = `600 ${text.length > 1 ? 16 : 20}px ${fontFamily}`;
-  context.textAlign = "center";
-  context.textBaseline = "middle";
-  context.fillText(text, size / 2, size / 2 + 1);
-  return canvas.toDataURL("image/png");
+  return Array.from({ length: 10 }, (_, index) => {
+    context.clearRect(0, 0, size, size);
+    context.fillStyle = backgroundColor;
+    context.beginPath();
+    context.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+    context.fill();
+    context.fillStyle = color;
+    context.font = `600 ${index === 9 ? 16 : 20}px ${fontFamily}`;
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    context.fillText(index === 9 ? "9+" : String(index + 1), size / 2, size / 2 + 1);
+    return canvas.toDataURL("image/png");
+  });
 };
 
-const onFocusChange = (change: () => void) => {
-  window.addEventListener("focus", change);
-  window.addEventListener("blur", change);
-  document.addEventListener("visibilitychange", change);
-  return () => {
-    window.removeEventListener("focus", change);
-    window.removeEventListener("blur", change);
-    document.removeEventListener("visibilitychange", change);
-  };
-};
-const atWindow = () => document.visibilityState === "visible" && document.hasFocus();
-
-/**
- * Shows this computer's threads' notifications natively while the user is away from the window,
- * and counts the threads that notified on the taskbar until the user opens each. `viewing` is the
- * thread the window shows, when it's one of this computer's.
- */
-export function useDesktopNotifications(viewing: string | undefined) {
-  const bridge = shellBridge();
+/** The shell shows toasts and maintains the badge. The window supplies its preferences and plays cues. */
+export function useDesktopNotifications(main: boolean, viewing: string | undefined) {
+  const bridge = window.cerium;
   const registry = useContext(RegistryContext);
   const kinds = useAtomValue(notifyKindsAtom);
   const sound = useAtomValue(notifySoundAtom);
   const badge = useAtomValue(notifyBadgeAtom);
   const cues = useAtomValue(cueSoundsAtom);
-  const focused = useSyncExternalStore(onFocusChange, atWindow);
-  /** The threads that notified since the user last looked at them. */
-  const [waiting, setWaiting] = useState<ReadonlySet<string>>(new Set());
-  const handled = useRef(0);
+  const theme = useAtomValue(themeAtom);
 
-  const take = useEffectEvent((arrived: ReadonlyArray<Arrived>) => {
-    const fresh = arrived.filter((each) => each.seq > handled.current);
-    if (fresh.length === 0) return;
-    handled.current = fresh.at(-1)!.seq;
-    // Heard whatever the window shows, and without the kinds that decide the native toasts.
-    if (cues === "on") {
+  useEffect(() => {
+    if (main) bridge?.notificationPreferences?.({ kinds, silent: sound === "off", badge: badge === "on" });
+  }, [main, bridge, kinds, sound, badge]);
+  useEffect(() => {
+    if (main) bridge?.notificationViewing?.(viewing);
+  }, [main, bridge, viewing]);
+  useEffect(() => {
+    if (!main || bridge?.platform !== "win32") return;
+    const frame = requestAnimationFrame(() => bridge.notificationBadgeIcons?.(drawBadges()));
+    return () => cancelAnimationFrame(frame);
+  }, [main, bridge, theme]);
+
+  useEffect(() => {
+    if (!main || bridge === undefined || cues !== "on") return;
+    let handled = 0;
+    return registry.subscribe(notificationsAtom, (result) => {
+      if (!AsyncResult.isSuccess(result)) return;
+      const fresh = result.value.filter((each) => each.seq > handled);
+      if (fresh.length === 0) return;
+      handled = fresh.at(-1)!.seq;
       const cue = cueOfBatch(fresh.map((each) => each.notification.kind));
       if (cue !== undefined) playCue(cue);
-    }
-    if (bridge?.notify === undefined) return;
-    const looking = { atWindow: atWindow(), viewing };
-    const counted: Array<string> = [];
-    for (const { notification } of fresh) {
-      const action = handling(notification, kinds, looking);
-      if (action === "ignore") continue;
-      if (notification.threadId !== undefined) counted.push(notification.threadId);
-      if (action === "show")
-        bridge.notify({
-          threadId: notification.threadId ?? "",
-          title: notification.title,
-          body: notificationBody(notification.kind, notification.detail),
-          silent: sound === "off",
-          attention: notification.kind === "needsYou",
-        });
-    }
-    if (counted.length > 0) setWaiting((current) => new Set([...current, ...counted]));
-  });
-  // Each notification once, as it arrives, rather than whatever a render happens to see.
-  useEffect(
-    () =>
-      registry.subscribe(notificationsAtom, (result) => {
-        if (AsyncResult.isSuccess(result)) take(result.value);
-      }),
-    [registry],
-  );
-
-  // Opening a thread with the window in front of the user is looking at it.
-  if (focused && viewing !== undefined && waiting.has(viewing)) {
-    const rest = new Set(waiting);
-    rest.delete(viewing);
-    setWaiting(rest);
-  }
-
-  const count = badge === "on" && kinds.length > 0 ? waiting.size : 0;
-  const setBadge = bridge?.setBadge;
-  useEffect(() => {
-    if (setBadge === undefined) return;
-    const icon = count > 0 ? drawBadge(count) : undefined;
-    setBadge(icon === undefined ? { count } : { count, icon });
-  }, [count, setBadge]);
+    });
+  }, [main, bridge, cues, registry]);
 }
