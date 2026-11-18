@@ -127,4 +127,31 @@ describe("sweepAttachments", () => {
       assert.deepStrictEqual(yield* fs.readDirectory(root), []);
     }).pipe(Effect.scoped, Effect.provide(TestLayer)),
   );
+
+  it.effect("skips message history when no attachment is past the grace period", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const crypto = yield* Crypto.Crypto;
+      const store = yield* Store;
+      const directory = yield* fs.makeTempDirectoryScoped();
+
+      yield* TestClock.setTime(NOW - 30 * 24 * HOUR);
+      const draft = path.join(directory, yield* crypto.randomUUIDv7());
+      yield* fs.makeDirectory(draft);
+      yield* fs.makeDirectory(path.join(directory, "notes"));
+
+      yield* TestClock.setTime(NOW);
+      yield* sweepAttachments(directory).pipe(
+        Effect.provideService(
+          Store,
+          Store.of({
+            ...store,
+            listEventsByTag: (tag) => Effect.die(`Unexpected history query for ${tag}`),
+          }),
+        ),
+      );
+      assert.isTrue(yield* fs.exists(draft));
+    }).pipe(Effect.scoped, Effect.provide(TestLayer)),
+  );
 });

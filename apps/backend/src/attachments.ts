@@ -35,10 +35,17 @@ export const sentAttachments = (events: ReadonlyArray<AgentEvent>): ReadonlyArra
  */
 export const sweepAttachments = Effect.fn("Workspace.sweepAttachments")(function* (directory: string) {
   const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-  const store = yield* Store;
   if (!(yield* fs.exists(directory))) return;
 
+  const cutoff = (yield* Clock.currentTimeMillis) - UNSENT_GRACE_MS;
+  const candidates = (yield* fs.readDirectory(directory)).filter((name) => {
+    const madeAt = uuidv7Time(name);
+    return madeAt !== undefined && madeAt < cutoff;
+  });
+  if (candidates.length === 0) return;
+
+  const path = yield* Path.Path;
+  const store = yield* Store;
   // A file sent by its own path lives outside `directory`, so it names no folder here.
   const sent = new Set(
     sentAttachments([
@@ -46,14 +53,9 @@ export const sweepAttachments = Effect.fn("Workspace.sweepAttachments")(function
       ...(yield* store.listEventsByTag("MessageQueued")),
     ]).map((file) => path.relative(directory, file).split(path.sep)[0]),
   );
-  const cutoff = (yield* Clock.currentTimeMillis) - UNSENT_GRACE_MS;
-  const unsent = (yield* fs.readDirectory(directory)).filter((name) => {
-    const madeAt = uuidv7Time(name);
-    return madeAt !== undefined && madeAt < cutoff && !sent.has(name);
-  });
 
   yield* Effect.forEach(
-    unsent,
+    candidates.filter((name) => !sent.has(name)),
     (name) => {
       const folder = path.join(directory, name);
       return fs.stat(folder).pipe(
