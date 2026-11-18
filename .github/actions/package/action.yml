@@ -15,10 +15,9 @@ inputs:
     required: true
   compression:
     description: >-
-      `maximum` packs the installer smallest, for a stable release. `fast` packs it in about half the
-      time and a tenth larger, still with LZMA2, and the .deb and .rpm with gzip instead of xz
-      (apps/desktop/electron-builder.ts), so each installs and updates the same way: for nightlies and
-      for runs that only check the packaging.
+      `maximum` uses release compression for stable releases and published nightlies. `fast` uses a
+      lower LZMA2 level and packs the .deb and .rpm with gzip (apps/desktop/electron-builder.ts), so
+      runs that only check the packaging finish sooner.
     required: true
   arch:
     description: >-

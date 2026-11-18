@@ -23,7 +23,7 @@ const nightly = version?.includes("-nightly.") === true;
  */
 const developerId = Boolean(process.env["CSC_LINK"] || process.env["CSC_NAME"]);
 /**
- * Packed fast, for nightlies and runs that only check the packaging (.github/actions/package).
+ * Packed fast for runs that only check the packaging (.github/actions/package).
  * electron-builder applies ELECTRON_BUILDER_COMPRESSION_LEVEL to its 7z archives and disk images
  * only, so the .deb and .rpm, which it otherwise packs with xz, take gzip here: a few times faster,
  * somewhat larger, and installed the same way.
