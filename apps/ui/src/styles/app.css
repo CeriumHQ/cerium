@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@source not "../../scripts/reactCompiler.ts";
 @import "@fontsource-variable/red-hat-text";
 @import "@fontsource-variable/red-hat-mono";
 /* With its width axis: a new thread's question is set expanded. */

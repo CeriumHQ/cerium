@@ -7,7 +7,7 @@
     "jsx": "react-jsx",
     "types": ["vite-plus/client"]
   },
-  "include": ["src", "test", "vite.config.ts"],
+  "include": ["src", "test", "vite.config.ts", "scripts/reactCompiler.ts"],
   "references": [
     {
       "path": "../../packages/account"
