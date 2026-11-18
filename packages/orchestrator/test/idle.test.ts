@@ -5,10 +5,11 @@ import { join } from "node:path";
 import { assert, it } from "@effect/vitest";
 import { makeFakeAdapter } from "@cerium/harness/testing";
 import { Duration, Effect } from "effect";
+import { TestClock } from "effect/testing";
 import { Orchestrator } from "../src/index.ts";
 import { recordEvents, testLayer } from "./fakes.ts";
 
-it.live("keeps a host alive while its turn waits for a permission answer", () => {
+it.effect("keeps an expired warm host alive until its permission request and turn finish", () => {
   const fake = makeFakeAdapter("claude", { askPermission: true });
   let closed = false;
   const adapter = {
@@ -26,7 +27,6 @@ it.live("keeps a host alive while its turn waits for a permission answer", () =>
   };
   return Effect.gen(function* () {
     const orchestrator = yield* Orchestrator;
-    const { waitFor } = yield* recordEvents;
     const { lead } = yield* orchestrator.createThread({
       title: "Approval",
       mode: "work",
@@ -34,17 +34,17 @@ it.live("keeps a host alive while its turn waits for a permission answer", () =>
       lead: { provider: "claude", model: "opus", access: "ask" },
     });
     yield* orchestrator.sendUserMessage(lead.id, "work");
-    yield* waitFor((events) => events.find((event) => event.payload._tag === "PermissionRequested"));
-    yield* Effect.sleep("150 millis");
+    yield* TestClock.adjust("31 minutes");
     assert.isFalse(closed);
     assert.isTrue(orchestrator.awaitingApproval(lead.threadId));
-  }).pipe(
-    Effect.provide(testLayer([adapter], { idleSessionTTL: Duration.millis(20), warmSessions: 0 })),
-    Effect.scoped,
-  );
+    yield* orchestrator.respondToPermission(lead.id, "p1", { decision: "allow", scope: "once" });
+    yield* TestClock.adjust("2 minutes");
+    assert.isTrue(closed);
+    assert.strictEqual((yield* orchestrator.agent(lead.id)).state, "idle");
+  }).pipe(Effect.provide(testLayer([adapter])), Effect.scoped);
 });
 
-it.live("hibernates an idle host without stopping its agent and resumes its session for a notice", () => {
+it.effect("retires excess idle hosts first and expires the latest four even after recent use", () => {
   const fake = makeFakeAdapter("claude");
   const closed: number[] = [];
   const adapter = {
@@ -63,32 +63,48 @@ it.live("hibernates an idle host without stopping its agent and resumes its sess
   };
   return Effect.gen(function* () {
     const orchestrator = yield* Orchestrator;
-    const { waitFor } = yield* recordEvents;
-    const { lead } = yield* orchestrator.createThread({
-      title: "Idle",
-      mode: "work",
-      cwd: ".",
-      lead: { provider: "claude", model: "opus", access: "readOnly" },
-    });
-    yield* orchestrator.sendUserMessage(lead.id, "first");
-    yield* waitFor(() => (closed.includes(0) ? true : undefined));
-    assert.strictEqual((yield* orchestrator.listAgents(lead.threadId))[0]?.state, "idle");
-    yield* orchestrator.notify(lead.id, "delayed report");
-    yield* Effect.sleep("100 millis");
-    assert.lengthOf(fake.sessions, 1, "an informational notice does not resume the host");
-    yield* orchestrator.wake(lead.id, "action required");
-    yield* waitFor(() => (fake.sessions[1]?.sent.length ? true : undefined));
-    assert.strictEqual(fake.sessions[1]?.options.resume, "fake-1");
+    const agents: AgentId[] = [];
+    for (let index = 0; index < 5; index++) {
+      const { lead } = yield* orchestrator.createThread({
+        title: `Idle ${index}`,
+        mode: "chat",
+        lead: { provider: "claude", model: "opus", access: "readOnly" },
+      });
+      agents.push(lead.id);
+      yield* orchestrator.sendUserMessage(lead.id, "first");
+      yield* TestClock.adjust("1 minute");
+    }
+    yield* TestClock.adjust("2 minutes");
+    assert.deepStrictEqual(closed, [0]);
+
+    yield* TestClock.adjust("21 minutes");
+    const recentlyUsed = agents[1]!;
+    yield* orchestrator.sendUserMessage(recentlyUsed, "keep working");
+    yield* TestClock.adjust("1 minute");
+    assert.lengthOf(fake.sessions[1]!.sent, 2);
+    assert.deepStrictEqual(closed, [0]);
+
+    yield* TestClock.adjust("3 minutes");
+    assert.include(closed, 1, "a recent turn does not extend the host's deadline");
+    yield* TestClock.adjust("4 minutes");
+    assert.sameMembers(closed, [0, 1, 2, 3, 4]);
+    assert.strictEqual((yield* orchestrator.agent(recentlyUsed)).state, "idle");
+
+    yield* orchestrator.notify(recentlyUsed, "delayed report");
+    yield* TestClock.adjust("1 minute");
+    assert.lengthOf(fake.sessions, 5, "an informational notice does not resume the host");
+    yield* orchestrator.wake(recentlyUsed, "action required");
+    yield* TestClock.adjust("1 minute");
+    assert.strictEqual(fake.sessions[5]?.options.resume, "fake-2");
     assert.strictEqual(
+      fake.sessions[5]?.options.appendSystemPrompt,
       fake.sessions[1]?.options.appendSystemPrompt,
-      fake.sessions[0]?.options.appendSystemPrompt,
       "resuming preserves the instruction prefix",
     );
-    assert.include(fake.sessions[1]?.sent[0] ?? "", "delayed report");
-  }).pipe(
-    Effect.provide(testLayer([adapter], { idleSessionTTL: Duration.millis(60), warmSessions: 0 })),
-    Effect.scoped,
-  );
+    assert.include(fake.sessions[5]?.sent[0] ?? "", "delayed report");
+    yield* TestClock.adjust("6 minutes");
+    assert.lengthOf(closed, 5, "the resumed host starts a new deadline");
+  }).pipe(Effect.provide(testLayer([adapter])), Effect.scoped);
 });
 
 it.live("wakes a host that slept before its first turn on a new session, not the one it never saved", () => {
