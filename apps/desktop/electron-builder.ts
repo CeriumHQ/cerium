@@ -100,48 +100,6 @@ const compressChromiumNotices = async (context: AfterPackContext) => {
   if (source !== destination) await rm(source);
 };
 
-/**
- * Takes the npm packages built for the other Mac processor out of a packed Mac app, before it is
- * signed. The Intel app is packaged on Apple silicon from an install with both processors' native
- * packages (.github/actions/package), so each of them arrives beside its counterpart and the app
- * keeps only its own processor's. One without a counterpart stops packaging, since the app would
- * start without its native code.
- */
-const dropOtherMacProcessor = (context: AfterPackContext) => {
-  if (context.electronPlatformName !== "darwin") return;
-  const own = Arch[context.arch];
-  const other = own === "x64" ? "arm64" : own === "arm64" ? "x64" : undefined;
-  if (other === undefined) return;
-  const suffix = `-darwin-${other}`;
-  const dropped: string[] = [];
-  const visit = (modules: string) => {
-    if (!existsSync(modules)) return;
-    for (const entry of readdirSync(modules, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
-      const names = entry.name.startsWith("@")
-        ? readdirSync(join(modules, entry.name), { withFileTypes: true })
-            .filter((scoped) => scoped.isDirectory())
-            .map((scoped) => `${entry.name}/${scoped.name}`)
-        : [entry.name];
-      for (const name of names) {
-        if (!name.endsWith(suffix)) {
-          visit(join(modules, name, "node_modules"));
-          continue;
-        }
-        const counterpart = `${name.slice(0, -suffix.length)}-darwin-${own}`;
-        if (!existsSync(join(modules, counterpart))) {
-          throw new Error(`The ${own} Mac app has ${name} without ${counterpart} to take its place.`);
-        }
-        rmSync(join(modules, name), { recursive: true });
-        dropped.push(name);
-      }
-    }
-  };
-  const app = `${context.packager.appInfo.productFilename}.app`;
-  visit(join(context.appOutDir, app, "Contents", "Resources", "app", "node_modules"));
-  if (dropped.length > 0) console.log(`  • left out the ${other} Mac packages ${dropped.join(", ")}`);
-};
-
 export default {
   appId: "app.cerium.desktop",
   productName: "Cerium",
