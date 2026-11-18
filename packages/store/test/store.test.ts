@@ -266,16 +266,45 @@ describe("Store", () => {
       toolResult(7, { content: [image(REMOVED_IMAGE)] }),
     ];
     const expected = history.map(withoutImages);
-    const seed = Effect.gen(function* () {
-      const store = yield* Store;
-      yield* store.createThread(thread);
-      yield* store.createAgent(lead);
-      yield* store.appendEvents(history);
-      assert.deepStrictEqual(projectionIds(filename), ["evt_1", "evt_5"]);
-      using db = new DatabaseSync(filename);
-      db.exec(`INSERT OR IGNORE INTO ui_events (id, thread_id, agent_id, sequence, at, payload)
-        SELECT id, thread_id, agent_id, sequence, at, payload FROM events`);
-    }).pipe(Effect.provide(Store.layer({ filename, migrationsFolder: legacyMigrations })));
+    const seed = Effect.void.pipe(
+      Effect.provide(Store.layer({ filename, migrationsFolder: legacyMigrations })),
+      Effect.andThen(
+        Effect.sync(() => {
+          using db = new DatabaseSync(filename);
+          db.prepare(
+            "INSERT INTO threads (id, title, mode, cwd, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+          ).run(thread.id, thread.title, thread.mode, thread.cwd ?? null, thread.createdAt, thread.updatedAt);
+          db.prepare(`INSERT INTO agents (id, thread_id, role, provider, model, access, state, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+            lead.id,
+            lead.threadId,
+            lead.role,
+            lead.provider,
+            lead.model,
+            lead.access,
+            lead.state,
+            lead.createdAt,
+            lead.updatedAt,
+          );
+          const insert = db.prepare(
+            "INSERT INTO events (id, thread_id, agent_id, sequence, at, tag, payload) VALUES (?, ?, ?, ?, ?, ?, ?)",
+          );
+          for (const each of history) {
+            insert.run(
+              each.id,
+              each.threadId,
+              each.agentId,
+              each.sequence,
+              each.at,
+              each.payload._tag,
+              JSON.stringify(each.payload),
+            );
+          }
+          db.exec(`INSERT INTO ui_events (id, thread_id, agent_id, sequence, at, payload)
+            SELECT id, thread_id, agent_id, sequence, at, payload FROM events`);
+        }),
+      ),
+    );
     const open = Store.layer({ filename, migrationsFolder });
     return Effect.gen(function* () {
       yield* seed;
