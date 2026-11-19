@@ -17,17 +17,19 @@ import {
 } from "lucide-react";
 import { useAtomValue } from "@effect/atom-react";
 import {
+  useCallback,
   useEffect,
   useEffectEvent,
   useLayoutEffect,
   useRef,
   useState,
+  type CSSProperties,
   type PointerEvent,
   type WheelEvent,
 } from "react";
 
 import { FileIcon } from "../../components/FileIcon.tsx";
-import { settled, useArrivals, useLingering } from "../../lib/motion.ts";
+import { settled, useArrivals, useGlide, useLingering, usePresence } from "../../lib/motion.ts";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { ContextMenuArea, MenuItem, MenuSeparator } from "../../components/ui/Menu.tsx";
 import { CopyLinkMenuItem } from "../launch/CopyLink.tsx";
@@ -86,6 +88,7 @@ const tabKey = (tab: TabView) => tab.key;
 const DRAG_THRESHOLD = 4;
 /** How far below the strip a dragged tab goes before it's carried to the panes instead. */
 const SPLIT_THRESHOLD = 24;
+const TAB_MOTION_MS = 220;
 
 /**
  * The open threads as tabs in the titlebar, beside the new-tab button. A tab is shown as the pointer
@@ -112,6 +115,9 @@ export function ThreadTabs({
 } & TabActions) {
   const list = useRef<HTMLDivElement>(null);
   const nodes = useRef(new Map<string, HTMLElement>());
+  const closingWidths = useRef(new Map<string, number>());
+  const indicator = useRef<HTMLSpanElement>(null);
+  const selection = useRef<{ key: string | undefined; animation?: Animation }>({ key: undefined });
   const newTabKeys = useShortcut("new-tab");
   /**
    * The tab pressed, and the one shown before it: a tab carried off the strip to the panes gives the
@@ -120,11 +126,31 @@ export function ThreadTabs({
   const press = useRef<{
     key: string;
     x: number;
+    grabbedAt: number;
+    pointerX: number;
     dragging: boolean;
     before: string | undefined;
     carried: boolean;
   }>(undefined);
   const [dragging, setDragging] = useState<string>();
+  const glide = useGlide({
+    axis: "x",
+    enabled: dragging !== undefined,
+    skip: dragging,
+    duration: TAB_MOTION_MS,
+  });
+  const bindTab = useCallback(
+    (key: string, element: HTMLElement) => {
+      nodes.current.set(key, element);
+      const unbind = glide(key)(element);
+      return () => {
+        closingWidths.current.set(key, element.getBoundingClientRect().width);
+        nodes.current.delete(key);
+        unbind();
+      };
+    },
+    [glide],
+  );
   // Tabs opened and closed move; one taking another's place (a preview replaced, a draft started)
   // just changes.
   const [shown, release] = useLingering(tabs, tabKey, (before, after) => after.length < before.length);
@@ -142,19 +168,120 @@ export function ThreadTabs({
     setHidden((was) => (was.start === start && was.end === end ? was : { start, end }));
   };
 
+  // Follow live layout during a grow, collapse, or drag. Only a change of selection adds travel.
+  const placeIndicator = () => {
+    const strip = list.current;
+    const marker = indicator.current;
+    if (!strip || !marker) return;
+    const tab = active === undefined ? undefined : nodes.current.get(active);
+    const previous = selection.current;
+    const changed = previous.key !== active;
+    const held = press.current?.key === active && press.current?.dragging && !press.current.carried;
+    marker.toggleAttribute("data-held", !!held);
+    const from = changed && !marker.hidden ? marker.getBoundingClientRect() : undefined;
+    if (changed || (held && previous.animation)) {
+      previous.animation?.cancel();
+      selection.current = { key: active };
+    }
+    const to = tab?.getBoundingClientRect();
+    marker.hidden = !to || to.width <= 2;
+    if (!tab || !to) return;
+    const style = getComputedStyle(tab);
+    marker.style.setProperty(
+      "--tab-left",
+      `${to.left - strip.getBoundingClientRect().left + strip.scrollLeft}px`,
+    );
+    marker.style.setProperty("--tab-width", `${to.width}px`);
+    marker.style.opacity = style.opacity;
+    if (
+      from &&
+      !tab.hasAttribute("data-arriving") &&
+      !held &&
+      !matchMedia("(prefers-reduced-motion: reduce)").matches
+    ) {
+      const x = from.left - to.left;
+      const width = from.width - to.width;
+      if (x !== 0 || width !== 0) {
+        // The offset eases away while the next tab's own slot can still move as a neighbor closes.
+        selection.current.animation = marker.animate(
+          [
+            {
+              translate: `calc(var(--tab-left) + ${x}px) -50%`,
+              width: `calc(var(--tab-width) + ${width}px)`,
+            },
+            { translate: "var(--tab-left) -50%", width: "var(--tab-width)" },
+          ],
+          {
+            duration: previous.key !== undefined && !nodes.current.has(previous.key) ? TAB_MOTION_MS : 200,
+            easing: style.getPropertyValue("--ease-out-soft").trim(),
+          },
+        );
+      }
+    }
+    return style.translate !== "none";
+  };
+
+  const placeDraggedTab = () => {
+    const current = press.current;
+    const strip = list.current;
+    if (!current?.dragging || current.carried || !strip) return;
+    const tab = nodes.current.get(current.key);
+    if (!tab) return;
+    const x = current.pointerX - strip.getBoundingClientRect().left + strip.scrollLeft;
+    const end = indicator.current?.previousElementSibling;
+    const edge = end instanceof HTMLElement ? end.offsetLeft + end.offsetWidth - tab.offsetWidth : 0;
+    const left = Math.max(0, Math.min(edge, x - current.grabbedAt));
+    tab.style.transform = `translateX(${left - tab.offsetLeft}px)`;
+  };
+
+  useLayoutEffect(() => {
+    closingWidths.current.clear();
+    placeDraggedTab();
+    // A selected tab can still be gliding after a quick drop. A translation does not fire resize.
+    let frame = 0;
+    const follow = () => {
+      if (placeIndicator()) frame = requestAnimationFrame(follow);
+    };
+    follow();
+    return () => cancelAnimationFrame(frame);
+  });
+  const onResize = useEffectEvent(() => {
+    measure();
+    placeDraggedTab();
+    placeIndicator();
+  });
+
   // The active tab scrolls into view when the strip holds more than fits.
   useEffect(() => {
-    if (active === undefined) return;
-    nodes.current.get(active)?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+    const tab = active === undefined ? undefined : nodes.current.get(active);
+    if (!tab || press.current?.dragging) return;
+    const reveal = () =>
+      tab.scrollIntoView({
+        block: "nearest",
+        inline: "nearest",
+        behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth",
+      });
+    reveal();
+    if (!tab.hasAttribute("data-arriving")) return;
+    let live = true;
+    // A tab that fit at its starting width can extend past the end once it has grown.
+    void settled(tab).then(() => {
+      if (live && !press.current?.dragging) reveal();
+    });
+    return () => {
+      live = false;
+    };
   }, [active, tabs.length]);
   useEffect(() => {
     const element = list.current;
     if (!element) return;
-    const observer = new ResizeObserver(measure);
+    const observer = new ResizeObserver(() => onResize());
     observer.observe(element);
-    for (const child of element.children) observer.observe(child);
+    for (const child of element.children) {
+      if (child !== indicator.current) observer.observe(child);
+    }
     return () => observer.disconnect();
-  }, [tabs.length]);
+  }, [shown]);
 
   const onPointerDown = (event: PointerEvent<HTMLElement>, key: string) => {
     // The middle button closes on release; pressed, it would start the browser's autoscroll.
@@ -163,25 +290,35 @@ export function ThreadTabs({
       return;
     }
     if (event.button !== 0 || (event.target as HTMLElement).closest("[data-tab-close]")) return;
-    press.current = { key, x: event.clientX, dragging: false, before: active, carried: false };
+    press.current = {
+      key,
+      x: event.clientX,
+      pointerX: event.clientX,
+      grabbedAt: event.clientX - event.currentTarget.getBoundingClientRect().left,
+      dragging: false,
+      before: active,
+      carried: false,
+    };
     // The tab follows the pointer from the press, so one pulled straight down off the strip is still its own.
     event.currentTarget.setPointerCapture(event.pointerId);
     if (key !== active) onActivate(key);
   };
-  const onPointerMove = (event: PointerEvent<HTMLElement>) => {
+  const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
     const current = press.current;
-    if (current === undefined) return;
+    const strip = list.current;
+    if (!current || !strip) return;
     if (current.carried) {
       paneDrag.move(event.clientX, event.clientY);
       return;
     }
-    const bottom = list.current?.getBoundingClientRect().bottom ?? Infinity;
+    const bounds = strip.getBoundingClientRect();
     // Pulled down off the strip, the tab goes to the panes, to open beside one of them.
-    if (onSplit && event.clientY > bottom + SPLIT_THRESHOLD) {
+    if (onSplit && event.clientY > bounds.bottom + SPLIT_THRESHOLD) {
       current.carried = true;
       if (!current.dragging) event.currentTarget.setPointerCapture(event.pointerId);
       current.dragging = true;
       setDragging(current.key);
+      nodes.current.get(current.key)?.style.removeProperty("transform");
       if (current.before !== undefined && current.before !== current.key) onActivate(current.before);
       paneDrag.begin({ kind: "thread", key: current.key }, event.clientX, event.clientY);
       return;
@@ -190,21 +327,29 @@ export function ThreadTabs({
       if (Math.abs(event.clientX - current.x) < DRAG_THRESHOLD) return;
       current.dragging = true;
       setDragging(current.key);
+      // The list keeps capture when React moves a tab's DOM node to its new slot.
       event.currentTarget.setPointerCapture(event.pointerId);
     }
-    // The dragged tab takes the place of every tab whose middle the pointer has passed.
+    current.pointerX = event.clientX;
+    placeDraggedTab();
+    placeIndicator();
+    // Compare the pointer to layout slots so ongoing glides cannot change reorder thresholds.
+    const x = event.clientX - bounds.left + strip.scrollLeft;
     const others = tabs.filter((tab) => tab.key !== current.key);
     const index = others.filter((tab) => {
-      const rect = nodes.current.get(tab.key)?.getBoundingClientRect();
-      return rect !== undefined && rect.left + rect.width / 2 < event.clientX;
+      const node = nodes.current.get(tab.key);
+      return node !== undefined && node.offsetLeft + node.offsetWidth / 2 < x;
     }).length;
     if (index !== tabs.findIndex((tab) => tab.key === current.key)) onMove(current.key, index);
   };
   const endPress = (event: PointerEvent<HTMLElement>) => {
-    if (press.current?.carried) {
+    const current = press.current;
+    if (!current) return;
+    if (current.carried) {
       if (event.type === "pointerup") paneDrag.drop(event.clientX, event.clientY);
       else paneDrag.cancel();
     }
+    nodes.current.get(current.key)?.style.removeProperty("transform");
     press.current = undefined;
     setDragging(undefined);
   };
@@ -227,12 +372,25 @@ export function ThreadTabs({
           ref={list}
           aria-label="Open threads"
           onWheel={onWheel}
-          onScroll={measure}
-          style={{
-            maskImage: `linear-gradient(to right, ${hidden.start ? "transparent, black 2rem" : "black"}, ${
-              hidden.end ? "black calc(100% - 2rem), transparent" : "black"
-            })`,
+          onScroll={() => {
+            measure();
+            placeDraggedTab();
+            placeIndicator();
           }}
+          onPointerMove={onPointerMove}
+          onPointerUp={endPress}
+          onPointerCancel={endPress}
+          onLostPointerCapture={(event) => {
+            if (event.target === event.currentTarget) endPress(event);
+          }}
+          style={
+            {
+              "--tab-motion": `${TAB_MOTION_MS}ms`,
+              maskImage: `linear-gradient(to right, ${hidden.start ? "transparent, black 2rem" : "black"}, ${
+                hidden.end ? "black calc(100% - 2rem), transparent" : "black"
+              })`,
+            } as CSSProperties
+          }
           className="relative z-0 flex h-full min-w-0 items-center gap-0.5 overflow-x-auto overflow-y-hidden [scrollbar-width:none] [app-region:no-drag]"
         >
           {shown.map(({ key, item: tab, present }) =>
@@ -243,15 +401,10 @@ export function ThreadTabs({
                 active={tab.key === active}
                 arriving={arrived(tab.key)}
                 dragging={dragging === tab.key}
-                node={(element) => {
-                  if (element) nodes.current.set(tab.key, element);
-                  else nodes.current.delete(tab.key);
-                }}
+                bindTab={bindTab}
                 others={tabs.length > 1}
                 hasRight={tabs.at(-1)?.key !== tab.key}
                 onPointerDown={(event) => onPointerDown(event, tab.key)}
-                onPointerMove={onPointerMove}
-                onPointerEnd={endPress}
                 onClose={() => onClose([tab.key])}
                 onCloseOthers={() =>
                   onClose(tabs.filter((each) => each.key !== tab.key).map((each) => each.key))
@@ -273,13 +426,20 @@ export function ThreadTabs({
                   : {})}
               />
             ) : (
-              <ClosingTab key={key} tab={tab} onGone={() => release(key)} />
+              <ClosingTab
+                key={key}
+                tab={tab}
+                lastWidth={() => closingWidths.current.get(key) ?? 0}
+                onGone={() => release(key)}
+              />
             ),
           )}
-          {/* Placed again as a closed tab goes, which can move the active one without resizing it. */}
-          <Tabs.Indicator
-            data-tabs={shown.length}
-            className="absolute top-1/2 left-0 -z-10 h-7 w-(--active-tab-width) translate-x-(--active-tab-left) -translate-y-1/2 rounded-lg border border-line-subtle bg-surface-selected shadow-raised transition-[translate,width] duration-200 ease-out-soft motion-reduce:transition-none"
+          <span
+            ref={indicator}
+            data-tab-indicator
+            aria-hidden
+            hidden
+            className="pointer-events-none absolute top-1/2 left-0 -z-10 h-7 w-(--tab-width) translate-x-(--tab-left) -translate-y-1/2 rounded-lg border border-line-subtle bg-surface-selected shadow-raised data-held:z-9 data-held:bg-backdrop data-held:[background-image:linear-gradient(var(--surface-selected),var(--surface-selected)),linear-gradient(var(--surface-window),var(--surface-window))]"
           />
         </Tabs.List>
       </Tabs.Root>
@@ -297,15 +457,24 @@ export function ThreadTabs({
 }
 
 /** A tab just closed, shrinking away so the tabs after it close the gap. */
-function ClosingTab({ tab, onGone }: { tab: TabView; onGone: () => void }) {
+function ClosingTab({
+  tab,
+  lastWidth,
+  onGone,
+}: {
+  tab: TabView;
+  lastWidth: () => number;
+  onGone: () => void;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const title = useAtomValue(newThreadDraftTitleAtom(tab.key)) ?? tab.title;
+  const width = useEffectEvent(lastWidth);
   const gone = useEffectEvent(onGone);
   useLayoutEffect(() => {
     const element = ref.current;
     if (!element) return;
     // Its face keeps the width the tab had, and is cut off rather than squeezed as the tab narrows.
-    element.style.setProperty("--closing-width", `${element.offsetWidth}px`);
+    element.style.setProperty("--closing-width", `${width()}px`);
     let live = true;
     void settled(element).then(() => {
       if (live) gone();
@@ -319,7 +488,7 @@ function ClosingTab({ tab, onGone }: { tab: TabView; onGone: () => void }) {
       ref={ref}
       aria-hidden
       inert
-      className="flex h-7 max-w-0 min-w-0 basis-0 items-center overflow-hidden opacity-0 transition-[flex-basis,min-width,max-width,opacity] duration-[220ms,220ms,220ms,120ms] ease-out-soft starting:max-w-52 starting:min-w-28 starting:basis-52 starting:opacity-100"
+      className="-mr-0.5 flex h-7 max-w-0 min-w-0 basis-0 items-center overflow-hidden opacity-0 transition-[flex-basis,min-width,max-width,margin-right,opacity] duration-[var(--tab-motion),var(--tab-motion),var(--tab-motion),var(--tab-motion),120ms] ease-out-soft starting:mr-0 starting:max-w-(--closing-width) starting:min-w-(--closing-width) starting:basis-(--closing-width) starting:opacity-100"
     >
       <span className="flex h-full w-(--closing-width) shrink-0 items-center gap-2 pr-7 pl-2.5 text-meta text-fg-tertiary">
         <TabFace tab={tab} title={title} active={false} unread={false} />
@@ -384,12 +553,10 @@ function ThreadTab({
   active,
   arriving,
   dragging,
-  node,
+  bindTab,
   others,
   hasRight,
   onPointerDown,
-  onPointerMove,
-  onPointerEnd,
   onClose,
   onCloseOthers,
   onCloseRight,
@@ -403,13 +570,11 @@ function ThreadTab({
   /** It was opened while the strip was in view, rather than there when the window opened. */
   arriving: boolean;
   dragging: boolean;
-  node: (element: HTMLElement | null) => void;
+  bindTab: (key: string, element: HTMLElement) => () => void;
   /** Other tabs are open, which "Close others" would close. */
   others: boolean;
   hasRight: boolean;
   onPointerDown: (event: PointerEvent<HTMLElement>) => void;
-  onPointerMove: (event: PointerEvent<HTMLElement>) => void;
-  onPointerEnd: (event: PointerEvent<HTMLElement>) => void;
   onClose: () => void;
   onCloseOthers: () => void;
   onCloseRight: () => void;
@@ -418,6 +583,20 @@ function ThreadTab({
   onSplit?: (side: "right" | "bottom") => void;
   onOpenWindow?: () => void;
 }) {
+  const element = useRef<HTMLDivElement>(null);
+  const node = useCallback(
+    (tabElement: HTMLDivElement | null) => {
+      element.current = tabElement;
+      if (!tabElement) return;
+      const unbind = bindTab(tab.key, tabElement);
+      return () => {
+        element.current = null;
+        unbind();
+      };
+    },
+    [bindTab, tab.key],
+  );
+  const entering = usePresence(true, element, { appear: arriving }) === "entering";
   const unread = tab.unread === true && !active;
   const title = useAtomValue(newThreadDraftTitleAtom(tab.key)) ?? tab.title;
   const closeTabKeys = useShortcut("close-tab");
@@ -481,18 +660,16 @@ function ThreadTab({
     >
       <div
         ref={node}
+        data-arriving={entering ? "" : undefined}
         onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerEnd}
-        onPointerCancel={onPointerEnd}
         onAuxClick={(event) => {
           if (event.button === 1) onClose();
         }}
         onDoubleClick={tab.preview ? onKeep : undefined}
         className={`group/tab relative flex h-7 max-w-52 min-w-28 basis-52 items-center rounded-lg transition-[background-color,opacity,flex-basis,min-width,max-width] ${
           // A tab opened grows out of the strip from nothing, pushing those after it along.
-          arriving
-            ? "overflow-hidden duration-[150ms,200ms,240ms,240ms,240ms] ease-out-soft starting:max-w-0 starting:min-w-0 starting:basis-0 starting:opacity-0"
+          entering
+            ? "overflow-hidden duration-[150ms,var(--tab-motion),var(--tab-motion),var(--tab-motion),var(--tab-motion)] ease-out-soft starting:max-w-0 starting:min-w-0 starting:basis-0 starting:opacity-0"
             : "duration-150"
         } ${dragging ? "z-10 cursor-grabbing" : ""} ${active ? "" : "hover:bg-surface-hover"}`}
       >

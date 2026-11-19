@@ -88,14 +88,20 @@ export function usePresence(
 /**
  * A list's elements by key, and where each stands. Where they stand is kept current as any of them
  * changes size (one growing in or folding out, a card opening), which moves the rest without the
- * list rendering, so a render's glide starts from where they really were. Positions are layout
- * positions (`offsetTop`), so a glide under way doesn't skew the next.
+ * list rendering, so a render's glide starts from where they really were. Layout offsets ignore
+ * scrolling and let a new glide start from the running one's visible position.
  */
 class Glide {
+  private readonly axis: "x" | "y";
   private readonly elements = new Map<string, HTMLElement>();
   private readonly refs = new Map<string, (element: HTMLElement | null) => () => void>();
-  private tops = new Map<string, number>();
+  private readonly animations = new Map<string, Animation>();
+  private positions = new Map<string, number>();
   private readonly observer = new ResizeObserver(() => this.measure());
+
+  constructor(axis: "x" | "y") {
+    this.axis = axis;
+  }
 
   /** The ref of the element of `key`, the same one each render. */
   readonly ref = (key: string) => {
@@ -108,6 +114,7 @@ class Glide {
         return () => {
           this.observer.unobserve(element);
           this.elements.delete(key);
+          this.cancel(key);
         };
       };
       this.refs.set(key, ref);
@@ -116,21 +123,48 @@ class Glide {
   };
 
   private measure() {
-    this.tops = new Map([...this.elements].map(([key, element]) => [key, element.offsetTop]));
+    this.positions = new Map(
+      [...this.elements].map(([key, element]) => [
+        key,
+        this.axis === "x" ? element.offsetLeft : element.offsetTop,
+      ]),
+    );
+  }
+
+  private cancel(key: string) {
+    this.animations.get(key)?.cancel();
+    this.animations.delete(key);
   }
 
   /** Glides each element that moved since it was last measured from there to where it stands. */
-  settle() {
-    const before = this.tops;
+  settle(enabled: boolean, skip: string | undefined, duration: number) {
+    const before = this.positions;
     this.measure();
-    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    for (const [key, top] of this.tops) {
+    if (skip !== undefined) this.cancel(skip);
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      for (const key of this.animations.keys()) this.cancel(key);
+      return;
+    }
+    if (!enabled) return;
+    for (const [key, element] of this.elements) {
+      const position = this.positions.get(key)!;
       const was = before.get(key);
-      if (was === undefined || was === top) continue;
-      this.elements.get(key)?.animate([{ translate: `0 ${was - top}px` }, { translate: "0 0" }], {
-        duration: 300,
-        easing: "cubic-bezier(0.22, 0.8, 0.24, 1)",
-      });
+      if (key === skip || was === undefined || was === position) continue;
+      const style = getComputedStyle(element);
+      const current = this.animations.has(key)
+        ? parseFloat(style.translate.split(" ")[this.axis === "x" ? 0 : 1] ?? "0") || 0
+        : 0;
+      this.cancel(key);
+      const distance = was + current - position;
+      if (distance === 0) continue;
+      const animation = element.animate(
+        [{ translate: this.axis === "x" ? `${distance}px 0` : `0 ${distance}px` }, { translate: "0 0" }],
+        { duration, easing: style.getPropertyValue("--ease-out-soft").trim() || "ease-out" },
+      );
+      this.animations.set(key, animation);
+      animation.onfinish = () => {
+        if (this.animations.get(key) === animation) this.animations.delete(key);
+      };
     }
   }
 
@@ -144,9 +178,19 @@ class Glide {
  * and it has moved: a reordered list rearranges itself instead of jumping. Gives each element's ref
  * by its key.
  */
-export function useGlide(): (key: string) => (element: HTMLElement | null) => () => void {
-  const [glide] = useState(() => new Glide());
-  useLayoutEffect(() => glide.settle());
+export function useGlide({
+  axis = "y",
+  enabled = true,
+  skip,
+  duration = 300,
+}: {
+  axis?: "x" | "y";
+  enabled?: boolean;
+  skip?: string | undefined;
+  duration?: number;
+} = {}): (key: string) => (element: HTMLElement | null) => () => void {
+  const [glide] = useState(() => new Glide(axis));
+  useLayoutEffect(() => glide.settle(enabled, skip, duration));
   useEffect(() => () => glide.disconnect(), [glide]);
   return glide.ref;
 }
