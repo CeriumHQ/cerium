@@ -14,6 +14,7 @@ import { diagrams, explanation, leadFixture, transcriptFixture } from "./transcr
 // holds it at its nth character.
 // &history=5000 starts with a long settled log; &grow=300 appends completed turns to it.
 // &turn-end replays a turn completing and reporting its changed files.
+// &turn-start runs a scripted response when the composer sends. &fast skips the visible wait.
 
 const last = transcriptFixture.at(-1)!;
 
@@ -81,7 +82,84 @@ export function Playground() {
   // The colour scheme the page sees, so `bun run ui --light` shows the light theme.
   useTheme("system");
   const search = new URLSearchParams(location.search);
-  return search.has("turn-end") ? <TurnEndFixture /> : <TranscriptFixture search={search} />;
+  if (search.has("turn-start")) return <TurnStartFixture wait={search.has("fast") ? 100 : 950} />;
+  if (search.has("turn-end")) return <TurnEndFixture />;
+  return <TranscriptFixture search={search} />;
+}
+
+const appendStartEvent = (payload: AgentEvent["payload"]) => (events: ReadonlyArray<AgentEvent>) => [
+  ...events,
+  { ...after(events.length + 1, payload), at: Date.now() },
+];
+
+function TurnStartFixture({ wait }: { wait: number }) {
+  const [events, setEvents] = useState<ReadonlyArray<AgentEvent>>([]);
+  const [phase, setPhase] = useState<"idle" | "waiting" | "tool" | "thought">("idle");
+  const [height, setHeight] = useState(0);
+  const [log] = useState(() => new ThreadLog());
+  const [projection] = useState(() => new IncrementalTranscript());
+  const agent = updateLog(log, events).agents.get(last.agentId);
+  const transcript = projection.project(agent?.events ?? [], agent?.generation ?? 0, sameModel);
+  const running = phase !== "idle";
+  useEffect(() => {
+    if (phase !== "waiting" && phase !== "tool") return;
+    const timer = setTimeout(
+      () => {
+        if (phase === "waiting") {
+          setEvents(
+            appendStartEvent({
+              _tag: "ToolCallStarted",
+              callId: `fixture-read:${events.length}`,
+              toolName: "Read",
+              input: { file_path: "src/auth/session.ts" },
+            }),
+          );
+          setPhase("tool");
+        } else {
+          setEvents(
+            appendStartEvent({
+              _tag: "ReasoningDelta",
+              messageId: `fixture-thought:${events.length}`,
+              text: "I’m tracing where the session cookie is written.",
+            }),
+          );
+          setPhase("thought");
+        }
+      },
+      phase === "waiting" ? wait : 900,
+    );
+    return () => clearTimeout(timer);
+  }, [events.length, phase, wait]);
+  return (
+    <div className="relative h-full bg-surface-pane">
+      <Transcript
+        blocks={transcript.blocks}
+        queued={transcript.queued}
+        live={agent?.live ?? new Map()}
+        agent={leadFixture}
+        activity={running ? "running" : "idle"}
+        bottomInset={height}
+        childState={() => "idle"}
+        childAgent={() => undefined}
+        agentActions={{}}
+      />
+      <Composer
+        target={{ kind: "thread", ...leadFixture, modelId: leadFixture.model }}
+        draftKey="fixture-turn-start"
+        running={running}
+        onHeight={setHeight}
+        onSend={async ({ text }) => {
+          setEvents(appendStartEvent({ _tag: "TurnInput", items: [{ _tag: "FromUser", text }] }));
+          setPhase("waiting");
+          return true;
+        }}
+        onStop={() => {
+          setEvents(appendStartEvent({ _tag: "TurnCompleted", stopReason: "interrupted" }));
+          setPhase("idle");
+        }}
+      />
+    </div>
+  );
 }
 
 function TranscriptFixture({ search }: { search: URLSearchParams }) {

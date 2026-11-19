@@ -8,6 +8,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type CSSProperties,
   type ReactNode,
 } from "react";
 
@@ -44,7 +45,8 @@ export function WorkSection({
   tools,
   timings,
   live,
-  arrived = false,
+  headerClass = "",
+  headerStyle,
   stepIds,
   contains,
   children,
@@ -55,8 +57,8 @@ export function WorkSection({
   timings: ReadonlyArray<Timing>;
   /** The agent is still on this work. */
   live: boolean;
-  /** The work came in while the thread was open, so its line writes itself in. */
-  arrived?: boolean;
+  headerClass?: string;
+  headerStyle?: CSSProperties | undefined;
   /** Its steps' ids, runs opened up, which remember the reader's choice. */
   stepIds: ReadonlyArray<string>;
   /** Whether a block of the conversation is inside, which a find looks for. */
@@ -90,7 +92,8 @@ export function WorkSection({
     <Collapsible.Root open={open} onOpenChange={setToggled}>
       <Collapsible.Trigger
         ref={trigger}
-        className={`group flex max-w-full min-w-0 items-center gap-2 text-left text-meta text-fg-tertiary transition-colors hover:text-fg-secondary max-md:py-1 ${arrived ? "write-in" : ""}`}
+        className={`group flex max-w-full min-w-0 items-center gap-2 text-left text-meta text-fg-tertiary transition-colors hover:text-fg-secondary max-md:py-1 ${headerClass}`}
+        style={headerStyle}
       >
         <span className="work-label grid shrink-0 font-medium" data-working={live}>
           <span aria-hidden={!live} className="text-shimmer col-start-1 row-start-1">

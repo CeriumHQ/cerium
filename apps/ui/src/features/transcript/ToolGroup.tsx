@@ -9,7 +9,7 @@ import {
   SquareArrowOutUpRight,
   type LucideIcon,
 } from "lucide-react";
-import { memo, useContext, useState, type ReactNode } from "react";
+import { memo, useContext, useState, type CSSProperties, type ReactNode } from "react";
 
 import { revealPlace, shellBridge } from "../../backend/shell.ts";
 import {
@@ -120,7 +120,8 @@ export function ToolRun({
   timings,
   live,
   activity,
-  arrived = false,
+  headerClass = "",
+  headerStyle,
   children,
 }: {
   id: string;
@@ -129,8 +130,8 @@ export function ToolRun({
   timings: ReadonlyArray<Timing>;
   live: boolean;
   activity: AgentActivity;
-  /** The run came in while the thread was open, so its line writes itself in. */
-  arrived?: boolean;
+  headerClass?: string;
+  headerStyle?: CSSProperties | undefined;
   children: ReactNode;
 }) {
   const remembered = useContext(WorkToggles);
@@ -152,7 +153,8 @@ export function ToolRun({
     <Collapsible.Root open={open} onOpenChange={setToggled}>
       <Collapsible.Trigger
         ref={trigger}
-        className={`group flex max-w-full min-w-0 items-center gap-2 text-left text-meta text-fg-tertiary transition-colors hover:text-fg-secondary max-md:py-1 ${arrived ? "write-in" : ""}`}
+        className={`group flex max-w-full min-w-0 items-center gap-2 text-left text-meta text-fg-tertiary transition-colors hover:text-fg-secondary max-md:py-1 ${headerClass}`}
+        style={headerStyle}
       >
         <Strip tools={tools} activity={activity} />
         <span className="flex min-w-0">

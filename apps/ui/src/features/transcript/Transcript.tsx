@@ -75,7 +75,7 @@ import { threadImages } from "./tools.ts";
 import { TurnChanges, type TurnFileActions } from "./TurnChanges.tsx";
 import { useStickToBottom } from "./useStickToBottom.ts";
 import { WorkSection, WorkToggles } from "./Work.tsx";
-import { useArrivals } from "../../lib/motion.ts";
+import { useArrivals, usePresence } from "../../lib/motion.ts";
 import { HistoryWindow } from "./HistoryWindow.tsx";
 
 interface TranscriptProps {
@@ -186,6 +186,19 @@ const entrance = (item: Item): string => {
 const idsOf = (item: Item): ReadonlyArray<string> =>
   item.kind === "run" || item.kind === "work" ? [item.id, ...item.steps.flatMap(idsOf)] : [item.id];
 
+/** Steps that follow their section's header in the same update. */
+const openingSteps = (
+  item: Item,
+  together: ReturnType<typeof useArrivals>["together"],
+): ReadonlyArray<string> => {
+  if (item.kind !== "run" && item.kind !== "work") return [];
+  const first = item.steps[0];
+  return [
+    ...(first && together(item.id, first.id) ? [first.id] : []),
+    ...item.steps.flatMap((step) => openingSteps(step, together)),
+  ];
+};
+
 /** A work's steps with its runs opened up: its calls and thoughts, each with its time. */
 const workSteps = (steps: ReadonlyArray<Item>) =>
   steps.flatMap((step) => (step.kind === "run" ? step.steps : [step]));
@@ -249,6 +262,36 @@ export function Transcript({
   const last = items.at(-1);
   const latestFooter = items.findLast((item) => item.kind === "turnEnd")?.id;
   const working = activity === "running" && !showsProgress(last);
+  const waitingAfter = working ? (last?.id ?? null) : undefined;
+  const [turnStart, setTurnStart] = useState<{
+    waitingAfter: typeof waitingAfter;
+    visible?: boolean;
+    handoff?: { after: string | null; header: string };
+  }>({ waitingAfter });
+  if (turnStart.waitingAfter !== waitingAfter) {
+    const after = turnStart.waitingAfter;
+    const previous = after === null ? -1 : items.findIndex((item) => item.id === after);
+    const next = after === null || previous >= 0 ? items[previous + 1] : undefined;
+    // Only the header taking the waiting line's place inherits its exit.
+    const handoff =
+      turnStart.visible &&
+      !working &&
+      after !== undefined &&
+      (next?.kind === "run" || next?.kind === "work") &&
+      arrived(next.id)
+        ? { after, header: next.id }
+        : undefined;
+    setTurnStart({ waitingAfter, ...(handoff ? { handoff } : {}) });
+  }
+  const workingLine = (after: string | null) =>
+    waitingAfter === after || turnStart.handoff?.after === after ? (
+      <WorkingLine
+        show={waitingAfter === after}
+        onVisible={() =>
+          setTurnStart((start) => (start.waitingAfter === after ? { ...start, visible: true } : start))
+        }
+      />
+    ) : null;
   // A switch names the model as people know it.
   const modelLabel = (model: string, provider: ProviderId | undefined) =>
     modelName?.(model, provider ?? agent.provider) ?? model;
@@ -315,6 +358,8 @@ export function Transcript({
           provider={(item.kind === "switch" ? item.provider : undefined) ?? agent.provider}
           model={item.kind === "switch" ? modelLabel(item.model, item.provider) : ""}
           replaced={replaced}
+          handoff={!replaced && turnStart.handoff?.header === item.id}
+          opening={replaced ? "" : openingSteps(item, arrived.together).join(" ")}
           fresh={
             !replaced && (item.kind === "run" || item.kind === "work")
               ? idsOf(item).filter(arrived).join(" ")
@@ -347,13 +392,14 @@ export function Transcript({
               >
                 <div
                   ref={column}
-                  className="mx-auto flex max-w-[50.2rem] flex-col gap-3 px-4 pt-5 md:px-8 md:pt-8"
+                  className="relative mx-auto flex max-w-[50.2rem] flex-col gap-3 px-4 pt-5 md:px-8 md:pt-8"
                   // The inset is in screen pixels; the column's zoom would scale it.
                   style={{
                     zoom: scale,
                     paddingBottom: `max(${oneLine ? "5rem" : "10rem"}, calc(${bottomInset / scale}px + ${oneLine ? "1.5rem" : "3rem"}))`,
                   }}
                 >
+                  {workingLine(null)}
                   <HistoryWindow
                     items={items}
                     viewport={viewport}
@@ -362,13 +408,13 @@ export function Transcript({
                     onTailMounted={onTailMounted}
                     onReveal={unfollow}
                     contains={containsBlock}
-                    render={(item) => renderItem(item, false)}
+                    render={(item) => (
+                      <>
+                        {renderItem(item, false)}
+                        {workingLine(item.id)}
+                      </>
+                    )}
                   />
-                  {working ? (
-                    <div className="arrive-late">
-                      <Working />
-                    </div>
-                  ) : null}
                 </div>
               </ScrollArea>
               <PromptStepper prompts={promptsOf(items)} viewport={viewport} onReveal={unfollow} />
@@ -403,6 +449,23 @@ export function Transcript({
         </ThreadContext>
       </WorkToggles>
     </LiveText>
+  );
+}
+
+function WorkingLine({ show, onVisible }: { show: boolean; onVisible: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const phase = usePresence(show, ref);
+  return phase === "gone" ? null : (
+    <div ref={ref} data-phase={phase} aria-hidden={!show} className="turn-start-wait max-md:py-1">
+      <div
+        className="arrive-late"
+        onAnimationStart={(event) => {
+          if (event.target === event.currentTarget) onVisible();
+        }}
+      >
+        <Working />
+      </div>
+    </div>
   );
 }
 
@@ -485,6 +548,10 @@ interface ItemProps {
   readonly model: string;
   /** The item belongs to a version a rewind replaced. */
   readonly replaced: boolean;
+  /** The item's header takes the waiting line's place. */
+  readonly handoff: boolean;
+  /** The ids of steps that arrived with their headers, space-separated. */
+  readonly opening: string;
   /** For a run, the ids of it and its steps that came in while the thread was open, space-separated. */
   readonly fresh: string;
 }
@@ -495,10 +562,45 @@ interface ItemProps {
  * a long thread's updates three times as slow (scratch transcript benchmark, 1,900 events).
  */
 const TranscriptItem = memo(
-  function TranscriptItem({ item, last, activity, provider, model, replaced, fresh }: ItemProps) {
+  function TranscriptItem({
+    item,
+    last,
+    activity,
+    provider,
+    model,
+    replaced,
+    fresh,
+    opening,
+    handoff,
+  }: ItemProps) {
     const arrived = new Set(fresh.split(" "));
+    const openingIds = new Set(opening.split(" "));
+    const [starting] = useState(handoff);
+    const renderSteps = (
+      section: Extract<Item, { kind: "run" | "work" }>,
+      live: boolean,
+      quiet: boolean,
+      headerDelay: string | undefined,
+    ) =>
+      section.steps.map((step, index) => {
+        const enter = arrived.has(step.id) ? entrance(step) : "";
+        // A step that opens its section follows its header. Subsequent steps show as they arrive.
+        const delay = openingIds.has(step.id) ? `calc(${headerDelay ?? "0ms"} + 80ms)` : undefined;
+        return (
+          <div
+            key={step.id}
+            className={enter === "unroll" && delay ? "unroll step-entrance" : enter}
+            style={enter ? writeDelay(delay) : undefined}
+          >
+            {render(step, live && index === section.steps.length - 1, quiet, delay)}
+          </div>
+        );
+      });
     /** `tail` is the step a running agent is on: the transcript's latest, or the last of live work. */
-    const render = (each: Item, tail: boolean, quiet = false): ReactNode => {
+    const render = (each: Item, tail: boolean, quiet = false, delay?: string): ReactNode => {
+      const takesWaitingLine = starting && each.id === item.id;
+      const headerClass = arrived.has(each.id) ? (takesWaitingLine ? "turn-start-header" : "write-in") : "";
+      const headerDelay = takesWaitingLine ? "var(--turn-start-fade)" : delay;
       switch (each.kind) {
         case "input":
           return (
@@ -532,13 +634,10 @@ const TranscriptItem = memo(
               timings={runTimings(each.steps)}
               live={tail && activity === "running"}
               activity={activity}
-              arrived={arrived.has(each.id)}
+              headerClass={headerClass}
+              headerStyle={writeDelay(headerDelay)}
             >
-              {each.steps.map((step) => (
-                <div key={step.id} className={arrived.has(step.id) ? entrance(step) : ""}>
-                  {render(step, false)}
-                </div>
-              ))}
+              {renderSteps(each, false, false, headerDelay)}
             </ToolRun>
           );
         case "work": {
@@ -550,15 +649,12 @@ const TranscriptItem = memo(
               tools={steps.flatMap((step) => (step.kind === "tools" ? step.tools : []))}
               timings={runTimings(steps)}
               live={live}
-              arrived={arrived.has(each.id)}
+              headerClass={headerClass}
+              headerStyle={writeDelay(headerDelay)}
               stepIds={steps.map((step) => step.id)}
               contains={(id) => containsBlock(each, id)}
             >
-              {each.steps.map((step, index) => (
-                <div key={step.id} className={arrived.has(step.id) ? entrance(step) : ""}>
-                  {render(step, live && index === each.steps.length - 1, true)}
-                </div>
-              ))}
+              {renderSteps(each, live, true, headerDelay)}
             </WorkSection>
           );
         }
@@ -586,10 +682,15 @@ const TranscriptItem = memo(
     before.provider === after.provider &&
     before.model === after.model &&
     before.replaced === after.replaced &&
+    before.handoff === after.handoff &&
+    before.opening === after.opening &&
     before.fresh === after.fresh &&
     // Deep enough for the calls inside a work's runs.
     same(before.item, after.item, 9),
 );
+
+const writeDelay = (delay: string | undefined): CSSProperties | undefined =>
+  delay === undefined ? undefined : ({ "--write-delay": delay } as CSSProperties);
 
 /** Keeps the files above their footer, even when the snapshot follows the turn in a later update. */
 const TurnEndItem = memo(

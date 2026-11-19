@@ -266,22 +266,29 @@ const ARRIVAL_BATCH = 4;
 export function useArrivals(
   keys: ReadonlyArray<string>,
   { replacements = true }: { replacements?: boolean } = {},
-): (key: string) => boolean {
+): ((key: string) => boolean) & { together: (first: string, second: string) => boolean } {
   const [state, setState] = useState(() => ({
-    seen: new Set(keys),
+    seen: new Map(keys.map((key) => [key, 0])),
     still: new Set(keys),
     count: keys.length,
+    batch: 0,
   }));
   let { seen, still } = state;
   const fresh = keys.filter((key) => !seen.has(key));
   if (fresh.length > 0 || keys.length !== state.count) {
-    seen = new Set([...seen, ...fresh]);
+    const batch = state.batch + 1;
+    seen = new Map(seen);
+    for (const key of fresh) seen.set(key, batch);
     const replaced = !replacements && keys.length - state.count < fresh.length;
     if (state.seen.size === 0 || fresh.length > ARRIVAL_BATCH || replaced)
       still = new Set([...still, ...fresh]);
-    setState({ seen, still, count: keys.length });
+    setState({ seen, still, count: keys.length, batch });
   }
-  return (key) => !still.has(key);
+  const arrived = (key: string) => !still.has(key);
+  return Object.assign(arrived, {
+    together: (first: string, second: string) =>
+      arrived(first) && seen.has(first) && seen.get(first) === seen.get(second),
+  });
 }
 
 /** An item of a list as it shows: still in the list, or just gone from it and on its way out. */

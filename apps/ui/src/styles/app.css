@@ -245,6 +245,13 @@ html[data-target="web"] :is(button, [role="button"], [role="treeitem"], a) {
   }
 }
 
+/* A step's delay belongs to its wrapper, not to rows that may arrive inside it later. */
+@property --write-delay {
+  syntax: "<time>";
+  inherits: false;
+  initial-value: 0ms;
+}
+
 @keyframes unroll {
   from {
     clip-path: inset(-8px -8px 100% -8px);
@@ -485,6 +492,10 @@ html:active-view-transition-type(launch)::view-transition-new(root) {
     animation: unroll 460ms var(--ease-out-soft) backwards;
   }
 
+  .unroll.step-entrance {
+    animation-delay: var(--write-delay, 0ms);
+  }
+
   /* A card that waits on the user rings once as it settles, so the eye goes to it. */
   .unroll.asks > * {
     animation: asks 1.4s ease-out 380ms backwards;
@@ -493,6 +504,34 @@ html:active-view-transition-type(launch)::view-transition-new(root) {
   /* Shown only once the wait outlasts a moment, so a quick response doesn't flash it. */
   .arrive-late {
     animation: fade-in 320ms ease-out 260ms backwards;
+  }
+
+  /* The waiting line leaves the flow so the header can take its row as it fades. */
+  .turn-start-wait {
+    transition: opacity var(--turn-start-fade) var(--ease-in-soft);
+  }
+
+  [data-history-id]:has(> .turn-start-wait) {
+    position: relative;
+  }
+
+  .turn-start-wait[data-phase="leaving"] {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  /* If the line was still fading in, leave from the opacity it reached. */
+  .turn-start-wait[data-phase="leaving"] > .arrive-late {
+    animation-play-state: paused;
+  }
+
+  [data-history-id] > .turn-start-wait[data-phase="leaving"] {
+    inset-block-start: calc(100% + var(--spacing) * 3);
+  }
+
+  .turn-start-header {
+    animation: fade-in 100ms var(--ease-out-soft) var(--write-delay, 0ms) backwards;
   }
 
   /* Agents started together join one after another, each popping into its place. */
@@ -510,6 +549,11 @@ html:active-view-transition-type(launch)::view-transition-new(root) {
 
   .arrive-spawns > * > :nth-child(n + 4) {
     animation-delay: 210ms;
+  }
+
+  /* The waiting line fades out before the header takes its place. */
+  .transcript-motion {
+    --turn-start-fade: 65ms;
   }
 
   /* Work folds first, then room opens for the files and the footer fills in underneath. */
