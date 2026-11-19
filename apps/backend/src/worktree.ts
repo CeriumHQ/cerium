@@ -6,7 +6,7 @@ import { GitHub } from "./github.ts";
 import { Git, type GitResult } from "./git.ts";
 import { Terminals } from "./terminal.ts";
 import { includeList } from "./worktreeInclude.ts";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 export const checkoutId = (root: string) =>
   createHash("sha256")
@@ -385,11 +385,27 @@ export const worktreesLayer = (options: { readonly directory: string }) =>
           }
           const branch = yield* git(toplevel, ["symbolic-ref", "--quiet", "--short", "HEAD"]);
           let base = choice?.baseRef ?? (branch.code === 0 ? branch.stdout.trim() : head.stdout.trim());
-          let baseCommit = yield* gitOk(
-            toplevel,
-            ["rev-parse", "--verify", "--end-of-options", `${base}^{commit}`],
-            "The selected base doesn't exist. Fetch or select another branch.",
-          );
+          const resolveBase = (ref: string) =>
+            gitOk(
+              toplevel,
+              ["rev-parse", "--verify", "--end-of-options", `${ref}^{commit}`],
+              "The selected base doesn't exist. Fetch or select another branch.",
+            );
+          const fetchRevision = (repository: string, ref: string, message: string) =>
+            Effect.gen(function* () {
+              const local = `refs/cerium/worktree-fetch/${randomUUID()}`;
+              // A terminal or another worktree can fetch into FETCH_HEAD while this one is being picked.
+              return yield* gitOk(
+                toplevel,
+                ["fetch", "--no-tags", "--no-write-fetch-head", repository, `${ref}:${local}`],
+                message,
+              ).pipe(
+                Effect.andThen(resolveBase(local)),
+                Effect.ensuring(git(toplevel, ["update-ref", "-d", local]).pipe(Effect.ignore)),
+              );
+            });
+          let baseCommit: string;
+          let startCommit: string;
           if (choice?.pullRequestUrl !== undefined) {
             if (Option.isNone(github))
               return yield* new WorktreeError({
@@ -416,17 +432,23 @@ export const worktreesLayer = (options: { readonly directory: string }) =>
               return yield* new WorktreeError({
                 message: "Choose a pull request from this project's GitHub repository.",
               });
-            yield* gitOk(
-              toplevel,
-              ["fetch", "--no-tags", repository.url, `refs/pull/${match[3]}/head`],
+            base = choice.baseRef ?? repository.defaultBranch;
+            baseCommit =
+              choice.baseRef === undefined
+                ? yield* resolveBase(base)
+                : yield* fetchRevision(
+                    repository.url,
+                    `refs/heads/${base}`,
+                    "Couldn't fetch the pull request's base.",
+                  );
+            startCommit = yield* fetchRevision(
+              repository.url,
+              `refs/pull/${match[3]}/head`,
               "Couldn't fetch the pull request's revision.",
             );
-            baseCommit = yield* gitOk(
-              toplevel,
-              ["rev-parse", "FETCH_HEAD^{commit}"],
-              "Couldn't read the pull request's revision.",
-            );
-            base = choice.baseRef ?? repository.defaultBranch;
+          } else {
+            baseCommit = yield* resolveBase(base);
+            startCommit = baseCommit;
           }
           if (choice?.existingBranch !== undefined) {
             yield* gitOk(
@@ -447,7 +469,7 @@ export const worktreesLayer = (options: { readonly directory: string }) =>
               return yield* new WorktreeError({
                 message: `That branch is checked out at ${checkedOut.trim()}. Reuse its existing workspace.`,
               });
-            baseCommit = yield* gitOk(
+            startCommit = yield* gitOk(
               toplevel,
               ["rev-parse", "--verify", "--end-of-options", `${choice.existingBranch}^{commit}`],
               "Couldn't read the existing branch.",
@@ -480,12 +502,8 @@ export const worktreesLayer = (options: { readonly directory: string }) =>
           const worktree: ThreadWorktree = {
             id: checkoutId(path.join(home, picked)),
             managed: true,
-            startCommit: baseCommit.trim(),
-            baseCommit: (yield* gitOk(
-              toplevel,
-              ["rev-parse", "--verify", "--end-of-options", `${base}^{commit}`],
-              "Couldn't resolve the base branch.",
-            )).trim(),
+            startCommit: startCommit.trim(),
+            baseCommit: baseCommit.trim(),
             // As the user chose it, so the saved projects list it once.
             project,
             root: path.join(home, picked),

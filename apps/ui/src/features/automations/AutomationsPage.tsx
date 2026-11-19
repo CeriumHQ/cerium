@@ -12,17 +12,22 @@ import { AsyncResult } from "effect/reactivity";
 import {
   CalendarClock,
   ChevronDown,
+  CircleDot,
   CircleX,
   Clock,
   Eye,
   FolderGit2,
   GitBranch,
   GitBranchPlus,
+  GitMerge,
+  GitPullRequest,
   Pause,
   Play,
   Plus,
+  ScanSearch,
   ShieldCheck,
   ShieldOff,
+  Tag,
   Trash2,
   X,
   type LucideIcon,
@@ -52,12 +57,17 @@ import { chipClass, type EffortPick } from "../composer/Pickers.tsx";
 import { ProjectPicker, useLatestProject } from "../composer/ProjectPicker.tsx";
 import { projectName } from "../composer/projectList.ts";
 import { limitLabel, limitPolicies } from "../settings/limitPolicy.ts";
+import { SettingsSwitch } from "../settings/parts.tsx";
 import { accessAtom, effortAtom, modelAtom } from "../settings/preferences.ts";
 import type { ThreadSummary } from "../threads/model.ts";
 import {
   draftOf,
   edited,
+  gitHubRepeats,
   inputOf,
+  isGitHubRepeat,
+  issueActionHint,
+  issueActionLabel,
   newDraft,
   pastLabel,
   repeatHint,
@@ -69,6 +79,7 @@ import {
   soonPhrase,
   whenLabel,
   type Draft,
+  type IssueAction,
   type Repeat,
   type RunState,
 } from "./model.ts";
@@ -112,6 +123,31 @@ const accessIcon: Partial<Record<Draft["access"], LucideIcon>> = {
   auto: ShieldCheck,
   readOnly: Eye,
   fullAccess: ShieldOff,
+};
+
+/** Each way an automation goes off, as its row and When select mark it. */
+const repeatIcon: Record<Repeat, LucideIcon> = {
+  Hourly: CalendarClock,
+  Daily: CalendarClock,
+  Weekdays: CalendarClock,
+  CiFailed: CircleX,
+  PullRequestReview: GitPullRequest,
+  PullRequestConflicts: GitMerge,
+  IssueAssigned: CircleDot,
+  IssueLabeled: Tag,
+};
+
+const repeatNote: Partial<Record<Repeat, string>> = {
+  CiFailed:
+    "When an agent pushes with Cerium and that commit's CI fails, a thread starts with the failed checks' logs.",
+  PullRequestReview:
+    "A review request to your GitHub account or new inline comments on your PRs start or wake a thread. The agent prepares fixes in the PR worktree for your approval.",
+  PullRequestConflicts:
+    "When one of your PRs has conflicts, the agent rebases it in its worktree, resolves conflicts, and reruns checks. You publish the rebased branch.",
+  IssueAssigned:
+    "When an issue is assigned, a thread starts in a worktree. Leave the name blank for the GitHub account gh is signed in as.",
+  IssueLabeled:
+    "When an issue in the project's repository gets this label, a thread starts in a new worktree.",
 };
 
 /** The page on a wide window: the list down the middle, and the picked automation beside it. */
@@ -163,7 +199,7 @@ export function AutomationList({
 
       {views.length === 0 ? (
         <div className="mt-6 flex flex-col items-start gap-1 rounded-xl border border-dashed border-line-subtle px-5 py-6 text-body text-fg-tertiary">
-          <p className="text-fg-secondary">Start a thread on a schedule, or when CI fails.</p>
+          <p className="text-fg-secondary">Start a thread on a schedule, or when CI or GitHub says so.</p>
           <p>It runs while Cerium is open or in {trayName()}, and lands in your inbox.</p>
         </div>
       ) : (
@@ -213,7 +249,7 @@ function AutomationRow({
   onSelect: () => void;
 }) {
   const { automation, nextAt } = view;
-  const Icon = automation.when._tag === "CiFailed" ? CircleX : CalendarClock;
+  const Icon = repeatIcon[automation.when._tag];
   const state = last === undefined ? undefined : runState(last.run, last.thread);
   // When it goes off next, over how its last run went.
   const next = automation.paused
@@ -222,7 +258,9 @@ function AutomationRow({
       ? soonLabel(nextAt, now)
       : automation.when._tag === "CiFailed"
         ? "Watching CI"
-        : "Waiting";
+        : isGitHubRepeat(automation.when._tag)
+          ? "Watching GitHub"
+          : "Waiting";
   return (
     <li>
       <Button
@@ -325,6 +363,7 @@ const twoDigits = (value: number) => String(value).padStart(2, "0");
 export function AutomationDetail({
   id,
   available,
+  githubOk,
   onClose,
   onCreated,
   onDeleted,
@@ -333,6 +372,8 @@ export function AutomationDetail({
   id: string | undefined;
   /** The harnesses that can run a thread now. */
   available: ReadonlySet<ProviderId>;
+  /** The machine runs GitHub triggers and cross-lab review; an older one offers neither. */
+  githubOk: boolean;
   /** Closes the form; none on a phone, whose bar has the way back. */
   onClose?: () => void;
   onCreated: (id: string) => void;
@@ -421,7 +462,9 @@ export function AutomationDetail({
               label={
                 view.automation.when._tag === "CiFailed"
                   ? "Start a thread now, with the project's latest CI failure"
-                  : "Start a thread from it now"
+                  : isGitHubRepeat(view.automation.when._tag)
+                    ? "Start a thread now, from the latest match on GitHub"
+                    : "Start a thread from it now"
               }
             >
               <Button
@@ -482,15 +525,65 @@ export function AutomationDetail({
                 label="Repeats"
                 value={repeat}
                 shown={repeatLabel[repeat]}
-                icon={repeat === "CiFailed" ? CircleX : CalendarClock}
+                icon={repeatIcon[repeat]}
                 onPick={(picked) => edit({ repeat: picked as Repeat })}
               >
                 {(["Hourly", "Daily", "Weekdays", "CiFailed"] as const).map((each) => (
-                  <SelectItem key={each} value={each} description={repeatHint[each]}>
+                  <SelectItem key={each} value={each} icon={repeatIcon[each]} description={repeatHint[each]}>
+                    {repeatLabel[each]}
+                  </SelectItem>
+                ))}
+                {/* A machine before GitHub triggers keeps showing one it already holds, but offers no new ones. */}
+                {(githubOk ? gitHubRepeats : gitHubRepeats.filter((each) => each === repeat)).map((each) => (
+                  <SelectItem key={each} value={each} icon={repeatIcon[each]} description={repeatHint[each]}>
                     {repeatLabel[each]}
                   </SelectItem>
                 ))}
               </ChipSelect>
+              {repeat === "IssueAssigned" || repeat === "IssueLabeled" ? (
+                <ChipSelect
+                  label="What the thread does"
+                  value={shownDraft.issueAction}
+                  shown={issueActionLabel[shownDraft.issueAction]}
+                  icon={ScanSearch}
+                  onPick={(picked) => edit({ issueAction: picked as IssueAction })}
+                >
+                  {(["triage", "draftPr"] as const).map((each) => (
+                    <SelectItem key={each} value={each} description={issueActionHint[each]}>
+                      {issueActionLabel[each]}
+                    </SelectItem>
+                  ))}
+                </ChipSelect>
+              ) : null}
+              {repeat === "IssueAssigned" ? (
+                <label className="flex h-8 items-center gap-1.5 rounded-full px-2 text-meta text-fg-secondary hover:bg-surface-hover">
+                  to
+                  <input
+                    value={shownDraft.assignee}
+                    onChange={(event) => edit({ assignee: event.target.value })}
+                    placeholder="me (signed in to gh)"
+                    aria-label="Assignee"
+                    maxLength={39}
+                    spellCheck={false}
+                    autoCapitalize="none"
+                    className="w-40 bg-transparent text-fg-primary outline-none placeholder:text-fg-tertiary"
+                  />
+                </label>
+              ) : repeat === "IssueLabeled" ? (
+                <label className="flex h-8 items-center gap-1.5 rounded-full px-2 text-meta text-fg-secondary hover:bg-surface-hover">
+                  labeled
+                  <input
+                    value={shownDraft.label}
+                    onChange={(event) => edit({ label: event.target.value })}
+                    placeholder="agent-ready"
+                    aria-label="Label"
+                    maxLength={50}
+                    spellCheck={false}
+                    autoCapitalize="none"
+                    className="w-32 bg-transparent text-fg-primary outline-none placeholder:text-fg-tertiary"
+                  />
+                </label>
+              ) : null}
               {repeat === "Hourly" ? (
                 <ChipSelect
                   label="Minute past the hour"
@@ -524,9 +617,8 @@ export function AutomationDetail({
               ) : null}
             </div>
             <p className="text-caption text-fg-tertiary">
-              {repeat === "CiFailed"
-                ? "When an agent pushes with Cerium and that commit's CI fails, a thread starts with the failed checks' logs."
-                : `Runs while Cerium is open or in ${trayName()}. A time missed while it was closed runs once when it opens, unless the next is nearer.`}
+              {repeatNote[repeat] ??
+                `Runs while Cerium is open or in ${trayName()}. A time missed while it was closed runs once when it opens, unless the next is nearer.`}
             </p>
           </Field>
 
@@ -540,7 +632,27 @@ export function AutomationDetail({
                   onOpenChange={setPicking}
                 />
               </div>
-              {worktrees ? (
+              {isGitHubRepeat(repeat) ? (
+                <>
+                  <span aria-hidden className="text-meta text-fg-disabled">
+                    /
+                  </span>
+                  <Tooltip
+                    label={
+                      repeat === "PullRequestReview" || repeat === "PullRequestConflicts"
+                        ? "Reuses an available thread in the PR's worktree when its model and access match"
+                        : "Each issue run starts in a new worktree"
+                    }
+                  >
+                    <span className="flex h-8 items-center gap-1.5 px-2 text-meta text-fg-secondary">
+                      <GitBranchPlus size={13} strokeWidth={1.75} className="shrink-0" />
+                      {repeat === "PullRequestReview" || repeat === "PullRequestConflicts"
+                        ? "Pull request worktree"
+                        : "New worktree each run"}
+                    </span>
+                  </Tooltip>
+                </>
+              ) : worktrees ? (
                 <>
                   <span aria-hidden className="text-meta text-fg-disabled">
                     /
@@ -641,6 +753,26 @@ export function AutomationDetail({
               </ChipSelect>
             </div>
           </Field>
+
+          {githubOk || shownDraft.reviewOnCompletion ? (
+            <Field label="Review">
+              <div className="flex items-center gap-3">
+                <div className="flex min-w-0 flex-1 flex-col">
+                  <span id="review-on-completion" className="text-body text-fg-primary">
+                    Cross-lab review when done
+                  </span>
+                  <span className="text-caption text-fg-tertiary">
+                    A model from another lab reads the finished work and reports what it finds.
+                  </span>
+                </div>
+                <SettingsSwitch
+                  checked={shownDraft.reviewOnCompletion}
+                  onCheckedChange={(on) => edit({ reviewOnCompletion: on })}
+                  labelledBy="review-on-completion"
+                />
+              </div>
+            </Field>
+          ) : null}
 
           {dirty ? (
             <div className="flex items-center justify-end gap-2">

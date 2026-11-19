@@ -151,7 +151,7 @@ import { HANDOFF_VERSION, LIMIT_POLICY_VERSION, useModels } from "../features/co
 import { useLatestProject } from "../features/composer/ProjectPicker.tsx";
 import { DraftSync } from "../features/composer/useDraftSync.ts";
 import { ScrollArea } from "../components/ui/ScrollArea.tsx";
-import { AUTOMATIONS_VERSION } from "../backend/automations.ts";
+import { AUTOMATIONS_VERSION, GITHUB_AUTOMATIONS_VERSION } from "../backend/automations.ts";
 import {
   AutomationDetail,
   AutomationList,
@@ -1206,6 +1206,9 @@ function Workspace() {
   const issuesOk = drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= ISSUES_VERSION;
   /** The machine runs automations; an older one has none to show. */
   const automationsOk = drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= AUTOMATIONS_VERSION;
+  /** The machine runs GitHub triggers and cross-lab review for automations. */
+  const githubAutomationsOk =
+    drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= GITHUB_AUTOMATIONS_VERSION;
   const toggleGitHub = () => togglePanel("github");
   /** Opens a pull request or an issue of `root`'s repository in a tab of its own, as files open. */
   const openGitHubIn = (root: string, kind: GitHubKind, number: number, title?: string) => {
@@ -2368,6 +2371,7 @@ function Workspace() {
         key={automationPick}
         id={automationPick === "new" ? undefined : automationPick}
         available={available}
+        githubOk={githubAutomationsOk}
         {...(onClose ? { onClose } : {})}
         onCreated={setAutomationPick}
         onDeleted={() => {

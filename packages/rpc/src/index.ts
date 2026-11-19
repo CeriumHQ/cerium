@@ -72,7 +72,7 @@ import { CeriumError } from "./error.ts";
 import { FileBytes, FileDiff, FileListing, FilePreview, FileStatuses, FilesChanged } from "./files.ts";
 import { GitRpcs } from "./git.ts";
 import { GitBranchRpcs } from "./gitBranches.ts";
-import { AutomationRpcs } from "./automations.ts";
+import { AutomationRpcs, GITHUB_AUTOMATIONS_RPC_VERSION } from "./automations.ts";
 import { GitHubRpcs } from "./github.ts";
 import { HubRpcs } from "./hub.ts";
 import { IssueRpcs } from "./githubIssues.ts";
@@ -107,7 +107,7 @@ export * from "./terminal.ts";
  * addition a client relies on, so a client driving another machine knows what that machine's backend
  * offers.
  */
-export const RPC_VERSION = 51;
+export const RPC_VERSION = GITHUB_AUTOMATIONS_RPC_VERSION;
 export const SCOPED_EVENTS_RPC_VERSION = 50;
 
 /** Status readers send the provider ids their schema can decode. */

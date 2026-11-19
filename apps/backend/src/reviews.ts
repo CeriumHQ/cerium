@@ -1,7 +1,19 @@
 import { Catalog, Checkpoints, Orchestrator, type OrchestratorError } from "@cerium/orchestrator";
-import { LenientArray, type AgentInfo, type ThreadId } from "@cerium/protocol";
+import { LenientArray, type ThreadId } from "@cerium/protocol";
 import { ReviewRecord, type FindingState, type ReviewerModel, type ReviewTarget } from "@cerium/rpc";
-import { Context, Effect, FiberMap, FileSystem, Layer, Option, Path, PubSub, Schema, Stream } from "effect";
+import {
+  Context,
+  Effect,
+  FiberMap,
+  FileSystem,
+  Layer,
+  Option,
+  Path,
+  PubSub,
+  Result,
+  Schema,
+  Stream,
+} from "effect";
 import { randomUUID } from "node:crypto";
 
 import { resolveInside } from "./files.ts";
@@ -53,6 +65,11 @@ export class Reviews extends Context.Service<
       threadId: ThreadId,
       target: ReviewTarget,
       reviewer: ReviewerModel | undefined,
+    ): Effect.Effect<ReviewRecord, ReviewError>;
+    completeAutomation(
+      threadId: ThreadId,
+      root: string,
+      base?: string,
     ): Effect.Effect<ReviewRecord, ReviewError>;
     resolve(reviewId: string, findingId: string, state: FindingState): Effect.Effect<void, ReviewError>;
     stop(reviewId: string): Effect.Effect<void, ReviewError>;
@@ -146,21 +163,25 @@ export class Reviews extends Context.Service<
           git.requireRepository(cwd).pipe(Effect.mapError((error) => failed(error.message)));
 
         /** What the next commit takes: what's staged, or everything when nothing is, new files included. */
-        const changesDiff = Effect.fn("Reviews.changesDiff")(function* (root: string) {
+        const changesDiff = Effect.fn("Reviews.changesDiff")(function* (root: string, base?: string) {
           const { top } = yield* repository(root);
           const head = yield* verified(top, "HEAD");
-          const staged = (yield* look(top, ["diff", "--cached", "--name-only"])).trim() !== "";
-          const cached = staged || head === undefined;
+          const since = base === undefined ? undefined : yield* verified(top, base);
+          if (base !== undefined && since === undefined)
+            return yield* failed("The automation's base revision is unavailable.");
+          const staged =
+            base === undefined && (yield* look(top, ["diff", "--cached", "--name-only"])).trim() !== "";
+          const cached = staged || (base === undefined && head === undefined);
           const patch = yield* look(top, [
             "diff",
             ...DIFF_FLAGS,
             ...(cached ? ["--cached"] : []),
-            head ?? EMPTY_TREE,
+            since ?? head ?? EMPTY_TREE,
           ]);
           const files = [...splitFiles(patch)];
           if (!cached) {
-            const fresh = (yield* look(top, ["ls-files", "--others", "--exclude-standard"]))
-              .split("\n")
+            const fresh = (yield* look(top, ["ls-files", "-z", "--others", "--exclude-standard"]))
+              .split("\0")
               .filter((name) => name !== "");
             for (const name of fresh.slice(0, NEW_FILES_READ)) {
               const text = yield* fs.stream(path.resolve(top, name), { bytesToRead: NEW_FILE_BYTES }).pipe(
@@ -172,7 +193,16 @@ export class Reviews extends Context.Service<
             }
           }
           const count = plural(files.length, "file");
-          return { files, label: staged ? `${count} staged` : `${count} changed`, cwd: top };
+          return {
+            files,
+            label:
+              since !== undefined
+                ? `Automation changes · ${count}`
+                : staged
+                  ? `${count} staged`
+                  : `${count} changed`,
+            cwd: top,
+          };
         });
 
         /** The branch's commits that `base` doesn't have, as a pull request would show them. */
@@ -211,7 +241,7 @@ export class Reviews extends Context.Service<
 
         const diffOf = (target: ReviewTarget) =>
           target._tag === "Changes"
-            ? changesDiff(target.root)
+            ? changesDiff(target.root, target.base)
             : target._tag === "Branch"
               ? branchDiff(target.cwd, target.base)
               : turnDiff(target);
@@ -229,16 +259,30 @@ export class Reviews extends Context.Service<
           threadId: ThreadId,
           target: ReviewTarget,
           picked: ReviewerModel | undefined,
+          crossHarness = false,
         ) {
+          const lead = yield* leadOf(threadId);
           const live = ofThread(threadId).find(
-            (review) => review.state === "running" && sameTarget(review.target, target),
+            (review) =>
+              review.state === "running" &&
+              sameTarget(review.target, target) &&
+              (!crossHarness || (lead !== undefined && review.reviewer.provider !== lead.provider)),
           );
           if (live !== undefined) return live;
-          const lead: AgentInfo | undefined = yield* leadOf(threadId);
-          const reviewer =
-            picked ?? (lead === undefined ? undefined : defaultReviewer(yield* catalog.entries, lead));
+          let reviewer = picked;
+          if (picked === undefined && lead !== undefined) {
+            const entries = yield* catalog.entries;
+            reviewer = defaultReviewer(
+              crossHarness ? entries.filter((entry) => entry.provider !== lead.provider) : entries,
+              lead,
+            );
+          }
           if (reviewer === undefined) {
-            return yield* failed("Put a model on your roster in Settings → Roster to review with.");
+            return yield* failed(
+              crossHarness
+                ? "A model on another harness is needed for cross-lab review."
+                : "Put a model on your roster in Settings → Roster to review with.",
+            );
           }
           const { files, label } = yield* diffOf(target);
           const reviewable = files.filter((file) => file.binary || file.hunks.length > 0);
@@ -326,21 +370,48 @@ export class Reviews extends Context.Service<
           if (review.agentId !== undefined) yield* orchestrator.stopAgent(review.agentId).pipe(Effect.ignore);
         });
 
-        return Reviews.of({
-          watch: (threadId) =>
-            Stream.unwrap(
-              Effect.gen(function* () {
-                // Subscribed before the first reading, so no change falls between the two.
-                const subscription = yield* PubSub.subscribe(changes);
-                return Stream.concat(
-                  Stream.succeed(threadId),
-                  Stream.fromSubscription(subscription).pipe(
-                    Stream.filter((changed) => changed === threadId),
-                  ),
-                ).pipe(Stream.map(() => ofThread(threadId)));
-              }),
+        const watch = (threadId: ThreadId) =>
+          Stream.unwrap(
+            Effect.gen(function* () {
+              // Subscribed before the first reading, so no change falls between the two.
+              const subscription = yield* PubSub.subscribe(changes);
+              return Stream.concat(
+                Stream.succeed(threadId),
+                Stream.fromSubscription(subscription).pipe(Stream.filter((changed) => changed === threadId)),
+              ).pipe(Stream.map(() => ofThread(threadId)));
+            }),
+          );
+
+        const completeAutomation = Effect.fn("Reviews.completeAutomation")(function* (
+          threadId: ThreadId,
+          root: string,
+          base?: string,
+        ) {
+          const started = yield* start(
+            threadId,
+            { _tag: "Changes", root, ...(base === undefined ? {} : { base }) },
+            undefined,
+            true,
+          );
+          const finished = yield* watch(threadId).pipe(
+            Stream.filterMap((items) =>
+              Result.fromNullishOr(
+                items.find((each) => each.id === started.id && each.state !== "running"),
+                () => undefined,
+              ),
             ),
+            Stream.runHead,
+          );
+          if (Option.isNone(finished)) return yield* failed("The review ended without a result.");
+          const review = finished.value;
+          if (review.state !== "done") return yield* failed(review.message ?? "The review didn't finish.");
+          return review;
+        });
+
+        return Reviews.of({
+          watch,
           start,
+          completeAutomation,
           resolve,
           stop,
         });
@@ -350,7 +421,7 @@ export class Reviews extends Context.Service<
 
 /** Two targets that read the same diff. */
 const sameTarget = (a: ReviewTarget, b: ReviewTarget): boolean => {
-  if (a._tag === "Changes" && b._tag === "Changes") return a.root === b.root;
+  if (a._tag === "Changes" && b._tag === "Changes") return a.root === b.root && a.base === b.base;
   if (a._tag === "Branch" && b._tag === "Branch") return a.cwd === b.cwd && a.base === b.base;
   if (a._tag === "Turn" && b._tag === "Turn") return a.turnId === b.turnId && a.after === b.after;
   return false;

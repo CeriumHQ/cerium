@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { pathToFileURL } from "node:url";
 
 import { Worktrees } from "@cerium/orchestrator";
 import type { ThreadId } from "@cerium/protocol";
@@ -9,6 +10,7 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import { Terminals } from "../src/terminal.ts";
 import { Git } from "../src/git.ts";
+import { GitHub } from "../src/github.ts";
 import { countStatus, worktreeSlug, worktreesLayer } from "../src/worktree.ts";
 import { includeList } from "../src/worktreeInclude.ts";
 
@@ -136,6 +138,50 @@ const setup = Effect.gen(function* () {
 const TestLayer = Layer.mergeAll(Git.layer, fakeTerminals).pipe(Layer.provideMerge(NodeServices.layer));
 
 describe("Worktrees", () => {
+  it.effect("checks out a PR head and its remote base without moving the project's checkout", () =>
+    Effect.gen(function* () {
+      const { repo, fs, path, worktrees } = yield* setup;
+      const main = (yield* git(repo, "rev-parse", "HEAD")).trim();
+      const remote = path.join(yield* fs.makeTempDirectoryScoped(), "remote.git");
+      yield* git(repo, "clone", "--bare", repo, remote);
+      const tree = (yield* git(repo, "rev-parse", "HEAD^{tree}")).trim();
+      const base = (yield* git(repo, "commit-tree", tree, "-p", main, "-m", "Release branch")).trim();
+      const head = (yield* git(repo, "commit-tree", tree, "-p", main, "-m", "Proposed fix")).trim();
+      yield* git(repo, "push", remote, `${base}:refs/heads/release`, `${head}:refs/pull/42/head`);
+      yield* git(
+        repo,
+        "config",
+        `url.${pathToFileURL(remote).href}.insteadOf`,
+        "https://github.com/example/project",
+      );
+      const pullRequestUrl = "https://github.com/example/project/pull/42";
+      const made = yield* worktrees.plan(repo, "Pull request 42", { pullRequestUrl, baseRef: "release" });
+      assert.strictEqual(made.worktree.baseCommit, base);
+      assert.strictEqual(made.worktree.startCommit, head);
+      assert.strictEqual(made.worktree.pullRequestUrl, pullRequestUrl);
+      yield* worktrees.checkOut(made.worktree);
+      assert.strictEqual((yield* git(made.cwd, "rev-parse", "HEAD")).trim(), head);
+      assert.strictEqual((yield* git(repo, "rev-parse", "HEAD")).trim(), main);
+      assert.strictEqual((yield* git(repo, "for-each-ref", "refs/cerium/worktree-fetch")).trim(), "");
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(
+          TestLayer,
+          Layer.succeed(GitHub, {
+            repository: () =>
+              Effect.succeed({
+                host: "github.com",
+                owner: "example",
+                name: "project",
+                url: "https://github.com/example/project",
+              }),
+          } as never),
+        ),
+      ),
+    ),
+  );
+
   it.effect("keeps a cleaned workspace's branch available for restoration", () =>
     Effect.gen(function* () {
       const { repo, worktrees } = yield* setup;
