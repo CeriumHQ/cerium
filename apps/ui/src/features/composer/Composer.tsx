@@ -149,6 +149,25 @@ const allProviders: ReadonlySet<ProviderId> = new Set(providers);
 const sameTrigger = (a: Trigger | undefined, b: Trigger | undefined) =>
   a?.char === b?.char && a?.start === b?.start && a?.query === b?.query;
 
+/** Keeps the last results visible as the menu leaves, while the editor takes its keys back. */
+function ComposerMenu({ children }: { children: ReactNode }) {
+  const open = children != null;
+  const content = useRetained(children, open);
+  const popup = useRef<HTMLDivElement>(null);
+  const phase = usePresence(open, popup);
+  if (phase === "gone") return null;
+  return (
+    <div
+      ref={popup}
+      data-phase={phase}
+      inert={!open}
+      className="input-popup pointer-events-auto absolute inset-x-0 bottom-full z-10 mb-2 overflow-hidden rounded-xl border border-line-subtle bg-surface-overlay shadow-overlay backdrop-blur-2xl"
+    >
+      {content}
+    </div>
+  );
+}
+
 /** A message as the box sends it: its text, which names each mention by its token. */
 export interface OutgoingMessage {
   readonly text: string;
@@ -1491,25 +1510,29 @@ export function Composer({
             finalFocus={input}
           />
         ) : null}
-        {menuOpen ? (
-          <MentionMenu
-            trigger={menuTrigger}
-            sources={sources}
-            results={results}
-            active={activeIndex}
-            onActive={setActive}
-            onPick={pick}
-          />
-        ) : null}
-        {slashOpen ? (
-          <SlashMenu
-            groups={slashGroups(slashPrompts, slashActions)}
-            query={slashTrigger?.query ?? ""}
-            active={slashActive}
-            onActive={setActive}
-            onPick={pickSlash}
-          />
-        ) : null}
+        <ComposerMenu>
+          {menuOpen ? (
+            <MentionMenu
+              trigger={menuTrigger}
+              sources={sources}
+              results={results}
+              active={activeIndex}
+              onActive={setActive}
+              onPick={pick}
+            />
+          ) : null}
+        </ComposerMenu>
+        <ComposerMenu>
+          {slashOpen ? (
+            <SlashMenu
+              groups={slashGroups(slashPrompts, slashActions)}
+              query={slashTrigger?.query ?? ""}
+              active={slashActive}
+              onActive={setActive}
+              onPick={pickSlash}
+            />
+          ) : null}
+        </ComposerMenu>
         {/* A film a step above the conversation's own: the box stands apart by that, its edge and the
             blur of what scrolls under it, never as a dark slab over the glass. */}
         <div

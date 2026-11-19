@@ -667,6 +667,27 @@ html:active-view-transition-type(launch)::view-transition-new(root) {
       scale: 0.85;
     }
   }
+
+  /* The composer menus and find bar fade in close to the edge they open from. */
+  .input-popup {
+    transition:
+      opacity 110ms var(--ease-out-soft),
+      translate 110ms var(--ease-out-soft);
+  }
+
+  .input-popup[data-phase="leaving"] {
+    opacity: 0;
+    translate: 0 var(--input-popup-shift, 3px);
+    transition-duration: 70ms;
+    transition-timing-function: var(--ease-in-soft);
+  }
+
+  @starting-style {
+    .input-popup[data-phase="entering"] {
+      opacity: 0;
+      translate: 0 var(--input-popup-shift, 3px);
+    }
+  }
 }
 
 /*

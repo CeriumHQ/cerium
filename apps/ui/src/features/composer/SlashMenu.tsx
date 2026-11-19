@@ -71,28 +71,26 @@ export function SlashMenu({
   ]);
   const empty = query === "" ? "Type to narrow the list." : `Nothing matches “${query}”.`;
   return (
-    <div className="pointer-events-auto absolute inset-x-0 bottom-full z-10 mb-2 overflow-hidden rounded-xl border border-line-subtle bg-surface-overlay shadow-overlay backdrop-blur-2xl">
-      {/* The editor keeps focus and points into this list, which a <select> can't be. */}
-      {/* oxlint-disable-next-line jsx-a11y/prefer-tag-over-role */}
-      <div ref={list} id="slash-menu" role="listbox" className="max-h-64 overflow-y-auto px-1 py-1">
-        {rows.map((row) =>
-          row.kind === "heading" ? (
-            <p key={row.key} className="px-2 pt-2 pb-0.5 text-caption font-medium text-fg-tertiary">
-              {row.value}
-            </p>
-          ) : (
-            <SlashOption
-              key={row.key}
-              at={row.index}
-              selected={row.index === active}
-              entry={row.entry}
-              onActive={onActive}
-              onPick={onPick}
-            />
-          ),
-        )}
-        {rows.length === 0 ? <p className="px-2 py-1.5 text-meta text-fg-tertiary">{empty}</p> : null}
-      </div>
+    // The editor keeps focus and points into this list, which a <select> can't be.
+    // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
+    <div ref={list} id="slash-menu" role="listbox" className="max-h-64 overflow-y-auto px-1 py-1">
+      {rows.map((row) =>
+        row.kind === "heading" ? (
+          <p key={row.key} className="px-2 pt-2 pb-0.5 text-caption font-medium text-fg-tertiary">
+            {row.value}
+          </p>
+        ) : (
+          <SlashOption
+            key={row.key}
+            at={row.index}
+            selected={row.index === active}
+            entry={row.entry}
+            onActive={onActive}
+            onPick={onPick}
+          />
+        ),
+      )}
+      {rows.length === 0 ? <p className="px-2 py-1.5 text-meta text-fg-tertiary">{empty}</p> : null}
     </div>
   );
 }

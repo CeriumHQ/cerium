@@ -9,6 +9,7 @@ import {
   useContext,
   useEffect,
   useEffectEvent,
+  useLayoutEffect,
   useRef,
   useState,
   type KeyboardEvent,
@@ -19,6 +20,7 @@ import { readCloudSearchHistory, readSearchHistory } from "../../backend/atoms.t
 import type { ThreadHistory } from "../../backend/threadLog.ts";
 import { useKeptHidden } from "../../components/KeptViews.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
+import { usePresence, useRetained } from "../../lib/motion.ts";
 import {
   findJumpAtom,
   findRanges,
@@ -85,7 +87,9 @@ export function TranscriptFind({
   const [artifact, setArtifact] = useState<string>();
   const [revision, setRevision] = useState(0);
   const [overlay, setOverlay] = useState<ReadonlyMap<string, string>>(new Map());
+  const bar = useRef<HTMLElement>(null);
   const input = useRef<HTMLInputElement>(null);
+  const phase = usePresence(open, bar);
   const returnTo = useRef<HTMLElement | null>(null);
   const reading = useRef(false);
   const visibleFrames = useRef(0);
@@ -190,7 +194,7 @@ export function TranscriptFind({
     window.addEventListener(FIND_EVENT, listener);
     return () => window.removeEventListener(FIND_EVENT, listener);
   }, [focused]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!open) return;
     input.current?.focus();
     input.current?.select();
@@ -364,7 +368,6 @@ export function TranscriptFind({
       step(event.shiftKey || event.key === "ArrowUp" ? -1 : 1);
     }
   };
-  if (!open) return null;
   const count =
     query === ""
       ? ""
@@ -373,12 +376,19 @@ export function TranscriptFind({
         : matches.length === 0
           ? "No matches"
           : at + 1 + " / " + matches.length;
+  // Keep the match controls steady while the closed bar fades out.
+  const status = useRetained(count + (pending ? " · Loading match…" : ""), open);
+  const hasMatches = useRetained(matches.length > 0, open);
+  if (phase === "gone") return null;
   return (
     // oxlint-disable-next-line jsx-a11y/no-static-element-interactions
     <search
+      ref={bar}
+      data-phase={phase}
+      inert={!open}
       aria-label="Find in thread"
       onKeyDown={onKeyDown}
-      className="absolute top-3 right-3 z-20 flex h-9 items-center gap-0.5 rounded-xl border border-line-subtle bg-surface-overlay pr-1 pl-2.5 text-body text-fg-primary shadow-overlay backdrop-blur-2xl"
+      className="input-popup absolute top-3 right-3 z-20 flex h-9 items-center gap-0.5 rounded-xl border border-line-subtle bg-surface-overlay pr-1 pl-2.5 text-body text-fg-primary shadow-overlay backdrop-blur-2xl [--input-popup-shift:-3px]"
     >
       <Input
         ref={input}
@@ -398,13 +408,12 @@ export function TranscriptFind({
         }
         className="shrink-0 px-1.5 text-meta text-fg-tertiary tabular-nums"
       >
-        {count}
-        {pending ? " · Loading match…" : ""}
+        {status}
       </output>
       <Tooltip label="Previous match" shortcut="Shift Enter">
         <Button
           aria-label="Previous match"
-          disabled={!matches.length}
+          disabled={!hasMatches}
           onClick={() => step(-1)}
           className={iconButton}
         >
@@ -412,12 +421,7 @@ export function TranscriptFind({
         </Button>
       </Tooltip>
       <Tooltip label="Next match" shortcut="Enter">
-        <Button
-          aria-label="Next match"
-          disabled={!matches.length}
-          onClick={() => step(1)}
-          className={iconButton}
-        >
+        <Button aria-label="Next match" disabled={!hasMatches} onClick={() => step(1)} className={iconButton}>
           <ChevronDown size={15} strokeWidth={1.75} />
         </Button>
       </Tooltip>
