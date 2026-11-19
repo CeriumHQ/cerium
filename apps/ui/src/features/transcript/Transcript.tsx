@@ -17,6 +17,7 @@ import {
   useMemo,
   useEffect,
   useEffectEvent,
+  useLayoutEffect,
   useRef,
   useState,
   type CSSProperties,
@@ -146,8 +147,7 @@ const quietFooter = (item: Extract<Item, { kind: "turnEnd" }>, latest: string | 
 
 /**
  * How an item comes in while the thread is open: a line writes itself out in reading order, and a
- * card or a whole message unrolls downward. Its kind never changes for its id, so it keeps its
- * entrance as it updates and plays it only as it first mounts.
+ * card or a whole message unrolls downward. A streaming message writes itself out word by word.
  */
 const entrance = (item: Item): string => {
   switch (item.kind) {
@@ -172,7 +172,7 @@ const entrance = (item: Item): string => {
     case "block":
       switch (item.block.kind) {
         case "message":
-          return "unroll";
+          return item.block.streaming ? "" : "unroll";
         case "permission":
         case "question":
           return "unroll asks";
@@ -181,6 +181,42 @@ const entrance = (item: Item): string => {
       }
   }
 };
+
+const MessageArrivals = createContext<Set<string> | undefined>(undefined);
+
+function ItemEntrance({
+  item,
+  arrived,
+  replaced = false,
+  delay,
+  children,
+}: {
+  item: Item;
+  arrived: boolean;
+  replaced?: boolean;
+  delay?: string | undefined;
+  children: ReactNode;
+}) {
+  const messages = use(MessageArrivals);
+  const message = item.kind === "block" && item.block.kind === "message";
+  const [enter] = useState(() => (arrived && !(message && messages?.has(item.id)) ? entrance(item) : ""));
+  // Keep a message's first entrance when it becomes a step under Working or remounts in history.
+  useLayoutEffect(() => {
+    if (message && arrived) messages?.add(item.id);
+  }, [message, arrived, messages, item.id]);
+  return (
+    <div
+      // A message sent rises out of the message box, its text flying there from where it was written.
+      {...(item.kind === "input" ? { "data-from-box": "" } : {})}
+      // The prompt stepper finds a prompt to bring into view by it.
+      {...(item.kind === "input" && !replaced ? { "data-prompt": item.id } : {})}
+      className={enter === "unroll" && delay ? "unroll step-entrance" : enter}
+      style={enter ? writeDelay(delay) : undefined}
+    >
+      {children}
+    </div>
+  );
+}
 
 /** An item's id, and those of the steps inside it, which come in one by one as a run or work grows. */
 const idsOf = (item: Item): ReadonlyArray<string> =>
@@ -343,14 +379,7 @@ export function Transcript({
         quiet={quietFooter(item, replaced ? undefined : latestFooter)}
       />
     ) : (
-      <div
-        key={item.id}
-        // A message sent rises out of the message box, its text flying there from where it was written.
-        {...(item.kind === "input" ? { "data-from-box": "" } : {})}
-        // The prompt stepper finds a prompt to bring into view by it.
-        {...(item.kind === "input" && !replaced ? { "data-prompt": item.id } : {})}
-        className={!replaced && arrived(item.id) ? entrance(item) : ""}
-      >
+      <ItemEntrance key={item.id} item={item} arrived={!replaced && arrived(item.id)} replaced={replaced}>
         <TranscriptItem
           item={item}
           last={!replaced && item === last}
@@ -366,7 +395,7 @@ export function Transcript({
               : ""
           }
         />
-      </div>
+      </ItemEntrance>
     );
 
   return (
@@ -512,12 +541,15 @@ function ThreadContext({
   actions: TranscriptActions;
   children: ReactNode;
 }) {
+  const [messageArrivals] = useState(() => new Set<string>());
   return (
-    <WorkspaceFolder value={folder}>
-      <MessageBoxContext value={messageBox}>
-        <Actions value={actions}>{children}</Actions>
-      </MessageBoxContext>
-    </WorkspaceFolder>
+    <MessageArrivals value={messageArrivals}>
+      <WorkspaceFolder value={folder}>
+        <MessageBoxContext value={messageBox}>
+          <Actions value={actions}>{children}</Actions>
+        </MessageBoxContext>
+      </WorkspaceFolder>
+    </MessageArrivals>
   );
 }
 
@@ -583,17 +615,12 @@ const TranscriptItem = memo(
       headerDelay: string | undefined,
     ) =>
       section.steps.map((step, index) => {
-        const enter = arrived.has(step.id) ? entrance(step) : "";
         // A step that opens its section follows its header. Subsequent steps show as they arrive.
         const delay = openingIds.has(step.id) ? `calc(${headerDelay ?? "0ms"} + 80ms)` : undefined;
         return (
-          <div
-            key={step.id}
-            className={enter === "unroll" && delay ? "unroll step-entrance" : enter}
-            style={enter ? writeDelay(delay) : undefined}
-          >
+          <ItemEntrance key={step.id} item={step} arrived={arrived.has(step.id)} delay={delay}>
             {render(step, live && index === section.steps.length - 1, quiet, delay)}
-          </div>
+          </ItemEntrance>
         );
       });
     /** `tail` is the step a running agent is on: the transcript's latest, or the last of live work. */
