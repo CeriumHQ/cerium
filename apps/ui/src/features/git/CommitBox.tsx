@@ -1,12 +1,13 @@
 import type { ThreadId } from "@cerium/protocol";
 import type { MadeCommit } from "@cerium/rpc";
-import { Button } from "@base-ui/react/button";
+import { Button } from "../../components/ui/Button.tsx";
 import { Checkbox } from "@base-ui/react/checkbox";
 import { useAtom, useAtomSet } from "@effect/atom-react";
 import { Check, GitCommitHorizontal } from "lucide-react";
 import { useState, type KeyboardEvent } from "react";
 
 import { commitChanges, draftCommitMessage, lastCommitMessage } from "../../backend/git.ts";
+import { checkMarkClass } from "../../components/ui/Checkbox.tsx";
 import { Disclosure } from "../../components/ui/Disclosure.tsx";
 import { GenerateButton } from "../../components/ui/GenerateButton.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
@@ -205,8 +206,8 @@ export function CommitBox({
             onCheckedChange={(checked) => void toggleAmend(checked)}
             className="group flex cursor-default items-center gap-1.5 rounded-md text-left text-meta text-fg-tertiary outline-none select-none hover:text-fg-secondary data-checked:text-fg-secondary max-md:text-[14px]"
           >
-            <span className="grid size-3.5 shrink-0 place-items-center rounded-[4px] border border-line-strong transition-colors group-focus-visible:border-fg-secondary group-data-checked:border-accent group-data-checked:bg-accent">
-              <Checkbox.Indicator className="text-accent-fg data-unchecked:hidden">
+            <span className={checkMarkClass}>
+              <Checkbox.Indicator className="data-unchecked:hidden">
                 <Check size={10} strokeWidth={3} />
               </Checkbox.Indicator>
             </span>
@@ -244,10 +245,12 @@ export function CommitBox({
             {...(blocked === undefined ? { shortcut: "Ctrl Enter" } : {})}
           >
             <Button
+              tone="primary"
+              size="sm"
               onClick={() => void submit()}
               disabled={!ready}
               focusableWhenDisabled
-              className="flex h-7 min-w-0 items-center gap-1.5 rounded-lg bg-accent px-2.5 text-meta font-medium text-accent-fg transition-colors hover:bg-accent-strong data-disabled:cursor-default data-disabled:bg-surface-active data-disabled:text-fg-disabled max-md:h-10 max-md:text-[15px]"
+              className="min-w-0 data-disabled:bg-surface-active data-disabled:text-fg-disabled"
             >
               <GitCommitHorizontal size={14} strokeWidth={1.75} className="shrink-0" />
               <span className="truncate">{label}</span>

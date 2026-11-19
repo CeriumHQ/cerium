@@ -35,6 +35,7 @@ import { savedProjectsAtom } from "../../backend/projects.ts";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { IconButton } from "../../components/ui/IconButton.tsx";
 import { SearchBar } from "../../components/ui/SearchBar.tsx";
+import { segmentedTrackClass } from "../../components/ui/Segmented.tsx";
 import { harnessName } from "./Harnesses.tsx";
 import {
   filterHub,
@@ -203,8 +204,8 @@ function HubBody({ project, kind }: { project: string; kind: Kind }) {
         <SettingsNote>{pageCopy[kind].empty}</SettingsNote>
       ) : (
         <div className="-mt-2 flex flex-col gap-3">
-          <div className="overflow-hidden rounded-lg border border-line-subtle bg-surface-sunken [&>div]:h-9 [&>div]:border-b-0 [&>div]:pl-3">
-            <SearchBar value={query} onChange={setQuery} placeholder={pageCopy[kind].search} />
+          <div className="overflow-hidden rounded-lg border border-line-subtle bg-surface-sunken">
+            <SearchBar flush value={query} onChange={setQuery} placeholder={pageCopy[kind].search} />
           </div>
           <HarnessFilter
             kind={kind}
@@ -1203,7 +1204,7 @@ function AddButton({
     >
       <Popover.Trigger
         render={<Button />}
-        className="flex h-7 items-center gap-1.5 rounded-full border border-dashed border-line-strong pr-2.5 pl-2 text-meta text-fg-secondary transition-colors hover:border-solid hover:bg-surface-hover hover:text-fg-primary data-popup-open:border-solid data-popup-open:bg-surface-hover data-popup-open:text-fg-primary"
+        className="flex h-7 items-center gap-1.5 rounded-full border border-dashed border-line-strong pr-2.5 pl-2 text-meta text-fg-secondary transition-colors hover:border-solid hover:bg-surface-hover hover:text-fg-primary data-popup-open:border-solid data-popup-open:bg-surface-active data-popup-open:text-fg-primary"
       >
         <Plus size={12} strokeWidth={2} className="text-fg-tertiary" />
         <ProviderLogo provider={to} size={13} />
@@ -1230,7 +1231,7 @@ function AddButton({
                     if (next === "project" || next === "user") setScope(next);
                   }}
                   aria-label="Where"
-                  className="flex items-center gap-0.5 self-start rounded-lg border border-line-subtle p-0.5"
+                  className={`${segmentedTrackClass} self-start`}
                 >
                   {(["project", "user"] as const).map((each) => (
                     <Toggle

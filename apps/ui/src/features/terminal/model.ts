@@ -86,7 +86,7 @@ export const exitNote = (code: number | undefined): string => {
 export const messageOf = (error: unknown): string =>
   typeof error === "object" && error !== null && "message" in error && typeof error.message === "string"
     ? error.message
-    : "Something went wrong.";
+    : "Something went wrong. Try again.";
 
 /** Input split into pieces the backend accepts in one call. */
 export const inputPieces = (data: string, size: number): ReadonlyArray<string> => {

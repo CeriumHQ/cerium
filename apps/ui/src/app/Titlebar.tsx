@@ -249,7 +249,7 @@ export function CompactPanelMenu({
           <MenuTrigger>
             <Button
               aria-label="Panels"
-              className={`relative mr-1 grid size-7 shrink-0 place-items-center rounded-md transition-colors [app-region:no-drag] active:bg-surface-active data-popup-open:bg-surface-selected data-popup-open:text-fg-primary pointer-coarse:size-10 max-md:size-10 ${
+              className={`relative mr-1 grid size-7 shrink-0 place-items-center rounded-md transition-colors [app-region:no-drag] active:bg-surface-active data-popup-open:bg-surface-active data-popup-open:text-fg-primary pointer-coarse:size-10 max-md:size-10 ${
                 anyOpen ? "text-fg-primary" : "text-fg-secondary hover:bg-surface-hover hover:text-fg-primary"
               }`}
             >
@@ -338,7 +338,7 @@ export function RunToggle({
         <MenuTrigger>
           <Button
             aria-label="Project actions"
-            className="relative grid h-7 w-5 place-items-center rounded-md text-fg-tertiary transition-colors [app-region:no-drag] hover:bg-surface-hover hover:text-fg-primary data-popup-open:bg-surface-hover data-popup-open:text-fg-primary pointer-coarse:h-10 pointer-coarse:w-7 max-md:h-10 max-md:w-7"
+            className="relative grid h-7 w-5 place-items-center rounded-md text-fg-tertiary transition-colors [app-region:no-drag] hover:bg-surface-hover hover:text-fg-primary data-popup-open:bg-surface-active data-popup-open:text-fg-primary pointer-coarse:h-10 pointer-coarse:w-7 max-md:h-10 max-md:w-7"
           >
             <ChevronDown size={12} strokeWidth={2} />
             {busy > 0 ? (

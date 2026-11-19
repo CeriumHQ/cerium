@@ -402,12 +402,12 @@ function MenuPopup({
     browse.setTab(tabs[(at + step + tabs.length) % tabs.length]);
   };
   const empty = browse.searching
-    ? "No model matches"
+    ? "No model matches."
     : browse.tab === "favorites"
       ? "Star a model to keep it here"
       : browse.tab && !available.has(browse.tab)
         ? `${providerName[browse.tab]} isn't ready. Settings → Harnesses says why.`
-        : "No models listed yet";
+        : "No models listed yet.";
   const tunes = offersChoice(effort) || offersSpeed(speed);
   // With a rail or a side panel the menu keeps one height, so switching tab or model doesn't move it.
   const fixed = browse.railed || tunes;

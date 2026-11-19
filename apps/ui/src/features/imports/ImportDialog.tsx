@@ -61,7 +61,7 @@ function ImportDialog({ onClose }: { readonly onClose: () => void }) {
           Looking through your harnesses…
         </p>
       ) : AsyncResult.isFailure(result) ? (
-        <p className="py-2 text-body text-error-text">This machine couldn't list its harnesses' sessions.</p>
+        <p className="py-2 text-body text-error-text">This computer couldn't list its harnesses' sessions.</p>
       ) : sessions.length === 0 ? (
         <p className="py-2 text-body text-fg-tertiary">No sessions left to bring in.</p>
       ) : (

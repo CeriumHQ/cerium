@@ -416,7 +416,7 @@ export const cloudHistoryAtom = Atom.family((key: string) => {
             Effect.option,
             Effect.map((read) => {
               pageRevision++;
-              loadError = Option.isNone(read) ? "Earlier messages couldn’t load. Try again." : undefined;
+              loadError = Option.isNone(read) ? "Earlier messages couldn't load. Try again." : undefined;
               if (Option.isSome(read)) {
                 if (more) log.add(read.value.events);
                 before = read.value.before;
@@ -677,7 +677,7 @@ export const threadEventsAtom = Atom.family((threadId: ThreadId) =>
                 Effect.option,
               );
               pageRevision++;
-              loadError = Option.isNone(read) ? "Earlier messages couldn’t load. Try again." : undefined;
+              loadError = Option.isNone(read) ? "Earlier messages couldn't load. Try again." : undefined;
               changed = true;
               // Keep the loaded suffix contiguous: each request is bounded and lets queued live
               // events through before the next page. Never fold disconnected navigation pages.

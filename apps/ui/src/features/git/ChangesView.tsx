@@ -1,5 +1,7 @@
 import type { GitFileChange, GitStatus } from "@cerium/rpc";
 import { Button } from "@base-ui/react/button";
+
+import { buttonClass } from "../../components/ui/Button.tsx";
 import { Check, ChevronRight, Minus, Plus, Undo2, type LucideIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
@@ -70,10 +72,7 @@ export function ChangesView({
           This folder isn't in a git repository.
         </p>
         {onInit === undefined ? null : (
-          <Button
-            onClick={onInit}
-            className="h-8 rounded-lg border border-line-strong bg-surface-hover px-3 text-body font-medium text-fg-primary transition-colors hover:bg-surface-active max-md:h-10 max-md:px-4 max-md:text-[15px]"
-          >
+          <Button onClick={onInit} className={buttonClass()}>
             Initialize repository
           </Button>
         )}
@@ -111,7 +110,7 @@ function RowAction({ icon: Icon, label, onClick }: { icon: LucideIcon; label: st
       <Button
         aria-label={label}
         onClick={onClick}
-        className="grid size-6 place-items-center rounded-md text-fg-tertiary transition-colors duration-150 hover:bg-surface-active hover:text-fg-primary focus-visible:ring-1 focus-visible:ring-focus-ring focus-visible:outline-none max-md:size-9"
+        className="grid size-6 place-items-center rounded-md text-fg-tertiary transition-colors duration-150 hover:bg-surface-active hover:text-fg-primary focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:outline-none max-md:size-9"
       >
         <Icon size={14} strokeWidth={1.75} />
       </Button>
@@ -188,7 +187,7 @@ function Group({
           type="button"
           aria-expanded={open}
           onClick={() => setOpen(!open)}
-          className="flex h-7 min-w-0 flex-1 cursor-default items-center gap-1 rounded-md px-1 text-left text-meta font-medium text-fg-tertiary outline-none select-none hover:text-fg-secondary focus-visible:ring-1 focus-visible:ring-focus-ring focus-visible:ring-inset max-md:h-10 max-md:text-[13px]"
+          className="flex h-7 min-w-0 flex-1 cursor-default items-center gap-1 rounded-md px-1 text-left text-meta font-medium text-fg-tertiary outline-none select-none hover:text-fg-secondary focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset max-md:h-10 max-md:text-[13px]"
         >
           <ChevronRight
             size={13}
@@ -247,7 +246,7 @@ function Row({
         aria-expanded={row.kind === "folder" ? !row.collapsed : undefined}
         onClick={onActivate}
         style={{ paddingLeft: 4 + row.depth * INDENT }}
-        className="flex h-full min-w-0 flex-1 cursor-default items-center gap-1.5 rounded-md pr-1 text-left text-meta text-fg-primary outline-none select-none focus-visible:ring-1 focus-visible:ring-focus-ring focus-visible:ring-inset max-md:text-[14px]"
+        className="flex h-full min-w-0 flex-1 cursor-default items-center gap-1.5 rounded-md pr-1 text-left text-meta text-fg-primary outline-none select-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset max-md:text-[14px]"
       >
         <span className="grid size-4 shrink-0 place-items-center text-fg-tertiary">
           {row.kind === "folder" ? (

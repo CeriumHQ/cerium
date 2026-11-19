@@ -9,6 +9,7 @@ import { applyChanges, expandedAtom, treeAtom } from "../../backend/explorer.ts"
 import { shellBridge } from "../../backend/shell.ts";
 import { IconButton } from "../../components/ui/IconButton.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
+import { toggleClass } from "../../components/ui/Segmented.tsx";
 import { usesCommandKey } from "../../lib/keys.ts";
 import { isCapturingBinding, matchesBinding, useShortcut } from "../../lib/shortcuts.ts";
 import type { MessageBox } from "../composer/messageBox.ts";
@@ -18,9 +19,6 @@ import { FileTree } from "./FileTree.tsx";
 import { ancestors, changedRows, type OpenFile, type Touched } from "./model.ts";
 
 type View = "files" | "changes";
-
-const toggleClass =
-  "rounded-md px-2 py-0.5 text-body font-medium text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary max-md:px-2.5 max-md:py-1.5 max-md:text-[15px]";
 
 /**
  * The thread's folder, beside the conversation: its files as a tree, or just what git says differs

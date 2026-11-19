@@ -1,14 +1,16 @@
 import { Button } from "@base-ui/react/button";
+
+import { buttonClass } from "../../components/ui/Button.tsx";
 import { Check, Copy, FolderOpen, RotateCcw } from "lucide-react";
 import { useEffect, useState, type ComponentProps, type ReactNode } from "react";
 
 import { shellBridge } from "../../backend/shell.ts";
 import { CeriumMark } from "../../components/CeriumMark.tsx";
+import { dialogTitleClass } from "../../components/ui/FormDialog.tsx";
 import type { CrashFallback } from "./CrashGuard.tsx";
 import { renderErrorDetails, renderErrorMessage } from "./model.ts";
 
-const buttonClass =
-  "inline-flex h-8 items-center gap-1.5 rounded-lg border border-line-strong px-3 text-body font-medium text-fg-primary transition-colors hover:bg-surface-hover max-md:h-10 max-md:px-4 max-md:text-[15px]";
+const actionClass = buttonClass();
 
 /** Copies `text`, and says so for a moment; `link` draws it as a link in a line of text. */
 export function CopyDetailsButton({ text, link }: { text: string; link?: string }) {
@@ -20,7 +22,7 @@ export function CopyDetailsButton({ text, link }: { text: string; link?: string 
   }, [copied]);
   return (
     <Button
-      className={link ?? buttonClass}
+      className={link ?? actionClass}
       onClick={() =>
         void navigator.clipboard.writeText(text).then(
           () => setCopied(true),
@@ -43,7 +45,7 @@ function LogsButton() {
   const openLogs = shellBridge()?.openLogs;
   if (openLogs === undefined) return null;
   return (
-    <Button className={buttonClass} onClick={() => void openLogs()}>
+    <Button className={actionClass} onClick={() => void openLogs()}>
       <FolderOpen size={14} strokeWidth={1.75} />
       Logs
     </Button>
@@ -68,11 +70,11 @@ export function AppCrash({ error, componentStack }: ComponentProps<CrashFallback
       <div className="absolute inset-x-0 top-0 h-10 [app-region:drag]" />
       <CeriumMark className="size-10 text-fg-tertiary" />
       <div className="flex max-w-md flex-col items-center gap-1.5 text-center">
-        <h1 className="text-reading font-semibold tracking-tight text-fg-primary">Cerium hit a problem</h1>
+        <h1 className={`${dialogTitleClass} text-fg-primary`}>Cerium hit a problem</h1>
         <p className="text-body text-fg-secondary">{renderErrorMessage(error)}</p>
       </div>
       <CrashActions>
-        <Button className={buttonClass} onClick={() => location.reload()}>
+        <Button className={actionClass} onClick={() => location.reload()}>
           <RotateCcw size={14} strokeWidth={1.75} />
           Reload
         </Button>
@@ -92,7 +94,7 @@ export function PaneCrash({ error, componentStack, retry }: ComponentProps<Crash
         <p className="text-meta text-fg-secondary">{renderErrorMessage(error)}</p>
       </div>
       <CrashActions>
-        <Button className={buttonClass} onClick={retry}>
+        <Button className={actionClass} onClick={retry}>
           <RotateCcw size={14} strokeWidth={1.75} />
           Try again
         </Button>

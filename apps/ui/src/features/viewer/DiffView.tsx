@@ -1,5 +1,5 @@
 import type { DiffHunk } from "@cerium/rpc";
-import { Button } from "@base-ui/react/button";
+import { Button } from "../../components/ui/Button.tsx";
 import { Check, ChevronsUpDown, Plus } from "lucide-react";
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 
@@ -99,7 +99,7 @@ function Pick({ picked, onPick }: { picked: boolean; onPick: (extend: boolean) =
         if (event.shiftKey) event.preventDefault();
       }}
       onClick={(event) => onPick(event.shiftKey)}
-      className="grid w-6 shrink-0 cursor-default place-items-center self-stretch outline-none select-none focus-visible:ring-1 focus-visible:ring-focus-ring focus-visible:ring-inset"
+      className="grid w-6 shrink-0 cursor-default place-items-center self-stretch outline-none select-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset"
     >
       <span
         className={`grid size-3 place-items-center rounded-[3px] border transition-[opacity,background-color,border-color] duration-100 ${picked ? "border-accent bg-accent text-accent-fg" : "border-line-strong opacity-40 group-hover/line:opacity-100"}`}
@@ -173,7 +173,7 @@ function CommentPlus({ picked, onPick }: { picked: boolean; onPick: (extend: boo
         picked ? "opacity-100" : "opacity-0 group-hover/line:opacity-100 pointer-coarse:opacity-60"
       }`}
     >
-      <span className={`grid size-3.5 place-items-center rounded-[3px] ${picked ? "text-accent" : ""}`}>
+      <span className={`grid size-3.5 place-items-center rounded-[3px] ${picked ? "text-accent-text" : ""}`}>
         <Plus size={12} strokeWidth={2.25} />
       </span>
     </button>
@@ -224,19 +224,18 @@ function CommentBox({
             onAdd(text);
           }
         }}
-        className="block max-h-40 min-h-12 w-full resize-none rounded-lg border border-line-subtle bg-surface-raised px-2.5 py-2 text-body outline-none [field-sizing:content] placeholder:text-fg-disabled focus:border-line-strong"
+        className="block max-h-40 min-h-12 w-full resize-none rounded-lg border border-line-subtle bg-surface-raised px-2.5 py-2 text-body outline-none [field-sizing:content] placeholder:text-fg-tertiary focus:border-line-strong"
       />
       <div className="flex items-center justify-end gap-1">
-        <Button
-          onClick={onClose}
-          className="h-7 rounded-md px-2.5 text-meta text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary pointer-coarse:h-9"
-        >
+        <Button tone="quiet" size="sm" onClick={onClose} className="pointer-coarse:h-9">
           Cancel
         </Button>
         <Button
+          tone="primary"
+          size="sm"
           onClick={() => onAdd(text)}
           disabled={text.trim() === ""}
-          className="h-7 rounded-md bg-accent px-2.5 text-meta font-medium text-accent-fg transition-opacity hover:opacity-90 disabled:opacity-40 pointer-coarse:h-9"
+          className="pointer-coarse:h-9"
         >
           Add comment
         </Button>

@@ -15,7 +15,9 @@ import {
   refreshGitHubRepository,
   refreshPullList,
 } from "../../backend/github.ts";
+import { buttonClass } from "../../components/ui/Button.tsx";
 import { IconButton } from "../../components/ui/IconButton.tsx";
+import { toggleClass } from "../../components/ui/Segmented.tsx";
 import { useShortcut } from "../../lib/shortcuts.ts";
 import type { MessageBox } from "../composer/messageBox.ts";
 import { useReviewsOffered } from "../review/hooks.ts";
@@ -28,9 +30,6 @@ type Tab = "pulls" | "issues";
 
 /** The tab the panel shows, kept while the window is open. */
 const tabAtom = Atom.make<Tab>("pulls").pipe(Atom.keepAlive);
-
-const toggleClass =
-  "shrink-0 rounded-md px-2 py-0.5 text-body font-medium whitespace-nowrap text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary max-md:px-2.5 max-md:py-1.5 max-md:text-[15px]";
 
 /**
  * GitHub, beside the conversation: the pull requests and issues of the repository the open work
@@ -176,10 +175,7 @@ const GH_INSTALL_URL = "https://cli.github.com";
 function Gate({ cause, onRetry }: { cause: Parameters<typeof githubErrorOf>[0]; onRetry: () => void }) {
   const error = githubErrorOf(cause);
   const retry = (
-    <Button
-      onClick={onRetry}
-      className="flex h-8 items-center gap-1.5 rounded-lg border border-line-subtle px-3 text-meta text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
-    >
+    <Button onClick={onRetry} className={buttonClass()}>
       <RefreshCw size={13} strokeWidth={1.75} />
       Check again
     </Button>
@@ -195,7 +191,7 @@ function Gate({ cause, onRetry }: { cause: Parameters<typeof githubErrorOf>[0]; 
             href={GH_INSTALL_URL}
             target="_blank"
             rel="noreferrer"
-            className="flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3 text-meta font-medium text-accent-fg transition-opacity hover:opacity-90"
+            className={buttonClass({ tone: "primary" })}
           >
             <ExternalLink size={13} strokeWidth={2} />
             Get GitHub CLI

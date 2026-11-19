@@ -7,6 +7,7 @@ import { Archive, Monitor, Search, X } from "lucide-react";
 import { Fragment, useState } from "react";
 
 import { threadSearchAtom, threadSearchKey } from "../../backend/search.ts";
+import { dialogBackdropClass } from "../../components/ui/FormDialog.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { keyLabel } from "../../lib/keys.ts";
 import { shortAgo } from "../../lib/time.ts";
@@ -56,7 +57,7 @@ export function CommandPalette({ open, onOpenChange, ...panel }: CommandPaletteP
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Backdrop className="fixed inset-0 bg-scrim transition-opacity duration-150 data-ending-style:opacity-0 data-starting-style:opacity-0" />
+        <Dialog.Backdrop className={dialogBackdropClass} />
         {/* A phone's keyboard covers part of the page, so the dialog follows the part that's visible (web/viewport.ts). */}
         <Dialog.Viewport className="fixed inset-0 flex items-start justify-center px-2 pt-[12vh] pb-2 max-md:top-[var(--app-top,0px)] max-md:bottom-auto max-md:h-[var(--app-height,100%)] max-md:pt-[max(0.5rem,env(safe-area-inset-top))] max-md:pr-[max(0.5rem,env(safe-area-inset-right))] max-md:pl-[max(0.5rem,env(safe-area-inset-left))]">
           <Dialog.Popup
@@ -147,7 +148,7 @@ function PalettePanel({
         <Autocomplete.Input
           aria-label={mode === "work" ? "Search threads and commands" : "Search chats and commands"}
           placeholder={`Search ${noun}, settings and actions`}
-          className="h-12 min-w-0 flex-1 bg-transparent text-reading text-fg-primary outline-none placeholder:text-fg-tertiary max-md:text-base"
+          className="h-12 min-w-0 flex-1 bg-transparent text-reading text-fg-primary outline-none placeholder:text-fg-tertiary max-md:text-[16px]"
         />
         <Dialog.Close
           aria-label="Close search"
@@ -248,7 +249,7 @@ function ResultRow({
             <Marked pieces={highlight(thread.title, words)} />
           </span>
           {projects && thread.project ? (
-            <span className="max-w-[35%] shrink-0 truncate text-caption text-fg-tertiary max-md:text-xs">
+            <span className="max-w-[35%] shrink-0 truncate text-caption text-fg-tertiary max-md:text-[12px]">
               {thread.project}
             </span>
           ) : null}
@@ -262,7 +263,7 @@ function ResultRow({
               <Archive size={11} strokeWidth={2} aria-label="Archived" />
             </span>
           )}
-          <span className="w-6 shrink-0 text-right text-caption text-fg-tertiary tabular-nums max-md:text-xs">
+          <span className="w-6 shrink-0 text-right text-caption text-fg-tertiary tabular-nums max-md:text-[12px]">
             {shortAgo(thread.updatedAt)}
           </span>
         </span>
@@ -280,7 +281,7 @@ function ResultRow({
 function Marked({ pieces }: { pieces: ReadonlyArray<Piece> }) {
   return pieces.map((piece, index) =>
     piece.match ? (
-      <mark key={index} className="rounded-xs bg-accent-soft px-px text-fg-primary">
+      <mark key={index} className="rounded bg-accent-soft px-px text-fg-primary">
         {piece.text}
       </mark>
     ) : (

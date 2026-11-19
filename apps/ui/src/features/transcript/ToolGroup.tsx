@@ -521,7 +521,7 @@ function Pane({
           </button>
         ) : null}
         {clipped && (expanded || !folds) ? (
-          <span className="py-1.5">Cut at {MAX_CHARACTERS.toLocaleString("en-US")} characters</span>
+          <span className="py-1.5">Cut at {MAX_CHARACTERS.toLocaleString()} characters</span>
         ) : null}
       </>
     ) : null;

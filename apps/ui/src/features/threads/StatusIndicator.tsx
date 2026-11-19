@@ -90,7 +90,7 @@ export function ThreadMark({
       </span>
       {count !== undefined ? (
         <span
-          className="absolute grid place-items-center rounded-full bg-fg-secondary text-[7.5px] leading-none font-bold text-background tabular-nums"
+          className="absolute grid place-items-center rounded-full bg-fg-secondary text-[7.5px] leading-none font-semibold text-(--window) tabular-nums"
           style={{ right: -logoOut, bottom: -logoOut, width: logo, height: logo }}
         >
           <span className="sr-only">{count} threads, </span>

@@ -192,7 +192,7 @@ function LaunchScreen({ onReady }: { onReady: () => void }) {
   return (
     <div
       aria-busy="true"
-      className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-surface-window pb-10"
+      className="fixed inset-0 z-100 flex flex-col items-center justify-center bg-surface-window pb-10"
     >
       {warm ? <WelcomeWarmUp /> : null}
       {/* The window can still be moved while it starts; the system draws its buttons over this. */}

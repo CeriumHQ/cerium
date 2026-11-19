@@ -49,7 +49,7 @@ export function ImageThumb({
             if (gallery && galleryKey !== undefined) gallery.show(image, origin);
             else setShown({ open: true, origin });
           }}
-          className={`group/thumb relative shrink-0 cursor-zoom-in overflow-hidden rounded-lg border border-line-subtle bg-surface-hover outline-none focus-visible:ring-2 focus-visible:ring-accent ${className}`}
+          className={`group/thumb relative shrink-0 cursor-zoom-in overflow-hidden rounded-lg border border-line-subtle bg-surface-hover outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${className}`}
         >
           {/* A screenshot is decoded whole for its thumbnail: off the main thread, and only once a
               transcript scrolls near it. */}

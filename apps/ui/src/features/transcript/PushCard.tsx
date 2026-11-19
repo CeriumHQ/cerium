@@ -459,7 +459,7 @@ function ActionButton({
     <Button
       onClick={onClick}
       disabled={busy}
-      className="flex h-7 items-center gap-1.5 rounded-md px-2 text-meta text-fg-secondary transition-colors duration-150 hover:bg-surface-hover hover:text-fg-primary disabled:opacity-60 max-md:h-9"
+      className="flex h-7 items-center gap-1.5 rounded-md px-2 text-meta text-fg-secondary transition-colors duration-150 hover:bg-surface-hover hover:text-fg-primary disabled:opacity-40 max-md:h-9"
     >
       {busy ? <LoaderCircle size={13} className="animate-spin" /> : <Icon size={13} strokeWidth={1.75} />}
       {children}

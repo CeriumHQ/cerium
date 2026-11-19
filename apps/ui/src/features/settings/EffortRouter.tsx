@@ -1,4 +1,5 @@
-import { Button } from "@base-ui/react/button";
+import { Button } from "../../components/ui/Button.tsx";
+import { usdPrecise } from "../../lib/format.ts";
 import { defaultSettings } from "@cerium/protocol";
 import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
@@ -27,10 +28,6 @@ import {
 } from "./parts.tsx";
 import { RowButton } from "./ToolRow.tsx";
 import { useSetting } from "./useSetting.ts";
-
-/** A decision costs a few thousandths of a cent, so small sums keep two significant digits. */
-const spent = (usd: number): string =>
-  usd === 0 ? "$0" : usd < 0.01 ? `$${Number(usd.toPrecision(2))}` : `$${usd.toFixed(2)}`;
 
 const childrenLabel = { router: "Auto", lead: "Lead's level" } as const;
 
@@ -186,13 +183,9 @@ export function EffortRouterSettings() {
                   spellCheck={false}
                   autoComplete="off"
                   disabled={busy || known === undefined}
-                  className="h-7 w-44 min-w-0 rounded-md border border-line-strong bg-transparent px-2 text-meta text-fg-primary outline-none placeholder:text-fg-tertiary focus-visible:border-fg-tertiary disabled:opacity-60 max-md:w-32"
+                  className="h-7 w-44 min-w-0 rounded-md border border-line-strong bg-transparent px-2 text-meta text-fg-primary outline-none placeholder:text-fg-tertiary focus-visible:border-fg-tertiary disabled:opacity-40 max-md:w-32"
                 />
-                <Button
-                  type="submit"
-                  disabled={busy || draft.trim() === ""}
-                  className="flex h-7 items-center rounded-md bg-accent px-3 text-meta font-medium text-accent-fg transition-colors hover:bg-accent-strong disabled:opacity-50"
-                >
+                <Button type="submit" tone="primary" size="sm" disabled={busy || draft.trim() === ""}>
                   {busy ? "Checking…" : "Save"}
                 </Button>
               </form>
@@ -206,13 +199,13 @@ export function EffortRouterSettings() {
             <div>
               <dt className="text-meta text-fg-tertiary">Spent</dt>
               <dd className="mt-0.5 text-reading tabular-nums text-fg-primary">
-                {known ? spent(known.monthUsd) : "—"}
+                {known ? usdPrecise(known.monthUsd) : "—"}
               </dd>
             </div>
             <div>
               <dt className="text-meta text-fg-tertiary">Estimated by month end</dt>
               <dd className="mt-0.5 text-reading tabular-nums text-fg-primary">
-                {known?.projectedMonthUsd === undefined ? "—" : spent(known.projectedMonthUsd)}
+                {known?.projectedMonthUsd === undefined ? "—" : usdPrecise(known.projectedMonthUsd)}
               </dd>
             </div>
           </dl>

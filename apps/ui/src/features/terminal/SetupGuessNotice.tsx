@@ -8,6 +8,7 @@ import { useState } from "react";
 import { projectScriptsAtom, runProjectScript, setProjectScripts } from "../../backend/scripts.ts";
 import { terminalsAtom } from "../../backend/terminals.ts";
 import { Reveal } from "../../components/Reveal.tsx";
+import { buttonClass } from "../../components/ui/Button.tsx";
 import { IconButton } from "../../components/ui/IconButton.tsx";
 import { remember, stored } from "../../lib/storage.ts";
 import { scriptTerminalOf } from "./model.ts";
@@ -20,9 +21,8 @@ import { fittedSize } from "./session.ts";
 /** Where a thread remembers it was answered, so the question isn't asked twice. */
 const answeredKey = (threadId: string) => `cerium.setupGuess.${threadId}`;
 
-const base = "h-7 rounded-md px-2.5 text-meta transition-colors max-md:h-9 max-md:px-3.5 max-md:text-[13px]";
-const primary = `${base} bg-accent font-medium text-accent-fg transition-opacity hover:opacity-90 active:opacity-80 disabled:pointer-events-none disabled:opacity-40`;
-const outlined = `${base} border border-line-strong font-medium text-fg-primary hover:bg-surface-hover disabled:pointer-events-none disabled:opacity-40`;
+const primary = buttonClass({ tone: "primary", size: "sm" });
+const outlined = buttonClass({ size: "sm" });
 
 /**
  * Above the message box of a work thread in a worktree whose project's setup is a guess nobody has

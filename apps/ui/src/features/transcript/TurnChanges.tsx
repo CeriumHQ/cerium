@@ -87,7 +87,7 @@ function Row({
         ) : null}
         {tag === undefined ? null : (
           <span
-            className={`shrink-0 rounded border px-1 text-[10.5px] leading-4 ${
+            className={`shrink-0 rounded border px-1 text-caption leading-4 ${
               kept ? "border-attention/40 text-attention-text" : "border-line-subtle text-fg-tertiary"
             }`}
             title={kept ? "Changed since, so left as it is" : undefined}
@@ -169,7 +169,7 @@ export function TurnChanges({
             <Button
               onClick={revert}
               disabled={busy}
-              className="flex h-7 items-center gap-1.5 rounded-md px-2 text-meta text-fg-secondary transition-colors duration-150 hover:bg-surface-hover hover:text-fg-primary disabled:opacity-60 max-md:h-9"
+              className="flex h-7 items-center gap-1.5 rounded-md px-2 text-meta text-fg-secondary transition-colors duration-150 hover:bg-surface-hover hover:text-fg-primary disabled:opacity-40 max-md:h-9"
             >
               {undone === undefined ? (
                 <Undo2 size={13} strokeWidth={1.75} />

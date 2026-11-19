@@ -5,12 +5,10 @@ import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from "rea
 
 import { IconButton } from "../../components/ui/IconButton.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
+import { toggleClass } from "../../components/ui/Segmented.tsx";
 import { useShortcut } from "../../lib/shortcuts.ts";
 
 type Tab = "changes" | "history";
-
-const toggleClass =
-  "rounded-md px-2 py-0.5 text-body font-medium text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary max-md:px-2.5 max-md:py-1.5 max-md:text-[15px]";
 
 /**
  * Source control, beside the conversation: the repository the open work thread's folder is in, what

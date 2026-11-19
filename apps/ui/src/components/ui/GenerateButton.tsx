@@ -36,7 +36,7 @@ export function GenerateButton({
         }}
         disabled={disabled}
         focusableWhenDisabled
-        className={`flex shrink-0 items-center justify-center gap-1.5 rounded-lg text-fg-tertiary transition-colors outline-none hover:bg-surface-hover hover:text-fg-primary focus-visible:ring-1 focus-visible:ring-focus-ring data-disabled:cursor-default data-disabled:text-fg-disabled data-disabled:hover:bg-transparent aria-busy:text-fg-secondary ${
+        className={`flex shrink-0 items-center justify-center gap-1.5 rounded-lg text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-primary data-disabled:cursor-default data-disabled:text-fg-disabled data-disabled:hover:bg-transparent aria-busy:text-fg-secondary ${
           children === undefined
             ? "size-7 max-md:size-10"
             : "h-8 px-2.5 text-body font-medium max-md:h-10 max-md:text-[15px]"

@@ -1,4 +1,6 @@
 import { Button } from "@base-ui/react/button";
+
+import { buttonClass } from "../../components/ui/Button.tsx";
 import { Copy, FolderOpen, MoreHorizontal } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -49,7 +51,7 @@ export function ToolRow({
             <MenuTrigger>
               <Button
                 aria-label={`More for ${name}`}
-                className="grid size-7 place-items-center rounded-md text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-primary data-popup-open:bg-surface-hover data-popup-open:text-fg-primary"
+                className="grid size-7 place-items-center rounded-md text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-primary data-popup-open:bg-surface-active data-popup-open:text-fg-primary"
               >
                 <MoreHorizontal size={15} strokeWidth={1.75} />
               </Button>
@@ -83,11 +85,7 @@ export function RowButton({
       // Focusable while disabled, so its tooltip can still say why.
       focusableWhenDisabled
       disabled={disabled}
-      className={`flex h-7 items-center rounded-md px-3 text-meta font-medium transition-colors data-disabled:cursor-default data-disabled:opacity-45 ${
-        tone === "primary"
-          ? `bg-accent text-accent-fg ${disabled ? "" : "hover:bg-accent-strong"}`
-          : `border border-line-subtle text-fg-secondary ${disabled ? "" : "hover:bg-surface-hover hover:text-fg-primary"}`
-      }`}
+      className={buttonClass({ tone: tone === "primary" ? "primary" : "neutral", size: "sm" })}
     >
       {children}
     </Button>
@@ -97,12 +95,7 @@ export function RowButton({
 /** A row's action that opens a page in the browser, such as the download. */
 export function RowLink({ href, children }: { readonly href: string; readonly children: ReactNode }) {
   return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noreferrer"
-      className="flex h-7 items-center rounded-md border border-line-subtle px-3 text-meta font-medium text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
-    >
+    <a href={href} target="_blank" rel="noreferrer" className={buttonClass({ size: "sm" })}>
       {children}
     </a>
   );

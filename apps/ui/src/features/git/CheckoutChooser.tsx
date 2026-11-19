@@ -18,6 +18,7 @@ import { useState, type ReactNode } from "react";
 
 import { checkoutsAtom } from "../../backend/projects.ts";
 import { DialogButton, DialogField, DialogInput, DialogSelect } from "../../components/ui/FormDialog.tsx";
+import { segmentedTrackClass, toggleClassSmall } from "../../components/ui/Segmented.tsx";
 import {
   checkoutDetail,
   checkoutsMatching,
@@ -88,7 +89,7 @@ export function ViewHeader({
   children?: ReactNode;
 }) {
   return (
-    <div className="flex h-10 shrink-0 items-center gap-1 border-b border-line-subtle px-1.5">
+    <div className="flex h-10 shrink-0 items-center gap-1 border-b border-line-subtle px-1.5 max-md:h-12">
       {onBack ? (
         <Button
           aria-label="Back"
@@ -231,7 +232,7 @@ export function CheckoutChooser({
               onClick={refresh}
               className="rounded-md px-1.5 py-0.5 text-fg-secondary hover:bg-surface-hover hover:text-fg-primary"
             >
-              Retry
+              Try again
             </Button>
           </p>
         ) : null}
@@ -250,8 +251,7 @@ const sourceLabel: Record<WorktreeSource, string> = {
   existing: "Existing",
 };
 
-const toggleClass =
-  "h-6 flex-1 rounded-md px-2 text-meta font-medium whitespace-nowrap text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary max-md:h-8 max-md:text-[13px]";
+const toggleClass = `${toggleClassSmall} h-6 flex-1 whitespace-nowrap max-md:h-8`;
 
 /** A new worktree's form: where it starts, then its branch's name. */
 function NewWorktree({
@@ -293,7 +293,7 @@ function NewWorktree({
             const next = value[0] as WorktreeSource | undefined;
             if (next) set({ source: next });
           }}
-          className="flex gap-0.5 rounded-lg bg-surface-sunken p-0.5"
+          className={segmentedTrackClass}
         >
           {offered.map((source) => (
             <Toggle key={source} value={source} className={toggleClass}>

@@ -399,12 +399,12 @@ export function TranscriptFind({
         }}
         placeholder="Find in thread"
         aria-label="Find in thread"
-        className="w-40 min-w-0 bg-transparent outline-none placeholder:text-fg-tertiary max-md:text-base"
+        className="w-40 min-w-0 bg-transparent outline-none placeholder:text-fg-tertiary max-md:text-[16px]"
       />
       <output
         aria-live="polite"
         title={
-          readState === "error" ? "Older messages couldn’t be searched. Close find and try again." : undefined
+          readState === "error" ? "Older messages couldn't be searched. Close find and try again." : undefined
         }
         className="shrink-0 px-1.5 text-meta text-fg-tertiary tabular-nums"
       >

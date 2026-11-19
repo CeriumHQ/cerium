@@ -304,7 +304,7 @@ export function SettingsNav({ category, onSelect, active, compact = false }: Set
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-1 px-2 pt-1 pb-2 pl-3.5">
-        <h2 className="text-reading font-semibold text-fg-primary max-md:text-base">Settings</h2>
+        <h2 className="text-reading font-semibold text-fg-primary max-md:text-[16px]">Settings</h2>
       </div>
       <div className="mx-2 mb-3 overflow-hidden rounded-lg border border-line-subtle bg-surface-sunken [&>div]:h-8 [&>div]:border-b-0 [&>div]:pl-2.5">
         <SearchBar

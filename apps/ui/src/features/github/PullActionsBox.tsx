@@ -274,7 +274,7 @@ function MergeDialog({
 }
 
 const textareaClass =
-  "max-h-72 min-h-20 w-full resize-none rounded-lg border border-line-strong bg-transparent px-2.5 py-2 text-body leading-relaxed text-fg-primary outline-none [field-sizing:content] placeholder:text-fg-tertiary focus-visible:border-fg-tertiary disabled:opacity-60 max-md:text-[15px]";
+  "max-h-72 min-h-20 w-full resize-none rounded-lg border border-line-strong bg-transparent px-2.5 py-2 text-body leading-relaxed text-fg-primary outline-none [field-sizing:content] placeholder:text-fg-tertiary focus-visible:border-fg-tertiary disabled:opacity-40 max-md:text-[15px]";
 
 /**
  * The box under a pull request's conversation: comment, review the changes, and close or reopen it.

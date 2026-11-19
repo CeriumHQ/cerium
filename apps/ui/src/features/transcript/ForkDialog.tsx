@@ -1,11 +1,12 @@
 import { AlertDialog } from "@base-ui/react/alert-dialog";
-import { Button } from "@base-ui/react/button";
 import { Radio } from "@base-ui/react/radio";
 import { RadioGroup } from "@base-ui/react/radio-group";
 import { OFFERED_PROVIDERS, type ModelInfo } from "@cerium/protocol";
 import { MessagesSquare } from "lucide-react";
 import { useState } from "react";
 
+import { Button, buttonClass } from "../../components/ui/Button.tsx";
+import { dialogBackdropClass, dialogPopupClass, dialogTitleClass } from "../../components/ui/FormDialog.tsx";
 import { modelKey, useModels } from "../composer/models.ts";
 import { ModelPicker } from "../composer/ModelPicker.tsx";
 import { pathTail } from "../git/workspace.ts";
@@ -20,7 +21,7 @@ import {
 } from "./fork.ts";
 
 const row =
-  "group flex w-full cursor-default items-start gap-2.5 rounded-lg px-2.5 py-2 text-left outline-none transition-colors select-none hover:bg-surface-hover focus-visible:bg-surface-hover data-checked:bg-surface-selected data-disabled:opacity-45 data-disabled:hover:bg-transparent max-md:py-2.5";
+  "group flex w-full cursor-default items-start gap-2.5 rounded-lg px-2.5 py-2 text-left outline-none transition-colors select-none hover:bg-surface-hover focus-visible:bg-surface-hover data-checked:bg-surface-selected data-disabled:opacity-40 data-disabled:hover:bg-transparent max-md:py-2.5";
 
 const mark =
   "mt-[3px] grid size-3.5 shrink-0 place-items-center rounded-full border border-line-strong transition-colors group-data-checked:border-accent group-data-checked:bg-accent group-focus-visible:border-fg-secondary";
@@ -109,12 +110,10 @@ export function ForkDialog({
       }}
     >
       <AlertDialog.Portal>
-        <AlertDialog.Backdrop className="fixed inset-0 bg-scrim transition-opacity duration-150 data-ending-style:opacity-0 data-starting-style:opacity-0" />
-        <AlertDialog.Popup className="fixed top-[calc(var(--app-top,0px)+var(--app-height,100dvh)/2)] left-1/2 flex max-h-[calc(var(--app-height,100dvh)-2rem)] w-[26rem] max-w-[calc(100vw-2rem)] -translate-1/2 flex-col gap-4 overflow-y-auto overscroll-contain rounded-2xl border border-line-subtle bg-surface-overlay p-5 text-fg-primary shadow-overlay backdrop-blur-2xl transition-[opacity,scale] duration-150 ease-out-soft outline-none data-ending-style:scale-[0.97] data-ending-style:opacity-0 data-starting-style:scale-[0.97] data-starting-style:opacity-0">
+        <AlertDialog.Backdrop className={dialogBackdropClass} />
+        <AlertDialog.Popup className={`${dialogPopupClass("md")} flex flex-col gap-4`}>
           <div className="flex flex-col gap-2">
-            <AlertDialog.Title className="text-reading font-semibold tracking-tight max-md:text-[16px]">
-              Fork into new thread
-            </AlertDialog.Title>
+            <AlertDialog.Title className={dialogTitleClass}>Fork into new thread</AlertDialog.Title>
             <AlertDialog.Description className="line-clamp-2 border-l-2 border-line-strong pl-2.5 text-body leading-relaxed text-fg-secondary">
               {message.trim() === "" ? "(attachments only)" : message}
             </AlertDialog.Description>
@@ -204,16 +203,13 @@ export function ForkDialog({
           ) : null}
 
           <div className="flex justify-end gap-2">
-            <AlertDialog.Close
-              disabled={forking}
-              className="h-8 rounded-lg border border-line-strong px-3 text-body font-medium text-fg-primary transition-colors hover:bg-surface-hover disabled:opacity-50 max-md:h-10 max-md:px-4 max-md:text-[15px]"
-            >
+            <AlertDialog.Close disabled={forking} className={buttonClass()}>
               Cancel
             </AlertDialog.Close>
             <Button
+              tone="primary"
               disabled={forking || (!target && actions.available.size === 0)}
               onClick={fork}
-              className="h-8 rounded-lg bg-accent px-3 text-body font-medium text-accent-fg transition-opacity hover:opacity-90 disabled:opacity-50 max-md:h-10 max-md:px-4 max-md:text-[15px]"
             >
               {forking ? "Forking…" : failure ? "Try again" : "Fork"}
             </Button>

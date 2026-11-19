@@ -330,7 +330,7 @@ const SIDEBAR_KEY = "cerium:sidebar";
 const messageOf = (error: unknown) =>
   typeof error === "object" && error !== null && "message" in error && typeof error.message === "string"
     ? error.message
-    : "Something went wrong.";
+    : "Something went wrong. Try again.";
 
 const baseName = (path: string) => path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
 
@@ -2382,12 +2382,12 @@ function Workspace() {
                   onSendIssues={async () => {
                     const bridge = previewBridge();
                     const agent = resolved.shown && leadOf(resolved.shown.agents);
-                    if (!bridge || !agent) throw new Error("The thread’s agent is unavailable.");
+                    if (!bridge || !agent) throw new Error("The thread's agent is unavailable.");
                     const { url, issues } = await bridge.issues(previewed);
                     const last = issues.at(-1);
                     if (!last) return;
                     if (registry.get(machineAtom) !== undefined)
-                      throw new Error("The preview’s machine has changed.");
+                      throw new Error("The preview's machine has changed.");
                     const text = [`Preview issues from ${url}`, ...issues.map((issue) => issue.text)].join(
                       "\n\n",
                     );

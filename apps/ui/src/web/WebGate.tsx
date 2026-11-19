@@ -46,7 +46,7 @@ export function WebGate({ children }: { children: ReactNode }) {
         <nav aria-label="Site" className="ml-auto flex items-center">
           <a
             href="/downloads/"
-            className="rounded-[10px] px-3.5 py-2 text-reading text-fg-secondary transition-colors duration-150 hover:bg-surface-raised hover:text-fg-primary max-md:text-[15px]"
+            className="rounded-lg px-3.5 py-2 text-reading text-fg-secondary transition-colors duration-150 hover:bg-surface-raised hover:text-fg-primary max-md:text-[15px]"
           >
             Download
           </a>
@@ -186,7 +186,7 @@ function Lede({ children }: { children: ReactNode }) {
 }
 
 const pill =
-  "flex h-12 items-center justify-center gap-2.5 rounded-full px-6 text-[15px] font-semibold whitespace-nowrap transition-[background-color,box-shadow,scale] duration-200 ease-out-soft active:scale-[0.97] disabled:opacity-60 max-md:w-full";
+  "flex h-12 items-center justify-center gap-2.5 rounded-full px-6 text-[15px] font-[560] whitespace-nowrap transition-[background-color,box-shadow,scale] duration-200 ease-out-soft active:scale-[0.97] disabled:opacity-40 max-md:w-full";
 const solid = `${pill} bg-accent text-accent-fg shadow-[inset_0_0_0_1px_oklch(1_0_0/0.2),0_10px_40px_-12px_color-mix(in_oklab,var(--accent)_60%,transparent)] hover:shadow-[inset_0_0_0_1px_oklch(1_0_0/0.3),0_14px_60px_-10px_color-mix(in_oklab,var(--accent)_80%,transparent)]`;
 const glass = `${pill} bg-surface-film text-fg-primary shadow-film ring-1 ring-line-subtle ring-inset backdrop-blur-xl hover:bg-surface-raised`;
 

@@ -446,7 +446,7 @@ export function PromptEditor({
             placeCaretAtEnd(root.current);
         }}
         onBlur={() => onTrigger(undefined)}
-        className={`${ghost ? "col-start-1 row-start-1" : ""} block w-full overflow-y-auto text-reading leading-[1.6] break-words whitespace-pre-wrap text-fg-primary outline-none max-md:text-base ${
+        className={`${ghost ? "col-start-1 row-start-1" : ""} block w-full overflow-y-auto text-reading leading-[1.6] break-words whitespace-pre-wrap text-fg-primary outline-none max-md:text-[16px] ${
           inline
             ? "max-h-32 min-h-10 px-1 py-2 md:max-h-60"
             : "max-h-60 min-h-12 px-4 pt-3 pb-1 max-md:max-h-40"
@@ -463,7 +463,7 @@ export function PromptEditor({
         // Read out as the textbox's description, so a screen reader hears it and how to take it.
         <span
           data-followup=""
-          className={`pointer-events-none col-start-1 row-start-1 flex min-w-0 items-baseline gap-2 text-reading leading-[1.6] text-fg-tertiary select-none max-md:text-base ${
+          className={`pointer-events-none col-start-1 row-start-1 flex min-w-0 items-baseline gap-2 text-reading leading-[1.6] text-fg-tertiary select-none max-md:text-[16px] ${
             inline ? "px-1 py-2" : "px-4 pt-3 pb-1"
           }`}
         >
@@ -488,7 +488,7 @@ export function PromptEditor({
         <span
           aria-hidden
           data-editor-placeholder=""
-          className={`pointer-events-none absolute text-reading leading-[1.6] text-fg-tertiary select-none max-md:text-base ${
+          className={`pointer-events-none absolute text-reading leading-[1.6] text-fg-tertiary select-none max-md:text-[16px] ${
             inline ? "inset-x-1 top-2 truncate" : "top-3 left-4"
           } ${cover ? "opacity-0 transition-opacity duration-150 group-hover/editor:opacity-100 group-focus-within/editor:opacity-100" : ""}`}
         >

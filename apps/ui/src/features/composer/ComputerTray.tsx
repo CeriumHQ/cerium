@@ -1,4 +1,6 @@
 import { Button } from "@base-ui/react/button";
+
+import { buttonClass } from "../../components/ui/Button.tsx";
 import type { ThreadId } from "@cerium/protocol";
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
@@ -67,7 +69,7 @@ export function ComputerTray({ threadId }: { readonly threadId: ThreadId }) {
                 aria-label="Stop using your computer"
                 disabled={stopping}
                 onClick={onStop}
-                className="flex h-6 shrink-0 items-center rounded-md border border-line-subtle px-2 text-meta font-medium text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary disabled:pointer-events-none disabled:opacity-50"
+                className={buttonClass({ size: "sm" })}
               >
                 {stopping ? "Stopping…" : "Stop"}
               </Button>

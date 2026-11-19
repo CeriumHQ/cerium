@@ -25,6 +25,7 @@ import {
 } from "./ActionDialog.tsx";
 import { useHarnessUpdates, type HarnessUpdate } from "./harnessUpdates.ts";
 import { SettingsNote, SettingsPage } from "./parts.tsx";
+import { buttonClass } from "../../components/ui/Button.tsx";
 import { InstalledMenu, RowButton, RowLink, ToolRow } from "./ToolRow.tsx";
 
 export { harnessName };
@@ -67,11 +68,7 @@ export function HarnessSettings() {
             </span>
           ) : null}
           {outdated.length > 0 ? <UpdateAll targets={outdated} onChanged={check} /> : null}
-          <Button
-            onClick={check}
-            disabled={checking}
-            className="flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-line-subtle px-2.5 text-meta text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary disabled:text-fg-tertiary"
-          >
+          <Button onClick={check} disabled={checking} className={buttonClass({ size: "sm" })}>
             <RefreshCw size={13} strokeWidth={1.75} className={checking ? "animate-spin" : ""} />
             {checking ? "Checking…" : "Check again"}
           </Button>
@@ -119,7 +116,7 @@ function UpdateAll({ targets, onChanged }: { targets: ReadonlyArray<Installed>; 
       onClick={() => {
         for (const target of waiting) updates.start(target.provider, target.version);
       }}
-      className="flex h-7 shrink-0 items-center gap-1.5 rounded-md bg-accent px-2.5 text-meta font-medium text-accent-fg transition-colors hover:bg-accent-strong"
+      className={buttonClass({ tone: "primary", size: "sm" })}
     >
       <Download size={13} strokeWidth={1.75} />
       {waiting.length === targets.length ? "Update all" : `Update ${waiting.length} more`}

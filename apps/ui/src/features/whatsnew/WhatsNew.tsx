@@ -3,6 +3,7 @@ import { Dialog } from "@base-ui/react/dialog";
 import { ArrowUp, Check, ChevronDown, Minus, Plus, X, type LucideIcon } from "lucide-react";
 import { useState } from "react";
 
+import { dialogBackdropClass } from "../../components/ui/FormDialog.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { Markdown } from "../transcript/Markdown.tsx";
 import { EARLIER, MORE, type Change, type Kind } from "./model.ts";
@@ -50,7 +51,7 @@ export function WhatsNew({
       onOpenChangeComplete={(now) => now || setShown(EARLIER)}
     >
       <Dialog.Portal>
-        <Dialog.Backdrop className="fixed inset-0 bg-scrim transition-opacity duration-150 data-ending-style:opacity-0 data-starting-style:opacity-0" />
+        <Dialog.Backdrop className={dialogBackdropClass} />
         <Dialog.Viewport className="fixed inset-0 flex items-center justify-center p-2">
           <Dialog.Popup className="flex max-h-[min(42rem,calc(100dvh-2rem))] w-full max-w-[34rem] flex-col overflow-hidden rounded-2xl border border-line-subtle bg-surface-overlay text-fg-primary shadow-overlay backdrop-blur-2xl transition-[opacity,scale] duration-150 ease-out-soft outline-none data-ending-style:scale-[0.97] data-ending-style:opacity-0 data-starting-style:scale-[0.97] data-starting-style:opacity-0">
             <header className="relative px-6 pt-6 pb-4">
@@ -139,7 +140,7 @@ const rowClass =
 function Row({ change, fresh }: { readonly change: Change; readonly fresh: boolean }) {
   const { icon: Icon, label } = KINDS[change.kind];
   const mark = (
-    <span className={`flex h-5 items-center ${fresh ? "text-accent" : "text-fg-tertiary"}`}>
+    <span className={`flex h-5 items-center ${fresh ? "text-accent-text" : "text-fg-tertiary"}`}>
       <Icon size={14} strokeWidth={2} aria-hidden="true" />
       <span className="sr-only">{label}: </span>
     </span>

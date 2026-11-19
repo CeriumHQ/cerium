@@ -270,7 +270,7 @@ function Figure({ label, value, note }: { label: string; value: string; note?: s
   return (
     <div className="flex min-w-0 flex-col gap-1 px-4 py-3.5">
       <span className="text-meta text-fg-tertiary">{label}</span>
-      <span className="text-[24px] leading-none font-semibold tracking-tight text-fg-primary tabular-nums">
+      <span className="text-[30px] leading-none font-semibold tracking-tight text-fg-primary tabular-nums">
         {value}
       </span>
       {note ? <span className="text-meta leading-snug text-fg-tertiary tabular-nums">{note}</span> : null}

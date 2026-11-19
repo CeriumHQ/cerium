@@ -28,7 +28,7 @@ const messageOf = (error: unknown) =>
     : "The review couldn't start.";
 
 const half =
-  "flex h-7 items-center text-meta text-fg-secondary outline-none transition-colors hover:bg-surface-hover hover:text-fg-primary focus-visible:ring-1 focus-visible:ring-focus-ring data-disabled:cursor-default data-disabled:text-fg-disabled data-disabled:hover:bg-transparent max-md:h-10 max-md:text-[15px]";
+  "flex h-7 items-center text-meta text-fg-secondary outline-none transition-colors hover:bg-surface-hover hover:text-fg-primary focus-visible:ring-2 focus-visible:ring-focus-ring data-disabled:cursor-default data-disabled:opacity-40 data-disabled:hover:bg-transparent max-md:h-10 max-md:text-[15px]";
 
 /** A pick's row: its harness's logo, its name, and its harness's while that's the lead's own. */
 function Option({ option }: { option: ReviewerOption }) {
@@ -118,7 +118,7 @@ export function ReviewButton({
             <Button
               aria-label="Choose who reviews"
               disabled={disabled}
-              className={`${half} rounded-r-lg px-1 data-popup-open:bg-surface-hover`}
+              className={`${half} rounded-r-lg px-1 data-popup-open:bg-surface-active`}
             >
               <ChevronDown size={12} strokeWidth={2} />
             </Button>

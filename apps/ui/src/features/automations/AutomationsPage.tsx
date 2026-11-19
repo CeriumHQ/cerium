@@ -46,6 +46,7 @@ import { gitBranchAtom } from "../../backend/projects.ts";
 import { trayName } from "../../backend/shell.ts";
 import { toThreadSummary } from "../../backend/view.ts";
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog.tsx";
+import { buttonClass } from "../../components/ui/Button.tsx";
 import { IconButton } from "../../components/ui/IconButton.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { SelectItem, SelectPopup, SelectRoot } from "../../components/ui/Select.tsx";
@@ -115,8 +116,7 @@ const stateText: Record<RunState, string> = {
   skipped: "text-fg-tertiary",
 };
 
-const accentButton =
-  "flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-accent px-3 text-meta font-medium text-accent-fg transition-opacity hover:opacity-90 data-disabled:opacity-40 max-md:h-10 max-md:text-sm";
+const accentButton = buttonClass({ tone: "primary" });
 
 /** Each access mode's mark, as the message box's access menu shows it. */
 const accessIcon: Partial<Record<Draft["access"], LucideIcon>> = {
@@ -183,7 +183,7 @@ export function AutomationList({
           <h1 className="font-display text-[22px] leading-tight font-semibold font-stretch-expanded [font-size-adjust:none] max-md:text-[20px]">
             Automations
           </h1>
-          <p className="mt-0.5 text-body text-fg-tertiary max-md:text-sm">
+          <p className="mt-0.5 text-body text-fg-tertiary max-md:text-[14px]">
             {views.length === 0
               ? "Threads that start themselves"
               : on === views.length
@@ -470,7 +470,7 @@ export function AutomationDetail({
               <Button
                 onClick={runNow}
                 disabled={busy !== undefined}
-                className="flex h-7 items-center gap-1.5 rounded-md px-2 text-meta text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary disabled:opacity-50 max-md:h-10"
+                className={buttonClass({ tone: "quiet", size: "sm" })}
               >
                 <Play size={13} strokeWidth={1.75} />
                 Run now
@@ -634,7 +634,7 @@ export function AutomationDetail({
               </div>
               {isGitHubRepeat(repeat) ? (
                 <>
-                  <span aria-hidden className="text-meta text-fg-disabled">
+                  <span aria-hidden className="text-meta text-fg-tertiary">
                     /
                   </span>
                   <Tooltip
@@ -654,7 +654,7 @@ export function AutomationDetail({
                 </>
               ) : worktrees ? (
                 <>
-                  <span aria-hidden className="text-meta text-fg-disabled">
+                  <span aria-hidden className="text-meta text-fg-tertiary">
                     /
                   </span>
                   <ChipSelect
@@ -783,7 +783,7 @@ export function AutomationDetail({
                     setDraft(undefined);
                     setProblem(undefined);
                   }}
-                  className="h-8 rounded-lg px-3 text-meta text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary max-md:h-10"
+                  className={buttonClass({ tone: "quiet" })}
                 >
                   Discard
                 </Button>

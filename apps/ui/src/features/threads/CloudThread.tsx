@@ -1,4 +1,4 @@
-import { Button } from "@base-ui/react/button";
+import { Button } from "../../components/ui/Button.tsx";
 import { Monitor, MonitorOff, MonitorUp, RefreshCw, SquarePen } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -51,8 +51,9 @@ export function CloudThreadBar({
         )}
       </p>
       <Button
+        tone="primary"
         onClick={reach.kind === "reachable" ? onOpen : onStartNew}
-        className="flex h-8 max-w-[45%] shrink-0 items-center gap-1.5 rounded-xl bg-accent px-3 text-meta font-medium text-accent-fg transition-opacity hover:opacity-90 active:opacity-80 max-md:h-10 max-md:w-full max-md:max-w-none max-md:justify-center max-md:text-[14px]"
+        className="max-w-[45%] max-md:w-full max-md:max-w-none"
       >
         {reach.kind === "reachable" ? (
           <>

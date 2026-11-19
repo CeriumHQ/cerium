@@ -25,7 +25,7 @@ import { Disclosure } from "../../components/ui/Disclosure.tsx";
 import { IconButton } from "../../components/ui/IconButton.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { compactTokens, plainExcerpt, usd } from "../../lib/format.ts";
-import { whenAgo } from "../../lib/time.ts";
+import { dateTime, whenAgo } from "../../lib/time.ts";
 import { effortLabel, speedLabel } from "../composer/models.ts";
 import { useShortcut } from "../../lib/shortcuts.ts";
 import { providerName } from "../threads/model.ts";
@@ -233,7 +233,7 @@ function AgentRow({
         <Button
           aria-current={selected ? "true" : undefined}
           onClick={() => onSelect(agent.id)}
-          className={`relative flex h-8 w-full items-center gap-2 rounded-md pr-2 text-left text-meta transition-colors data-popup-open:bg-surface-hover max-md:h-11 max-md:text-[14px] ${
+          className={`relative flex h-8 w-full items-center gap-2 rounded-md pr-2 text-left text-meta transition-colors data-popup-open:bg-surface-active max-md:h-11 max-md:text-[14px] ${
             branch ? "pl-7" : "pl-2"
           } ${selected ? "bg-surface-selected text-fg-primary" : "text-fg-secondary hover:bg-surface-hover"}`}
         >
@@ -263,7 +263,7 @@ function StateBadge({ agent, plain = false }: { agent: AgentSummary; plain?: boo
   const finished = state === "idle" && agent.parentId !== undefined;
   return (
     <span
-      className={`flex shrink-0 items-center gap-1.5 ${plain ? "text-meta max-md:text-[14px]" : "text-caption max-md:text-xs"} ${
+      className={`flex shrink-0 items-center gap-1.5 ${plain ? "text-meta max-md:text-[14px]" : "text-caption max-md:text-[12px]"} ${
         state === "needsYou"
           ? "text-attention-text"
           : state === "failed"
@@ -279,7 +279,7 @@ function StateBadge({ agent, plain = false }: { agent: AgentSummary; plain?: boo
           <span className="size-1.5 rounded-full bg-running" />
         </span>
       ) : state === "needsYou" ? (
-        <span className="size-1.5 rounded-full bg-attention shadow-[0_0_0_3px_color-mix(in_oklch,var(--status-attention)_28%,transparent)]" />
+        <span className="size-1.5 rounded-full bg-attention ring-[3px] ring-attention/28" />
       ) : state === "failed" ? (
         <span className="size-1.5 rounded-full bg-error" />
       ) : finished ? (
@@ -362,9 +362,7 @@ function AgentDetails({
             <AccessIcon size={11} strokeWidth={1.75} className="shrink-0" />
             <span className="truncate">
               {accessLabel[agent.access]} ·{" "}
-              <span title={new Date(agent.startedAt).toLocaleString()}>
-                started {whenAgo(agent.startedAt)}
-              </span>
+              <span title={dateTime(agent.startedAt)}>started {whenAgo(agent.startedAt)}</span>
             </span>
           </p>
           {/* Usage arrives when a turn ends; until then there is nothing to count. Not every harness reports a cost. */}
@@ -498,14 +496,14 @@ function Quote({
   return (
     <div className="flex flex-col gap-1">
       {label === undefined ? null : (
-        <span className="text-caption text-fg-tertiary max-md:text-xs">{label}</span>
+        <span className="text-caption text-fg-tertiary max-md:text-[12px]">{label}</span>
       )}
       <div className={`pl-2.5 ${rule} ${color}`}>
         {open ? (
           markdown !== undefined ? (
             <Markdown text={markdown} streaming={false} compact />
           ) : (
-            <p className="text-meta leading-[1.55] break-words whitespace-pre-wrap select-text max-md:text-[14px]">
+            <p className="text-meta leading-relaxed break-words whitespace-pre-wrap select-text max-md:text-[14px]">
               {children}
             </p>
           )
@@ -514,7 +512,7 @@ function Quote({
             ref={(element) => {
               if (element) setClipped(element.scrollHeight > element.clientHeight + 1);
             }}
-            className="line-clamp-4 text-meta leading-[1.55] break-words select-text max-md:text-[14px]"
+            className="line-clamp-4 text-meta leading-relaxed break-words select-text max-md:text-[14px]"
           >
             {children}
           </p>
@@ -569,7 +567,7 @@ function ThreadUsage({ agents }: { agents: ReadonlyArray<AgentSummary> }) {
             </div>
           ) : null}
           {partial ? (
-            <p className="text-caption text-fg-tertiary max-md:text-xs">
+            <p className="text-caption text-fg-tertiary max-md:text-[12px]">
               A dash means that harness reports no cost, so the total leaves it out.
             </p>
           ) : null}

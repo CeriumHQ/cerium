@@ -345,7 +345,7 @@ export function Inbox({
               <MenuTrigger>
                 <Button
                   aria-label={projects.length > 1 ? `Projects shown: ${project?.name ?? "all"}` : "View"}
-                  className="ml-auto grid size-6.5 shrink-0 place-items-center rounded-md text-fg-tertiary transition-colors duration-150 hover:bg-surface-hover hover:text-fg-secondary data-popup-open:bg-surface-hover data-popup-open:text-fg-secondary max-md:size-9"
+                  className="ml-auto grid size-6.5 shrink-0 place-items-center rounded-md text-fg-tertiary transition-colors duration-150 hover:bg-surface-hover hover:text-fg-secondary data-popup-open:bg-surface-active data-popup-open:text-fg-secondary max-md:size-9"
                 >
                   {project ? (
                     <ProjectBadge folder={project.folder} name={project.name} size="small" />
@@ -473,7 +473,7 @@ function BoxTab({ value, label, count = 0 }: { value: InboxBox; label: string; c
   return (
     <Tabs.Tab
       value={value}
-      className="flex h-6.5 shrink-0 items-center gap-1 rounded-md px-1.5 text-meta font-medium text-fg-secondary transition-colors duration-150 outline-none hover:text-fg-primary focus-visible:ring-2 focus-visible:ring-focus-ring data-active:bg-surface-selected data-active:text-fg-primary max-md:h-9 max-md:px-2.5 max-md:text-sm"
+      className="flex h-6.5 shrink-0 items-center gap-1 rounded-md px-1.5 text-meta font-medium text-fg-secondary transition-colors duration-150 outline-none hover:text-fg-primary focus-visible:ring-2 focus-visible:ring-focus-ring data-active:bg-surface-selected data-active:text-fg-primary max-md:h-9 max-md:px-2.5 max-md:text-[14px]"
     >
       {label}
       {count > 0 ? <span className="font-normal text-fg-tertiary tabular-nums">{count}</span> : null}
@@ -505,7 +505,7 @@ function BoxPanel({
         <nav aria-label={label} className="px-2 pb-3">
           <ul className="flex flex-col gap-0.5">{children}</ul>
           {typeof empty === "string" ? (
-            <p className="px-2 py-12 text-center text-meta text-fg-tertiary max-md:text-sm">{empty}</p>
+            <p className="px-2 py-12 text-center text-meta text-fg-tertiary max-md:text-[14px]">{empty}</p>
           ) : (
             empty
           )}
@@ -556,7 +556,7 @@ function BulkFooter({ bar, note }: { bar: ReactNode; note: ReactNode }) {
   }, [hasBar, hasNote]);
 
   return (
-    <div ref={footer} className="relative h-0 shrink-0 transition-[height] duration-180 ease-out-soft">
+    <div ref={footer} className="relative h-0 shrink-0 transition-[height] duration-200 ease-out-soft">
       {barPhase === "gone" ? null : (
         <div
           ref={barLayer}
@@ -570,7 +570,7 @@ function BulkFooter({ bar, note }: { bar: ReactNode; note: ReactNode }) {
             if (next && next !== document.body && !event.currentTarget.contains(next))
               barFocused.current = false;
           }}
-          className="absolute inset-x-0 bottom-0 transition-[opacity,translate] duration-180 ease-out-soft starting:translate-y-1.5 starting:opacity-0 data-[phase=leaving]:translate-y-1.5 data-[phase=leaving]:opacity-0"
+          className="absolute inset-x-0 bottom-0 transition-[opacity,translate] duration-200 ease-out-soft starting:translate-y-1.5 starting:opacity-0 data-[phase=leaving]:translate-y-1.5 data-[phase=leaving]:opacity-0"
         >
           {lastBar}
         </div>
@@ -580,7 +580,7 @@ function BulkFooter({ bar, note }: { bar: ReactNode; note: ReactNode }) {
           ref={noteLayer}
           data-phase={notePhase}
           inert={notePhase === "leaving"}
-          className="absolute inset-x-0 bottom-0 transition-opacity duration-180 ease-out-soft starting:opacity-0 data-[phase=leaving]:opacity-0"
+          className="absolute inset-x-0 bottom-0 transition-opacity duration-200 ease-out-soft starting:opacity-0 data-[phase=leaving]:opacity-0"
         >
           {lastNote}
         </div>

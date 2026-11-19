@@ -1,4 +1,4 @@
-import { Button } from "@base-ui/react/button";
+import { Button } from "../components/ui/Button.tsx";
 import { useEffectEvent, useLayoutEffect, useRef, type CSSProperties } from "react";
 
 /**
@@ -96,10 +96,7 @@ export function EmptyThread({
               <p className="mt-[clamp(14px,3cqb,28px)] max-w-sm text-body leading-relaxed text-fg-tertiary">
                 Set up a coding harness to start.
               </p>
-              <Button
-                onClick={onSetUp}
-                className="mt-3 flex h-8 items-center rounded-lg bg-accent px-3 text-meta font-medium text-accent-fg transition-opacity hover:opacity-90 active:opacity-80"
-              >
+              <Button tone="primary" onClick={onSetUp} className="mt-3">
                 Set up a harness
               </Button>
             </>

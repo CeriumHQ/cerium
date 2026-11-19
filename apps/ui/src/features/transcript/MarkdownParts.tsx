@@ -304,7 +304,7 @@ export function FencedCode({
         />
       </div>
       <pre
-        className={`scroll-thin overflow-x-auto px-3.5 font-mono text-[12.5px] leading-[1.65] text-fg-primary select-text ${
+        className={`scroll-thin overflow-x-auto px-3.5 font-mono text-meta leading-[1.65] text-fg-primary select-text ${
           folds ? "pb-1" : "pb-3"
         } ${folds && !expanded ? "mask-b-from-40%" : ""}`}
       >

@@ -15,7 +15,7 @@ export function MenuTrigger({ children }: { children: ReactElement }) {
 }
 
 // A long menu, such as every project, scrolls inside the space the window leaves it.
-const popupClass =
+export const menuPopupClass =
   "max-h-(--available-height) min-w-40 origin-(--transform-origin) overflow-y-auto overscroll-contain rounded-xl border border-line-subtle bg-surface-overlay p-1 text-fg-primary shadow-overlay backdrop-blur-2xl transition-[opacity,scale] duration-150 ease-out-soft outline-none data-ending-style:scale-[0.97] data-ending-style:opacity-0 data-starting-style:scale-[0.97] data-starting-style:opacity-0 max-md:min-w-52";
 
 // Touch needs taller rows and bigger text, like the thread list's.
@@ -34,7 +34,7 @@ export function MenuPopup({
   return (
     <BaseMenu.Portal>
       <BaseMenu.Positioner side={side} align={align} sideOffset={4} className="z-50 outline-none">
-        <BaseMenu.Popup className={popupClass}>{children}</BaseMenu.Popup>
+        <BaseMenu.Popup className={menuPopupClass}>{children}</BaseMenu.Popup>
       </BaseMenu.Positioner>
     </BaseMenu.Portal>
   );
@@ -98,7 +98,7 @@ export function MenuSubmenu({
       </BaseMenu.SubmenuTrigger>
       <BaseMenu.Portal>
         <BaseMenu.Positioner sideOffset={2} alignOffset={-4} className="z-50 outline-none">
-          <BaseMenu.Popup className={popupClass}>{children}</BaseMenu.Popup>
+          <BaseMenu.Popup className={menuPopupClass}>{children}</BaseMenu.Popup>
         </BaseMenu.Positioner>
       </BaseMenu.Portal>
     </BaseMenu.SubmenuRoot>
@@ -210,7 +210,7 @@ export function ContextMenuArea({ children, menu }: { children: ReactElement; me
       <ContextMenu.Trigger render={children} />
       <ContextMenu.Portal>
         <ContextMenu.Positioner className="z-50 outline-none">
-          <ContextMenu.Popup finalFocus={finalFocus} className={popupClass}>
+          <ContextMenu.Popup finalFocus={finalFocus} className={menuPopupClass}>
             {menu}
           </ContextMenu.Popup>
         </ContextMenu.Positioner>
@@ -256,7 +256,7 @@ export function PointMenu({
           alignOffset={2}
           className="z-50 outline-none"
         >
-          <BaseMenu.Popup finalFocus={false} className={popupClass}>
+          <BaseMenu.Popup finalFocus={false} className={menuPopupClass}>
             {children}
           </BaseMenu.Popup>
         </BaseMenu.Positioner>

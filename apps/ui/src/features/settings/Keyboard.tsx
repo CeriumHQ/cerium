@@ -16,6 +16,7 @@ import {
   shortcutDef,
   type ShortcutId,
 } from "../../lib/shortcuts.ts";
+import { buttonClass } from "../../components/ui/Button.tsx";
 import { SelectItem, SelectPopup, SelectRoot, SelectTrigger } from "../../components/ui/Select.tsx";
 import { Keys, SettingsCard, SettingsList, SettingsPage, SettingsRow, SettingsSection } from "./parts.tsx";
 import { WEB } from "../../backend/target.ts";
@@ -155,7 +156,7 @@ export function KeyboardSettings() {
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search shortcuts"
             aria-label="Search shortcuts"
-            className="min-w-0 flex-1 bg-transparent text-fg-primary outline-none placeholder:text-fg-tertiary"
+            className="min-w-0 flex-1 bg-transparent text-meta text-fg-primary outline-none placeholder:text-fg-tertiary max-md:text-[14px]"
           />
         </label>
         {SHORTCUT_GROUPS.map((group) => {
@@ -165,7 +166,7 @@ export function KeyboardSettings() {
           if (rows.length === 0) return null;
           return (
             <div key={group} className="flex flex-col gap-2">
-              <h3 className="px-1 text-meta font-medium text-fg-secondary">{group}</h3>
+              <h3 className="px-1 text-meta font-medium text-fg-tertiary">{group}</h3>
               <SettingsCard className="divide-y divide-line-subtle">
                 {rows.map((each) => {
                   const keys = bindingFor(bindings, each.id);
@@ -246,14 +247,14 @@ export function KeyboardSettings() {
                           <button
                             type="button"
                             onClick={swap}
-                            className="shrink-0 rounded-md bg-accent px-2 py-1 text-meta font-medium text-accent-fg transition-opacity hover:opacity-90"
+                            className={buttonClass({ tone: "primary", size: "sm" })}
                           >
                             Swap
                           </button>
                           <button
                             type="button"
                             onClick={() => setConflict(undefined)}
-                            className="shrink-0 rounded-md px-2 py-1 text-meta font-medium text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
+                            className={buttonClass({ tone: "quiet", size: "sm" })}
                           >
                             Cancel
                           </button>

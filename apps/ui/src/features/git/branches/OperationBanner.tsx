@@ -1,13 +1,13 @@
 import type { GitOperationKind, UnmergedFile } from "@cerium/rpc";
 import { GitMerge } from "lucide-react";
 
+import { buttonClass } from "../../../components/ui/Button.tsx";
 import { Tooltip } from "../../../components/ui/Tooltip.tsx";
 import type { BranchDialog } from "./BranchDialogs.tsx";
 import { canSkip, conflictNote, operationNote, operationTitle, sideHelp } from "./model.ts";
 import type { BranchControls } from "./useBranchControls.ts";
 
-const buttonClass =
-  "h-7 rounded-md px-2 text-meta font-medium text-fg-secondary transition-colors select-none hover:bg-surface-hover hover:text-fg-primary disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-fg-secondary max-md:h-9 max-md:px-3 max-md:text-[14px]";
+const actionClass = buttonClass({ tone: "quiet", size: "sm" });
 
 /**
  * What git stopped halfway through (a merge, rebase, cherry-pick or revert) and what it waits for:
@@ -48,7 +48,7 @@ export function OperationBanner({
             type="button"
             disabled={busy || waiting}
             onClick={() => void controls.operation("continue")}
-            className="h-7 rounded-md bg-accent px-2.5 text-meta font-medium text-accent-fg transition-colors hover:bg-accent-strong disabled:opacity-40 max-md:h-9 max-md:px-3 max-md:text-[14px]"
+            className={buttonClass({ tone: "primary", size: "sm" })}
           >
             Continue
           </button>
@@ -57,7 +57,7 @@ export function OperationBanner({
               type="button"
               disabled={busy}
               onClick={() => void controls.operation("skip")}
-              className={buttonClass}
+              className={actionClass}
             >
               Skip
             </button>
@@ -66,7 +66,7 @@ export function OperationBanner({
             type="button"
             disabled={busy}
             onClick={() => onAsk({ kind: "abort" })}
-            className={`${buttonClass} hover:text-error-text`}
+            className={`${actionClass} hover:text-error-text`}
           >
             Abort
           </button>
@@ -112,22 +112,22 @@ function Conflict({
       <p className="text-meta text-fg-tertiary max-md:text-[13px]">{conflictNote(file)}</p>
       <div className="-ml-2 flex flex-wrap items-center gap-0.5">
         {onOpen === undefined ? null : (
-          <button type="button" onClick={() => onOpen(file.path)} className={buttonClass}>
+          <button type="button" onClick={() => onOpen(file.path)} className={actionClass}>
             Open
           </button>
         )}
         <Tooltip label={sideHelp(kind, "ours")} side="bottom">
-          <button type="button" disabled={busy} onClick={() => choose("ours")} className={buttonClass}>
+          <button type="button" disabled={busy} onClick={() => choose("ours")} className={actionClass}>
             Take ours
           </button>
         </Tooltip>
         <Tooltip label={sideHelp(kind, "theirs")} side="bottom">
-          <button type="button" disabled={busy} onClick={() => choose("theirs")} className={buttonClass}>
+          <button type="button" disabled={busy} onClick={() => choose("theirs")} className={actionClass}>
             Take theirs
           </button>
         </Tooltip>
         <Tooltip label="Keep the file as it is now, once you've edited it." side="bottom">
-          <button type="button" disabled={busy} onClick={() => choose("resolved")} className={buttonClass}>
+          <button type="button" disabled={busy} onClick={() => choose("resolved")} className={actionClass}>
             Mark resolved
           </button>
         </Tooltip>

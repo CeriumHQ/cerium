@@ -123,7 +123,7 @@ export function Rail({
                     aria-hidden
                     // A badge that turns urgent pops in again at its new colour, as a thread's status dot does.
                     key={badge.waiting > 0 ? "waiting" : "unread"}
-                    className={`absolute top-0.5 right-0.5 grid h-3.5 min-w-3.5 place-items-center rounded-full px-1 text-[9.5px] leading-none font-semibold tabular-nums transition-[scale] duration-300 ease-pop starting:scale-0 max-md:top-1 max-md:right-1 ${
+                    className={`absolute top-0.5 right-0.5 grid h-3.5 min-w-3.5 place-items-center rounded-full px-1 text-[9px] leading-none font-semibold tabular-nums transition-[scale] duration-300 ease-pop starting:scale-0 max-md:top-1 max-md:right-1 ${
                       badge.waiting > 0
                         ? "bg-attention text-fg-primary dark:text-accent-fg"
                         : "bg-accent text-accent-fg"

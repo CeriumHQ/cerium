@@ -7,6 +7,7 @@ import { AsyncResult } from "effect/reactivity";
 
 import { stashListAtom } from "../../../backend/branches.ts";
 import { MenuItem, MenuPopup, MenuRoot, MenuSeparator, MenuTrigger } from "../../../components/ui/Menu.tsx";
+import { CountBadge } from "../../../components/ui/SearchBar.tsx";
 import { Tooltip } from "../../../components/ui/Tooltip.tsx";
 import { shortAgo } from "../../../lib/time.ts";
 import type { BranchDialog } from "./BranchDialogs.tsx";
@@ -35,14 +36,10 @@ export function StashMenu({
       <Tooltip label="Stash" side="bottom">
         <Popover.Trigger
           aria-label={stashes.length === 0 ? "Stash" : `Stash, ${stashes.length} saved`}
-          className="relative grid size-7 shrink-0 place-items-center rounded-md text-fg-tertiary transition-colors outline-none hover:bg-surface-hover hover:text-fg-secondary data-popup-open:bg-surface-active data-popup-open:text-fg-primary max-md:size-10"
+          className="relative grid size-7 shrink-0 place-items-center rounded-md text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-secondary data-popup-open:bg-surface-active data-popup-open:text-fg-primary max-md:size-10"
         >
           <Archive size={15} strokeWidth={1.75} />
-          {stashes.length === 0 ? null : (
-            <span className="absolute -top-0.5 -right-0.5 grid min-w-3.5 place-items-center rounded-full bg-surface-selected px-1 text-[10px] leading-[14px] text-fg-primary tabular-nums">
-              {stashes.length}
-            </span>
-          )}
+          {stashes.length === 0 ? null : <CountBadge tone="neutral" count={stashes.length} />}
         </Popover.Trigger>
       </Tooltip>
       <Popover.Portal>

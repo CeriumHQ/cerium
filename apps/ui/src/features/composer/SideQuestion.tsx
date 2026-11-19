@@ -150,7 +150,7 @@ export function SideQuestion({
                 placeholder={entries.length === 0 ? "Ask about this thread" : "Ask a follow-up"}
                 onChange={(event) => setText(event.target.value)}
                 onKeyDown={onKeyDown}
-                className="block max-h-32 min-h-8 min-w-0 flex-1 resize-none bg-transparent px-1.5 py-1.5 text-body outline-none [field-sizing:content] placeholder:text-fg-disabled"
+                className="block max-h-32 min-h-8 min-w-0 flex-1 resize-none bg-transparent px-1.5 py-1.5 text-body outline-none [field-sizing:content] placeholder:text-fg-tertiary"
               />
               <Button
                 aria-label="Ask"

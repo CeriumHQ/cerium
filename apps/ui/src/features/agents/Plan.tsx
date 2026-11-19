@@ -53,7 +53,7 @@ export function Plan({
   const settled = progress.completed + progress.cancelled;
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center text-caption text-fg-tertiary max-md:text-xs">
+      <div className="flex items-center text-caption text-fg-tertiary max-md:text-[12px]">
         <span>Plan</span>
         <span className="ml-auto tabular-nums">
           {progress.finished ? "Done" : `${settled} of ${progress.total}`}
@@ -132,7 +132,7 @@ function Step({
       <div className="min-w-0">
         <p
           style={transition}
-          className={`text-meta leading-[1.45] break-words transition-colors duration-300 select-text max-md:text-[14px] ${
+          className={`text-meta leading-normal break-words transition-colors duration-300 select-text max-md:text-[14px] ${
             active
               ? "font-medium text-fg-primary"
               : item.status === "completed"

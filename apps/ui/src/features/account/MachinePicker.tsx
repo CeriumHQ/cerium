@@ -6,6 +6,7 @@ import { Check, ChevronDown, Monitor } from "lucide-react";
 import { useContext } from "react";
 
 import { driveMachine, machineAtom } from "../../backend/machine.ts";
+import { menuPopupClass } from "../../components/ui/Menu.tsx";
 import { WEB } from "../../backend/target.ts";
 import { platformLabel, thisDevice, whyUnreachable } from "./model.ts";
 
@@ -58,7 +59,7 @@ export function MachinePicker({ account }: { account: AccountState }) {
       </Menu.Trigger>
       <Menu.Portal>
         <Menu.Positioner side="bottom" align="end" sideOffset={6} className="z-50 outline-none">
-          <Menu.Popup className="w-64 origin-(--transform-origin) rounded-xl border border-line-subtle bg-surface-overlay p-1 text-fg-primary shadow-overlay backdrop-blur-2xl transition-[opacity,scale] duration-150 ease-out-soft outline-none data-ending-style:scale-[0.97] data-ending-style:opacity-0 data-starting-style:scale-[0.97] data-starting-style:opacity-0">
+          <Menu.Popup className={`${menuPopupClass} w-64`}>
             <Menu.Group>
               <Menu.GroupLabel className="px-2 pt-1.5 pb-1 text-caption font-medium text-fg-tertiary select-none">
                 Work on
@@ -120,14 +121,14 @@ function MachineItem({
       className="group relative flex cursor-default items-center gap-2.5 rounded-lg py-1.5 pr-8 pl-2 outline-none select-none data-highlighted:bg-surface-hover"
     >
       {/* Dimmed when it can't be chosen; its detail stays readable, since that says why. */}
-      <span className="relative grid size-7 shrink-0 place-items-center rounded-md border border-line-subtle bg-surface-raised text-fg-secondary group-data-disabled:opacity-50">
+      <span className="relative grid size-7 shrink-0 place-items-center rounded-md border border-line-subtle bg-surface-raised text-fg-secondary group-data-disabled:opacity-40">
         <Monitor size={13} strokeWidth={1.75} />
         {reachable ? (
           <span className="absolute -right-0.5 -bottom-0.5 size-2 rounded-full border-[1.5px] border-surface-overlay bg-success" />
         ) : null}
       </span>
       <span className="flex min-w-0 flex-col">
-        <span className="truncate text-body text-fg-primary group-data-disabled:opacity-50">{name}</span>
+        <span className="truncate text-body text-fg-primary group-data-disabled:opacity-40">{name}</span>
         <span className={`truncate text-caption ${attention ? "text-attention-text" : "text-fg-tertiary"}`}>
           {reachable ? <span className="sr-only">Online, </span> : null}
           {detail}

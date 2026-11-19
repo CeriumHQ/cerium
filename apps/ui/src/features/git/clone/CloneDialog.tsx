@@ -1,12 +1,12 @@
-import { Dialog } from "@base-ui/react/dialog";
 import type { CloneEvent } from "@cerium/rpc";
 import { useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
 import { FolderOpen } from "lucide-react";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState } from "react";
 
 import { pickFolder } from "../../../backend/shell.ts";
 import { cloneAtom } from "../../../backend/repositories.ts";
+import { DialogButton, DialogField, DialogInput, FormDialog } from "../../../components/ui/FormDialog.tsx";
 import { messageOf } from "../../viewer/previews.tsx";
 
 // Cloning a repository into a folder the user picks, and opening the clone as a project. Git's progress
@@ -56,8 +56,7 @@ export function CloneDialog({ open, onOpenChange, onCloned }: CloneDialogProps) 
   /** The clone running or last run: its address, folder and when it started, which keys it. */
   const [attempt, setAttempt] = useState<string>();
 
-  const start = (event: FormEvent) => {
-    event.preventDefault();
+  const start = () => {
     const address = url.trim();
     if (address === "" || folder === undefined) return;
     setAttempt(`${address}\n${folder}\n${Date.now()}`);
@@ -70,65 +69,43 @@ export function CloneDialog({ open, onOpenChange, onCloned }: CloneDialogProps) 
   };
 
   return (
-    <Dialog.Root
+    <FormDialog
       open={open}
       onOpenChange={(next) => {
         // Closing stops a clone that's still running.
         if (!next) setAttempt(undefined);
         onOpenChange(next);
       }}
+      title="Clone a repository"
+      description="It's cloned into a folder of its own, named after the repository, and opened as a project."
+      onSubmit={start}
+      actions={
+        <DialogButton type="submit" tone="primary" disabled={url.trim() === "" || folder === undefined}>
+          Clone
+        </DialogButton>
+      }
     >
-      <Dialog.Portal>
-        <Dialog.Backdrop className="fixed inset-0 bg-scrim transition-opacity duration-150 data-ending-style:opacity-0 data-starting-style:opacity-0" />
-        <Dialog.Popup className="fixed top-[calc(var(--app-top,0px)+var(--app-height,100dvh)/2)] left-1/2 flex max-h-[calc(var(--app-height,100dvh)-2rem)] w-[26rem] max-w-[calc(100vw-2rem)] -translate-1/2 flex-col gap-4 overflow-y-auto overscroll-contain rounded-2xl border border-line-subtle bg-surface-overlay p-5 text-fg-primary shadow-overlay backdrop-blur-2xl transition-[opacity,scale] duration-150 ease-out-soft outline-none data-ending-style:scale-[0.97] data-ending-style:opacity-0 data-starting-style:scale-[0.97] data-starting-style:opacity-0">
-          <div className="flex flex-col gap-1.5">
-            <Dialog.Title className="text-reading font-semibold tracking-tight max-md:text-[16px]">
-              Clone a repository
-            </Dialog.Title>
-            <Dialog.Description className="text-body leading-relaxed text-fg-secondary max-md:text-[14px]">
-              It's cloned into a folder of its own, named after the repository, and opened as a project.
-            </Dialog.Description>
-          </div>
-          <form className="flex flex-col gap-3" onSubmit={start}>
-            <label className="flex flex-col gap-1.5">
-              <span className="text-meta text-fg-secondary">Address</span>
-              <input
-                value={url}
-                onChange={(event) => setUrl(event.currentTarget.value)}
-                placeholder="https://github.com/owner/repository.git"
-                spellCheck={false}
-                className="h-8 rounded-lg border border-line-strong bg-transparent px-2.5 text-body text-fg-primary outline-none placeholder:text-fg-tertiary"
-              />
-            </label>
-            <div className="flex flex-col gap-1.5">
-              <span className="text-meta text-fg-secondary">Into</span>
-              <button
-                type="button"
-                onClick={browse}
-                className="flex h-8 min-w-0 items-center gap-2 rounded-lg border border-line-strong px-2.5 text-left text-body transition-colors hover:bg-surface-hover"
-              >
-                <FolderOpen size={13} strokeWidth={1.75} className="shrink-0 text-fg-tertiary" />
-                <span className={`truncate ${folder === undefined ? "text-fg-tertiary" : "text-fg-primary"}`}>
-                  {folder ?? "Choose a folder"}
-                </span>
-              </button>
-            </div>
-            {attempt !== undefined ? <CloneRun key={attempt} attempt={attempt} onCloned={onCloned} /> : null}
-            <div className="flex justify-end gap-2">
-              <Dialog.Close className="h-8 rounded-lg border border-line-strong px-3 text-body font-medium text-fg-primary transition-colors hover:bg-surface-hover max-md:h-10 max-md:px-4 max-md:text-[15px]">
-                Cancel
-              </Dialog.Close>
-              <button
-                type="submit"
-                disabled={url.trim() === "" || folder === undefined}
-                className="h-8 rounded-lg border border-line-strong bg-surface-hover px-3 text-body font-medium text-fg-primary transition-colors hover:bg-surface-active disabled:opacity-45 max-md:h-10 max-md:px-4 max-md:text-[15px]"
-              >
-                Clone
-              </button>
-            </div>
-          </form>
-        </Dialog.Popup>
-      </Dialog.Portal>
-    </Dialog.Root>
+      <DialogField label="Address">
+        <DialogInput
+          value={url}
+          onChange={(event) => setUrl(event.currentTarget.value)}
+          placeholder="https://github.com/owner/repository.git"
+        />
+      </DialogField>
+      <div className="flex flex-col gap-1.5">
+        <span className="text-meta text-fg-secondary max-md:text-[13px]">Into</span>
+        <button
+          type="button"
+          onClick={browse}
+          className="flex h-8 min-w-0 items-center gap-2 rounded-lg border border-line-strong px-2.5 text-left text-body transition-colors hover:bg-surface-hover max-md:h-10 max-md:text-[15px]"
+        >
+          <FolderOpen size={13} strokeWidth={1.75} className="shrink-0 text-fg-tertiary" />
+          <span className={`truncate ${folder === undefined ? "text-fg-tertiary" : "text-fg-primary"}`}>
+            {folder ?? "Choose a folder"}
+          </span>
+        </button>
+      </div>
+      {attempt !== undefined ? <CloneRun key={attempt} attempt={attempt} onCloned={onCloned} /> : null}
+    </FormDialog>
   );
 }

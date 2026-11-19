@@ -160,7 +160,7 @@ export function TerminalDrawer({
                 <Button
                   aria-label={`Close ${labels[index] ?? "terminal"}`}
                   onClick={() => closeTab(terminal)}
-                  className={`mr-1 grid size-5 place-items-center rounded text-fg-tertiary transition-[opacity,color,background-color] hover:bg-surface-active hover:text-fg-primary focus-visible:opacity-100 pointer-coarse:size-7 ${
+                  className={`relative mr-1 grid size-5 place-items-center rounded text-fg-tertiary transition-[opacity,color,background-color] hover:bg-surface-active hover:text-fg-primary focus-visible:opacity-100 pointer-coarse:size-7 pointer-coarse:after:absolute pointer-coarse:after:-inset-2 ${
                     terminal.id === shown?.id
                       ? ""
                       : "opacity-0 group-focus-within/tab:opacity-100 group-hover/tab:opacity-100 pointer-coarse:opacity-100"

@@ -70,7 +70,7 @@ export function RunScoreboard({
                 {label}
               </span>
               <span
-                className={`flex items-center gap-2 text-caption whitespace-nowrap text-fg-tertiary tabular-nums transition-opacity duration-150 max-md:text-xs ${
+                className={`flex items-center gap-2 text-caption whitespace-nowrap text-fg-tertiary tabular-nums transition-opacity duration-150 max-md:text-[12px] ${
                   archive ? "md:group-hover/line:opacity-0 md:group-has-[:focus-visible]/line:opacity-0" : ""
                 }`}
               >

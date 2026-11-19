@@ -1,10 +1,11 @@
 import { AlertDialog } from "@base-ui/react/alert-dialog";
-import { Button } from "@base-ui/react/button";
 import type { RestorePreview } from "@cerium/protocol";
 import { Bot, FileClock, History, MessageSquareX, TriangleAlert, type LucideIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
+import { Button, buttonClass } from "../../components/ui/Button.tsx";
 import { Disclosure } from "../../components/ui/Disclosure.tsx";
+import { dialogBackdropClass, dialogPopupClass, dialogTitleClass } from "../../components/ui/FormDialog.tsx";
 import { agentsLine, conversationLine, filesLine, messagesLine, undoLabel } from "./restore.ts";
 
 /** What a restore would undo, while it is read. */
@@ -119,10 +120,10 @@ export function RestoreDialog({
   return (
     <AlertDialog.Root open={open} onOpenChange={onOpenChange}>
       <AlertDialog.Portal>
-        <AlertDialog.Backdrop className="fixed inset-0 bg-scrim transition-opacity duration-150 data-ending-style:opacity-0 data-starting-style:opacity-0" />
-        <AlertDialog.Popup className="fixed top-[calc(var(--app-top,0px)+var(--app-height,100dvh)/2)] left-1/2 flex max-h-[calc(var(--app-height,100dvh)-2rem)] w-[26rem] max-w-[calc(100vw-2rem)] -translate-1/2 flex-col gap-4 overflow-y-auto overscroll-contain rounded-2xl border border-line-subtle bg-surface-overlay p-5 text-fg-primary shadow-overlay backdrop-blur-2xl transition-[opacity,scale] duration-150 ease-out-soft outline-none data-ending-style:scale-[0.97] data-ending-style:opacity-0 data-starting-style:scale-[0.97] data-starting-style:opacity-0">
+        <AlertDialog.Backdrop className={dialogBackdropClass} />
+        <AlertDialog.Popup className={`${dialogPopupClass("md")} flex flex-col gap-4`}>
           <div className="flex flex-col gap-2">
-            <AlertDialog.Title className="text-reading font-semibold tracking-tight max-md:text-[16px]">
+            <AlertDialog.Title className={dialogTitleClass}>
               Restore to before this message?
             </AlertDialog.Title>
             <AlertDialog.Description className="line-clamp-2 border-l-2 border-line-strong pl-2.5 text-body leading-relaxed text-fg-secondary">
@@ -138,14 +139,8 @@ export function RestoreDialog({
           )}
           <p className="text-meta text-fg-tertiary">What's undone stays in the thread to look back on.</p>
           <div className="flex justify-end gap-2">
-            <AlertDialog.Close className="h-8 rounded-lg border border-line-strong px-3 text-body font-medium text-fg-primary transition-colors hover:bg-surface-hover max-md:h-10 max-md:px-4 max-md:text-[15px]">
-              Cancel
-            </AlertDialog.Close>
-            <Button
-              disabled={check.status !== "ready" || restoring}
-              onClick={restore}
-              className="h-8 rounded-lg border border-error/35 bg-error/15 px-3 text-body font-medium text-error-text transition-colors hover:bg-error/25 disabled:opacity-50 disabled:hover:bg-error/15 max-md:h-10 max-md:px-4 max-md:text-[15px]"
-            >
+            <AlertDialog.Close className={buttonClass()}>Cancel</AlertDialog.Close>
+            <Button tone="danger" disabled={check.status !== "ready" || restoring} onClick={restore}>
               {restoring ? "Restoring…" : "Restore"}
             </Button>
           </div>

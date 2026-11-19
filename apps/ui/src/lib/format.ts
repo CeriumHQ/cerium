@@ -12,6 +12,9 @@ export const compactTokens = (value: number): string =>
 /** Dollars to the cent; a cheap turn that still cost something never reads as free. */
 export const usd = (value: number): string => (value > 0 && value < 0.01 ? "<$0.01" : `$${value.toFixed(2)}`);
 
+export const usdPrecise = (value: number): string =>
+  value === 0 ? "$0.00" : value < 0.01 ? `$${Number(value.toPrecision(2))}` : `$${value.toFixed(2)}`;
+
 /** Markdown flattened to one line of plain text, for previews that clamp a few lines. */
 export const plainExcerpt = (markdown: string): string =>
   markdown

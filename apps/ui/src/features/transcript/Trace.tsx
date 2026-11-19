@@ -54,7 +54,7 @@ export function TraceNode({ children }: { children: ReactNode }) {
  * one-line blocks' do, two spacing steps past the node.
  */
 export const STEP_HEADER =
-  "group/step flex w-full min-w-0 flex-col rounded-md pl-0.5 text-left text-meta text-fg-secondary transition-colors hover:bg-surface-hover data-popup-open:bg-surface-hover";
+  "group/step flex w-full min-w-0 flex-col rounded-md pl-0.5 text-left text-meta text-fg-secondary transition-colors hover:bg-surface-hover data-popup-open:bg-surface-active";
 
 /** The chevron a step's header shows on hover, turned while the step is open. */
 export function StepChevron() {

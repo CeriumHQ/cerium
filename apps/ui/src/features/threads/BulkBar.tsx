@@ -4,7 +4,7 @@ import { Archive, ArchiveRestore, Check, Clock, MailOpen, Minus, Pin, PinOff, Tr
 import { useLayoutEffect, useRef, useState } from "react";
 
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog.tsx";
-import { Tooltip } from "../../components/ui/Tooltip.tsx";
+import { IconButton } from "../../components/ui/IconButton.tsx";
 import { pinnedAtom, togglePin } from "./pins.ts";
 import {
   planBulk,
@@ -95,7 +95,7 @@ export function SelectBox({
       ? shown
         ? "opacity-100 duration-150"
         : "opacity-0 duration-150 group-hover/row:opacity-100 group-has-[:focus-visible]/row:opacity-100 pointer-coarse:opacity-100"
-      : `duration-180 ease-out-soft ${visible ? "opacity-100 starting:opacity-0" : "opacity-0"}`;
+      : `duration-200 ease-out-soft ${visible ? "opacity-100 starting:opacity-0" : "opacity-0"}`;
   return (
     <Checkbox.Root
       ref={checkbox}
@@ -106,7 +106,6 @@ export function SelectBox({
       onAuxClick={(event) => event.stopPropagation()}
       onCheckedChange={onChange}
       aria-label={label}
-      title={label}
       className={`absolute z-10 shrink-0 cursor-default rounded-[4px] outline-none select-none transition-opacity focus-visible:ring-2 focus-visible:ring-focus-ring ${visibility} ${className}`}
     >
       <span
@@ -291,7 +290,6 @@ export function BulkBar({
           indeterminate={!all}
           onCheckedChange={() => (all ? onSettled(ids) : onSelectAll())}
           aria-label={all ? "Clear selection" : `Select all ${total}`}
-          title={all ? "Clear selection" : `Select all ${total}`}
           className="group/all grid size-7 shrink-0 cursor-default place-items-center rounded-md outline-none select-none hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-focus-ring max-md:size-8"
         >
           <span className="grid size-4 place-items-center rounded-[4px] border border-accent bg-accent text-accent-fg">
@@ -301,16 +299,7 @@ export function BulkBar({
         <output className="min-w-0 flex-1 truncate text-meta font-medium text-fg-primary tabular-nums">
           {all && total > 1 ? `All ${total} selected` : `${threads.length} selected`}
         </output>
-        <Tooltip label="Clear selection" shortcut="Esc">
-          <button
-            type="button"
-            onClick={() => onSettled(ids)}
-            aria-label="Clear selection"
-            className="grid size-7 shrink-0 place-items-center rounded-md text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-primary max-md:size-8"
-          >
-            <X size={13} strokeWidth={2} />
-          </button>
-        </Tooltip>
+        <IconButton icon={X} label="Clear selection" shortcut="Esc" onClick={() => onSettled(ids)} />
       </div>
       <div
         className="flex items-center gap-0.5 border-t border-line-subtle pt-1"
@@ -318,38 +307,25 @@ export function BulkBar({
         aria-label="Bulk actions"
       >
         {buttons.map((button) => (
-          <Tooltip key={button.label} label={button.label}>
-            <button
-              type="button"
-              onClick={button.run}
-              aria-label={button.label}
-              className="grid size-7 shrink-0 place-items-center rounded-md text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary max-md:size-8"
-            >
-              <button.icon size={14} strokeWidth={1.75} />
-            </button>
-          </Tooltip>
+          <IconButton key={button.label} icon={button.icon} label={button.label} onClick={button.run} />
         ))}
-        <Tooltip label="Delete">
-          <button
-            type="button"
-            aria-label="Delete"
-            onClick={() => {
-              if (planBulk(byId, ids, "delete").act.length === 0) {
-                onNote(summarizeBulk("delete", planBulk(byId, ids, "delete")));
-              } else {
-                setConfirming(true);
-              }
-            }}
-            className="ml-auto grid size-7 shrink-0 place-items-center rounded-md text-fg-secondary transition-colors hover:bg-error/10 hover:text-error-text max-md:size-8"
-          >
-            <Trash2 size={14} strokeWidth={1.75} />
-          </button>
-        </Tooltip>
+        <IconButton
+          icon={Trash2}
+          label="Delete"
+          className="ml-auto hover:bg-error/10 hover:text-error-text"
+          onClick={() => {
+            if (planBulk(byId, ids, "delete").act.length === 0) {
+              onNote(summarizeBulk("delete", planBulk(byId, ids, "delete")));
+            } else {
+              setConfirming(true);
+            }
+          }}
+        />
       </div>
       <ConfirmDialog
         open={confirming}
         onOpenChange={setConfirming}
-        title={`Delete ${threads.length === 1 ? "this thread" : `these ${threads.length} threads`}?`}
+        title={`Delete ${threads.length === 1 ? `this ${threads.every((thread) => thread.mode === "chat") ? "chat" : "thread"}` : `these ${threads.length} ${threads.every((thread) => thread.mode === "chat") ? "chats" : "threads"}`}?`}
         description="Every message in them will be deleted for good. This can't be undone."
         confirmLabel="Delete"
         onConfirm={() => void run("delete", (thread) => onDelete(thread.id))}

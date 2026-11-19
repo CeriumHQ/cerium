@@ -1,4 +1,6 @@
 import { Button } from "@base-ui/react/button";
+
+import { buttonClass } from "../../components/ui/Button.tsx";
 import {
   Crosshair,
   Scan,
@@ -52,9 +54,9 @@ function Segments<T extends string>({
             aria-label={name}
             disabled={disabled}
             onClick={() => value !== id && onChange(id)}
-            className={`grid h-6 w-7 place-items-center rounded transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-focus-ring disabled:pointer-events-none disabled:opacity-50 pointer-coarse:h-8 pointer-coarse:w-8 ${
+            className={`grid h-6 w-7 place-items-center rounded transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-focus-ring disabled:pointer-events-none disabled:opacity-40 pointer-coarse:h-8 pointer-coarse:w-8 ${
               value === id
-                ? "bg-surface-raised text-fg-primary shadow-sm"
+                ? "bg-surface-raised text-fg-primary shadow-raised"
                 : "text-fg-tertiary hover:text-fg-primary"
             }`}
           >
@@ -129,7 +131,7 @@ export function PreviewTools({
             disabled={sending}
             aria-busy={sending || undefined}
             onClick={onSend}
-            className="flex h-6 items-center gap-1.5 rounded-md border border-line-subtle px-2 text-meta text-fg-secondary outline-none hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-focus-ring"
+            className={buttonClass({ size: "sm" })}
           >
             {sending ? (
               <LoaderCircle size={13} className="animate-spin motion-reduce:animate-none" />

@@ -210,7 +210,7 @@ export function Notice({ block, roleOf }: { block: Block<"notice">; roleOf: (age
   // A one-liner reads best as it is; anything longer folds behind its first line.
   if (preview === text) {
     return (
-      <MessageMenuArea text={text} className="flex gap-2 text-meta leading-[1.55]">
+      <MessageMenuArea text={text} className="flex gap-2 text-meta leading-relaxed">
         <CornerDownRight size={13} strokeWidth={1.75} className="mt-[3px] shrink-0 text-fg-tertiary" />
         <p className="min-w-0 text-fg-tertiary select-text">
           <span className="font-medium text-fg-secondary">{from}</span> {verb}: {text}

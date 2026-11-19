@@ -22,6 +22,7 @@ import {
 } from "../../backend/git.ts";
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog.tsx";
 import { IconButton } from "../../components/ui/IconButton.tsx";
+import { toggleClassSmall } from "../../components/ui/Segmented.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { DiffView, type DiffCommenting, type DiffLayout } from "../viewer/DiffView.tsx";
 import { diffStats } from "../viewer/model.ts";
@@ -41,8 +42,7 @@ const sideLabel: Readonly<Record<GitSide, string>> = { unstaged: "Unstaged", sta
 
 const noPicks: ReadonlySet<string> = new Set();
 
-const toggleClass =
-  "rounded-md px-2 py-0.5 text-meta font-medium text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary max-md:px-2.5 max-md:py-1.5 max-md:text-[14px]";
+const toggleClass = toggleClassSmall;
 
 const reasonOf = (error: unknown, fallback: string) =>
   typeof error === "object" && error !== null && "message" in error && typeof error.message === "string"

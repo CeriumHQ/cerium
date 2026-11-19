@@ -10,15 +10,13 @@ import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from "rea
 import { projectArtifactsAtom } from "../../backend/files.ts";
 import { IconButton } from "../../components/ui/IconButton.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
+import { toggleClass } from "../../components/ui/Segmented.tsx";
 import { whenAgo } from "../../lib/time.ts";
 import { ArtifactDialog, ArtifactThumbnail } from "../transcript/Artifact.tsx";
 import { WorkspaceFolder } from "../transcript/FileChip.tsx";
 import { projectArtifacts, type PanelArtifact } from "./model.ts";
 
 type Scope = "thread" | "project";
-
-const toggleClass =
-  "rounded-md px-2 py-0.5 text-body font-medium text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary max-md:px-2.5 max-md:py-1.5 max-md:text-[15px]";
 
 /**
  * Every artifact of the open thread, or of its project's threads, beside the conversation: the

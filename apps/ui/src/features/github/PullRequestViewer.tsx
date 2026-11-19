@@ -1,4 +1,6 @@
 import { Button } from "@base-ui/react/button";
+
+import { buttonClass } from "../../components/ui/Button.tsx";
 import { Toggle } from "@base-ui/react/toggle";
 import { ToggleGroup } from "@base-ui/react/toggle-group";
 import type { GitHubRepository, PullRequestDetail, Reviewer, ReviewThread } from "@cerium/rpc";
@@ -32,6 +34,7 @@ import { DialogButton, FormDialog } from "../../components/ui/FormDialog.tsx";
 import { IconButton } from "../../components/ui/IconButton.tsx";
 import { useShortcut } from "../../lib/shortcuts.ts";
 import { ContextMenuArea, MenuItem, MenuSeparator } from "../../components/ui/Menu.tsx";
+import { toggleClassSmall } from "../../components/ui/Segmented.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { remember } from "../../lib/storage.ts";
@@ -65,8 +68,7 @@ type PullTab = "conversation" | "commits" | "checks" | "files";
 /** The tab each pull request shows, by its key, while the window is open. */
 const pullTabAtom = Atom.family((_id: string) => Atom.make<PullTab>("conversation").pipe(Atom.keepAlive));
 
-const toggleClass =
-  "shrink-0 rounded-md px-2 py-0.5 text-meta font-medium whitespace-nowrap text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary max-md:px-2.5 max-md:py-1.5 max-md:text-[14px]";
+const toggleClass = toggleClassSmall;
 
 const iconToggleClass =
   "grid size-7 place-items-center rounded-md text-fg-tertiary transition-colors duration-150 hover:bg-surface-hover hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary max-md:size-10";
@@ -571,10 +573,7 @@ function MoreTimeline({
   const [shown, setShown] = useState(false);
   if (!shown) {
     return (
-      <Button
-        onClick={() => setShown(true)}
-        className="self-center rounded-lg border border-line-subtle px-3 py-1.5 text-meta text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
-      >
+      <Button onClick={() => setShown(true)} className={`${buttonClass()} self-center`}>
         Show more of the conversation
       </Button>
     );

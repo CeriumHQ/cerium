@@ -1,4 +1,4 @@
-import { Button } from "@base-ui/react/button";
+import { Button } from "../../components/ui/Button.tsx";
 import { mentionToken } from "@cerium/protocol";
 import { useAtomValue } from "@effect/atom-react";
 import { useState } from "react";
@@ -65,17 +65,10 @@ export function MessageEditor({
         <p className="min-w-0 flex-1 truncate text-caption text-fg-tertiary">
           Later turns are kept as an earlier version
         </p>
-        <Button
-          onClick={onCancel}
-          className="h-7 rounded-md px-2.5 text-body text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
-        >
+        <Button tone="quiet" size="sm" onClick={onCancel}>
           Cancel
         </Button>
-        <Button
-          onClick={() => void send()}
-          disabled={!sendable}
-          className="h-7 rounded-md bg-accent px-3 text-body font-medium text-accent-fg transition-[opacity,transform] hover:opacity-90 active:scale-95 disabled:opacity-30"
-        >
+        <Button tone="primary" size="sm" onClick={() => void send()} disabled={!sendable}>
           Send
         </Button>
       </div>

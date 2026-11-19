@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import type { MouseEvent, ReactNode } from "react";
 
-import { MenuRadioGroup, MenuRadioItem } from "../../components/ui/Menu.tsx";
+import { menuPopupClass, MenuRadioGroup, MenuRadioItem } from "../../components/ui/Menu.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { limitLabel, limitPolicies } from "../settings/limitPolicy.ts";
 import { accessOptions, effortHint, effortLabel, speedHint, speedLabel } from "./models.ts";
@@ -142,13 +142,13 @@ export function EffortLadder({ choice, model }: { readonly choice: EffortChoice;
             onPressedChange={choice.auto.onToggle}
             aria-label="Auto"
             onMouseDown={keepFocus}
-            className={`${tuneRow} group/auto max-md:h-10 max-md:flex-none max-md:rounded-[9px] max-md:bg-surface-sunken max-md:px-3 max-md:text-fg-tertiary data-pressed:bg-surface-selected max-md:data-pressed:bg-accent max-md:data-pressed:text-accent-fg data-pressed:font-medium data-pressed:text-fg-primary`}
+            className={`${tuneRow} group/auto max-md:h-10 max-md:flex-none max-md:rounded-lg max-md:bg-surface-sunken max-md:px-3 max-md:text-fg-tertiary data-pressed:bg-surface-selected max-md:data-pressed:bg-accent max-md:data-pressed:text-accent-fg data-pressed:font-medium data-pressed:text-fg-primary`}
           >
             <span className="min-w-0 flex-1 truncate text-left max-md:flex-none">Auto</span>
             <Route
               size={12}
               strokeWidth={2}
-              className="shrink-0 text-fg-tertiary group-data-pressed/auto:text-accent max-md:group-data-pressed/auto:text-accent-fg"
+              className="shrink-0 text-fg-tertiary group-data-pressed/auto:text-accent-text max-md:group-data-pressed/auto:text-accent-fg"
             />
           </Toggle>
         ) : null}
@@ -160,7 +160,7 @@ export function EffortLadder({ choice, model }: { readonly choice: EffortChoice;
           }}
           orientation="vertical"
           aria-label={auto ? `Effort for ${model} when Auto can't decide` : `Effort for ${model}`}
-          className="flex flex-col gap-px max-md:min-w-0 max-md:flex-1 max-md:flex-row max-md:rounded-[9px] max-md:bg-surface-sunken max-md:p-0.5"
+          className="flex flex-col gap-px max-md:min-w-0 max-md:flex-1 max-md:flex-row max-md:rounded-lg max-md:bg-surface-sunken max-md:p-0.5"
         >
           {choice.levels.map((level, at) => (
             <Toggle
@@ -235,7 +235,7 @@ export function SpeedSwitch({ choice, model }: { readonly choice: SpeedChoice; r
           if (next !== undefined) choice.onPick(next);
         }}
         aria-label={`Speed for ${model}`}
-        className="flex gap-0.5 rounded-[9px] bg-surface-sunken p-0.5"
+        className="flex gap-0.5 rounded-lg bg-surface-sunken p-0.5"
       >
         {choice.speeds.map((speed) => (
           <Toggle
@@ -321,7 +321,7 @@ export function LimitRow({ choice }: { readonly choice: LimitChoice }) {
           if (next !== undefined) choice.onPick(next);
         }}
         aria-label="When usage runs out"
-        className="flex shrink-0 gap-0.5 rounded-[9px] bg-surface-sunken p-0.5"
+        className="flex shrink-0 gap-0.5 rounded-lg bg-surface-sunken p-0.5"
       >
         {limitPolicies.map((policy) => (
           <Toggle
@@ -377,7 +377,7 @@ export function AccessMenu({
       </Tooltip>
       <Menu.Portal>
         <Menu.Positioner side="top" align="end" sideOffset={6} className="z-50 outline-none">
-          <Menu.Popup className="w-44 max-w-(--available-width) origin-(--transform-origin) rounded-xl border border-line-subtle bg-surface-overlay p-1 text-fg-primary shadow-overlay backdrop-blur-2xl transition-[opacity,scale] duration-150 ease-out-soft outline-none data-ending-style:scale-[0.97] data-ending-style:opacity-0 data-starting-style:scale-[0.97] data-starting-style:opacity-0 max-md:w-52">
+          <Menu.Popup className={`${menuPopupClass} w-44 max-w-(--available-width) max-md:w-52`}>
             <MenuRadioGroup value={value} onValueChange={(next: AccessMode) => onPick(next)}>
               {accessOptions.map((option) => {
                 const OptionIcon = accessIcon[option.value];

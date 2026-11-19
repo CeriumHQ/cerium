@@ -73,7 +73,7 @@ export function ThreadRow({
         className="left-2 top-1/2 -translate-y-1/2"
       />
     );
-  const rowClass = `flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-body transition-colors duration-150 data-popup-open:bg-surface-hover max-md:h-11 max-md:gap-3 max-md:rounded-lg max-md:text-[15px] ${menu === undefined ? "" : moreRoom} ${selection === undefined ? "" : "group/row relative pointer-coarse:pl-7"} ${
+  const rowClass = `flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-body transition-colors duration-150 data-popup-open:bg-surface-active max-md:h-11 max-md:gap-3 max-md:rounded-lg max-md:text-[15px] ${menu === undefined ? "" : moreRoom} ${selection === undefined ? "" : "group/row relative pointer-coarse:pl-7"} ${
     selected || editing
       ? "bg-surface-selected text-fg-primary"
       : quiet

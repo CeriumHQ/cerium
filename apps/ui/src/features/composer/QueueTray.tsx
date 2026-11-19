@@ -104,7 +104,7 @@ export function QueueTray({
                 <Reveal onGone={() => release(key)}>
                   {present ? (
                     <div className="group/queued flex h-8 items-center gap-2 rounded-lg pr-1 pl-2 transition-colors hover:bg-surface-hover">
-                      <span className="grid size-4 shrink-0 place-items-center rounded-[5px] text-[10.5px] text-fg-tertiary tabular-nums ring-1 ring-line-strong ring-inset">
+                      <span className="grid size-4 shrink-0 place-items-center rounded-[5px] text-caption text-fg-tertiary tabular-nums ring-1 ring-line-strong ring-inset">
                         {shown.indexOf(message) + 1}
                       </span>
                       <span className="min-w-0 flex-1 truncate text-body text-fg-primary">

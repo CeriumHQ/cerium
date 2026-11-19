@@ -307,7 +307,7 @@ html[data-target="web"] :is(button, [role="button"], [role="treeitem"], a) {
    (features/transcript/find.ts), ringed for a moment so the eye finds it. */
 [data-artifact][data-found],
 [data-find][data-found] {
-  border-radius: 0.625rem;
+  border-radius: 0.5rem;
   animation: artifact-found 1.6s ease-out;
 
   @media (prefers-reduced-motion: reduce) {
