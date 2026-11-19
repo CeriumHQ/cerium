@@ -2822,6 +2822,7 @@ function Workspace() {
         page: (
           <SettingsView
             category={settingsCategory}
+            active={settingsOpen && (!compact || settingsPane === "page")}
             harnesses={indicators}
             onOpen={setSettingsCategory}
             project={scriptsProject ?? newProject}
