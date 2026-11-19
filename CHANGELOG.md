@@ -34,6 +34,7 @@ All notable changes to Cerium are recorded here. The format follows
 - Desktop packages omit unused dependency formats. Published nightlies use release compression, and optional English installers ship with a smaller set of Chromium locale resources.
 - A response's work (its tool calls, thoughts and what the agent said along the way) folds under one Working line ahead of its final message. It stays open while the agent works, showing a running clock, and folds once the turn ends, keeping a section you opened or closed that way; agents it started, pushes, questions, approvals waiting on you and turn errors stay in view below it. The copy button under a response copies only that final message.
 - Failed tool calls no longer show in red: a run's line stops counting them, and their rows, icons and output look like any other call's, since the agent deals with its own failures.
+- Rewrote the marketing site copy across the home, downloads, and privacy pages, and updated the hero prism to display all eight supported coding harnesses (adding Antigravity, GitHub Copilot, and Grok Build).
 
 ### Added
 
