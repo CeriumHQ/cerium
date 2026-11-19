@@ -1,5 +1,5 @@
 name: Cache React compiler transforms
-description: Restores UI transforms for main and its PRs, and saves daily snapshots on main pushes.
+description: Restores UI transforms for main and its PRs; main pushes name a daily snapshot to save.
 
 inputs:
   mode:
@@ -10,6 +10,9 @@ outputs:
   file:
     description: The transform cache file for Vite, empty when caching is disabled.
     value: ${{ steps.scope.outputs.file }}
+  save-key:
+    description: The key to save the file under after the build, empty when it isn't to be saved.
+    value: ${{ steps.save.outputs.key }}
 
 runs:
   using: composite
@@ -35,18 +38,24 @@ runs:
 
     # Each snapshot is capped at 16 MiB in Vite. Older daily snapshots expire under GitHub's
     # standard eviction policy. Vite checks transform inputs and integrity after every restore.
-    - if: steps.scope.outputs.file != '' && github.event_name == 'push'
-      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      continue-on-error: true
-      with:
-        path: ${{ steps.scope.outputs.file }}
-        key: ${{ steps.scope.outputs.key }}
-        restore-keys: ${{ steps.scope.outputs.prefix }}
-
-    - if: steps.scope.outputs.file != '' && github.event_name != 'push'
+    # actions/cache's save happens after the run block, which never sees the path this composite's
+    # own output names, so the build's caller runs actions/cache/save itself when save-key names one.
+    - id: restore
+      if: steps.scope.outputs.file != ''
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       continue-on-error: true
       with:
         path: ${{ steps.scope.outputs.file }}
         key: ${{ steps.scope.outputs.key }}
         restore-keys: ${{ steps.scope.outputs.prefix }}
+
+    - id: save
+      if: steps.scope.outputs.file != ''
+      shell: bash
+      env:
+        KEY: ${{ steps.scope.outputs.key }}
+        HIT: ${{ steps.restore.outputs.cache-hit }}
+      run: |
+        key=
+        if [ "$GITHUB_EVENT_NAME" = push ] && [ "$HIT" != true ]; then key=$KEY; fi
+        echo "key=$key" >> "$GITHUB_OUTPUT"

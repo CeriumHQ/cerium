@@ -25,6 +25,14 @@ runs:
         CERIUM_VERSION: ${{ inputs.version }}
         CERIUM_REACT_COMPILER_CACHE: ${{ steps.react-compiler-cache.outputs.file }}
 
+    - name: Save the React compiler cache
+      if: steps.react-compiler-cache.outputs.save-key != ''
+      continue-on-error: true
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.react-compiler-cache.outputs.file }}
+        key: ${{ steps.react-compiler-cache.outputs.save-key }}
+
     # Bundles the Worker and lists its assets as a deploy would, without deploying, so a Worker that
     # doesn't build or an asset larger than Cloudflare serves fails here instead of at publishing.
     - name: Check the relay deploys

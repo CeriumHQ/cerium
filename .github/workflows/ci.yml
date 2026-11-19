@@ -21,7 +21,8 @@ defaults:
     shell: bash
 
 # The jobs run side by side, the packages without waiting for linting, which the pre-push hook has
-# run already (scripts/pre-push.ts); publishing waits for every check and every package.
+# run already (scripts/pre-push.ts); publishing waits for every check and every package. A commit
+# that only changes documentation is linted but neither tested nor packaged (plan, below).
 jobs:
   # The commit messages, whether anything but documentation changed, and the nightly's version, with
   # the draft release a push's nightly is gathered in.
@@ -52,7 +53,8 @@ jobs:
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
           HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
-      # Commits that only change documentation, which no build reads, are checked but not packaged.
+      # Commits that only change documentation, which no build reads, are linted but neither tested
+      # nor packaged.
       # CHANGELOG.md belongs to the app: What's new shows it.
       - id: changes
         name: Find what changed
@@ -145,6 +147,8 @@ jobs:
 
   test-linux:
     name: Test (Linux)
+    needs: plan
+    if: ${{ needs.plan.outputs.package == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -171,30 +175,10 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  # Run the unit shards and the serial browser project on separate standard Windows runners.
-  test-windows-unit:
-    name: Test (Windows unit ${{ matrix.shard }})
-    runs-on: windows-latest
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: ["1/2", "2/2"]
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup
-      - name: Test unit shard
-        run: bun run test --run --project=unit --shard="$SHARD"
-        env:
-          SHARD: ${{ matrix.shard }}
-          # Use the fast checkout drive and the long path (C:'s temporary path contains RUNNER~1).
-          TEMP: ${{ runner.temp }}
-          TMP: ${{ runner.temp }}
-
-  test-windows-browser:
-    name: Test (Windows browser)
+  test-windows:
+    name: Test (Windows)
+    needs: plan
+    if: ${{ needs.plan.outputs.package == 'true' }}
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
@@ -203,9 +187,10 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
       - id: test
-        name: Test browser project
-        run: bun run test --run --project=browser
+        name: Test
+        run: bun run test --run
         env:
+          # Use the fast checkout drive and the long path (C:'s temporary path contains RUNNER~1).
           TEMP: ${{ runner.temp }}
           TMP: ${{ runner.temp }}
           CERIUM_BROWSER_LOGS: ${{ runner.temp }}/browser-logs
@@ -218,22 +203,6 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  # Keep the Windows status check and release gate tied to the outcome of every test job.
-  test-windows:
-    name: Test (Windows)
-    needs: [test-windows-unit, test-windows-browser]
-    if: ${{ always() }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Require all Windows tests to pass
-        env:
-          UNIT_RESULT: ${{ needs.test-windows-unit.result }}
-          BROWSER_RESULT: ${{ needs.test-windows-browser.result }}
-        run: |
-          printf 'Windows unit shards: %s\nWindows browser: %s\n' "$UNIT_RESULT" "$BROWSER_RESULT"
-          [[ "$UNIT_RESULT" == success && "$BROWSER_RESULT" == success ]]
-
   # macOS: its own shells, case-insensitive disk and processes, on the standard Apple silicon runner,
   # wherever the Mac apps are packaged.
   # It doesn't hold back the nightly yet: the packaged Mac app's smoke test does
@@ -241,7 +210,7 @@ jobs:
   test-macos:
     name: Test (macOS)
     needs: plan
-    if: ${{ needs.plan.outputs.everywhere == 'true' }}
+    if: ${{ needs.plan.outputs.package == 'true' && needs.plan.outputs.everywhere == 'true' }}
     runs-on: macos-15
     timeout-minutes: 20
     steps:
@@ -348,20 +317,20 @@ jobs:
           sentry-dsn: ${{ github.event_name == 'push' && vars.SENTRY_DSN || '' }}
 
   # Both Mac apps are built and smoke-tested on their own processor's standard hosted runner.
+  # Apple silicon builds once and packages both locale sets, halving its use of the scarce macos-15
+  # runner; Intel keeps one job per set, at ~2.5x slower it would become the run's longest job.
   package-macos:
-    name: Package (macOS ${{ matrix.target.arch }}${{ matrix.locales == 'english' && ', English' || '' }})
+    name: Package (macOS ${{ matrix.arch }}${{ matrix.locales == 'english' && ', English' || matrix.locales == 'both' && ', full and English' || '' }})
     needs: plan
     if: ${{ needs.plan.outputs.package == 'true' && needs.plan.outputs.everywhere == 'true' }}
     strategy:
       fail-fast: false
       matrix:
-        locales: [full, english]
-        target:
-          - arch: Arm64
-            runner: macos-15
-          - arch: x64
-            runner: macos-15-intel
-    runs-on: ${{ matrix.target.runner }}
+        include:
+          - { arch: Arm64, runner: macos-15, locales: both }
+          - { arch: x64, runner: macos-15-intel, locales: full }
+          - { arch: x64, runner: macos-15-intel, locales: english }
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     permissions:
       contents: write
