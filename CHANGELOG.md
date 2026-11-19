@@ -8,6 +8,19 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Changed
 
+- A turn's start and end play in order. "Working…" fades into the first activity's header, and that activity's first step follows just after. Streamed replies write in place word by word. When a turn ends, its work folds first, then the changed files and the response details come in, and a follow-up suggestion fades into the message box once that has settled.
+- The message box's trays open and close in one motion that carries their first items. Adding or removing an attachment while the box rests on one line is a single morph. When Send appears during a turn, the controls next to it glide aside. The mention menu, slash menu and thread find bar fade in and out briefly.
+- The approval tray rises with its first request and crossfades between requests in place. Its keyboard shortcuts follow the request in view.
+- Agent plans show a step's completion just before the next step lights up.
+- The inspector opens and closes with its content and crossfades when you switch panels. In narrow windows, the sidebar folds in step with it.
+- Split panes open and close in sync with their neighbours. Closing the active pane moves focus to the remaining pane at once.
+- Tab highlights grow and shrink with the tabs, and neighbouring tabs glide aside while you drag one.
+- Images expand from their thumbnails and shrink back to them on close.
+- Connection and update notices crossfade and resize when their message changes.
+- In the inbox, ticking threads brings in the checkboxes and the selection bar together. After a bulk action, the bar crossfades into its result while the threads fold away.
+- A settings category's highlight and page move together.
+- Welcome steps keep their entrances at a normal pace and respond smoothly to quick Next and Back clicks.
+- With reduced motion turned on, turn details, spawned agents and message box controls appear at once, approval cards skip their highlight ring, and the launch letters fade in together.
 - Desktop packages store Chromium's notices in a losslessly compressed HTML file. Open the full notices offline from Settings → General → About or from the app's resources folder, and download the original HTML from the reader.
 - Local and cloud threads open with saved side-panel state and a recent transcript page. Earlier messages still load on demand, and older versions can still read the original history.
 - Desktop releases download the ONNX WebAssembly runtime the first time you dictate and cache the verified copy for offline use. Dictation still transcribes on your computer and keeps its existing model cache.
@@ -24,6 +37,7 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Added
 
+- Archiving a single thread from the inbox offers Undo at the foot of the list.
 - Composer autocomplete is a beta feature enabled by default. It suggests a short follow-up when the open thread’s lead finishes with a clear next step. Press Tab in the empty composer to edit the suggestion, or type your own message. Suggestions use the thread’s current model.
 
 - macOS builds signed ad hoc can download and install updates in the app. Updates are verified before a helper replaces Cerium after it quits, with the previous app restored if installation fails. An update that couldn't be installed says so, and its staged copy is removed then or on the next start. Install this release manually once to enable the new updater; apps running from a read-only disk image, or that this user can't move, still offer a download in the browser.
