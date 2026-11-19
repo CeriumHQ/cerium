@@ -1,4 +1,6 @@
 import { Button } from "@base-ui/react/button";
+
+import { buttonClass } from "../../components/ui/Button.tsx";
 import { Toggle } from "@base-ui/react/toggle";
 import { ToggleGroup } from "@base-ui/react/toggle-group";
 import type { FileDiff, FilePreview as Preview } from "@cerium/rpc";
@@ -29,6 +31,7 @@ import {
   MenuSeparator,
   MenuTrigger,
 } from "../../components/ui/Menu.tsx";
+import { toggleClassSmall } from "../../components/ui/Segmented.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { remember } from "../../lib/storage.ts";
 import type { MessageBox } from "../composer/messageBox.ts";
@@ -68,8 +71,7 @@ const CONTEXT = 3;
 /** What's read for the diff while another view shows. */
 const noDiff: Atom.Atom<AsyncResult.AsyncResult<FileDiff, unknown>> = Atom.make(AsyncResult.initial());
 
-const toggleClass =
-  "rounded-md px-2 py-0.5 text-meta font-medium text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary max-md:px-2.5 max-md:py-1.5 max-md:text-[14px]";
+const toggleClass = toggleClassSmall;
 
 const iconToggleClass =
   "grid size-7 place-items-center rounded-md text-fg-tertiary transition-colors duration-150 hover:bg-surface-hover hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary max-md:size-10";
@@ -85,10 +87,7 @@ function OutAction({
   onClick: () => void;
 }) {
   return (
-    <Button
-      onClick={onClick}
-      className="flex h-8 items-center gap-1.5 rounded-md border border-line-strong px-3 text-meta text-fg-primary transition-colors hover:bg-surface-hover"
-    >
+    <Button onClick={onClick} className={buttonClass()}>
       <Icon size={13} strokeWidth={1.75} />
       {label}
     </Button>
@@ -422,7 +421,7 @@ export function FileViewer({
             <MenuTrigger>
               <Button
                 aria-label="More"
-                className="grid size-7 place-items-center rounded-md text-fg-tertiary transition-colors duration-150 hover:bg-surface-hover hover:text-fg-secondary active:bg-surface-active data-popup-open:bg-surface-hover max-md:size-10"
+                className="grid size-7 place-items-center rounded-md text-fg-tertiary transition-colors duration-150 hover:bg-surface-hover hover:text-fg-secondary active:bg-surface-active data-popup-open:bg-surface-active max-md:size-10"
               >
                 <Ellipsis size={15} strokeWidth={1.75} />
               </Button>

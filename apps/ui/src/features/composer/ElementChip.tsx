@@ -66,7 +66,7 @@ export function ElementChip({ element }: { element: PickedElement }) {
             <span className="shrink-0 font-mono text-fg-primary">&lt;{element.tag}&gt;</span>
             <span className="shrink-0 text-fg-tertiary tabular-nums">{size(element)}</span>
           </span>
-          <span className="block truncate font-mono text-[11px] text-fg-tertiary" title={element.selector}>
+          <span className="block truncate font-mono text-caption text-fg-tertiary" title={element.selector}>
             {element.selector}
           </span>
         </span>
@@ -89,14 +89,14 @@ export function ElementChip({ element }: { element: PickedElement }) {
                 />
               </div>
             ) : null}
-            <dl className="flex flex-col gap-1 text-[11px] leading-snug">
+            <dl className="flex flex-col gap-1 text-caption leading-snug">
               <Row name="Selector">{element.selector}</Row>
               <Row name="Page">{where(element.url)}</Row>
               <Row name="Size">{size(element)}</Row>
               {detail.length > 0 ? <Row name="Source">{detail.join(" · ")}</Row> : null}
             </dl>
             {styles.length > 0 ? (
-              <details className="mt-1.5 text-[11px]">
+              <details className="mt-1.5 text-caption">
                 <summary className="cursor-default text-fg-tertiary select-none hover:text-fg-secondary">
                   Styles ({styles.length})
                 </summary>
@@ -111,7 +111,7 @@ export function ElementChip({ element }: { element: PickedElement }) {
               </details>
             ) : null}
             {element.html !== "" ? (
-              <details className="mt-1.5 text-[11px]">
+              <details className="mt-1.5 text-caption">
                 <summary className="cursor-default text-fg-tertiary select-none hover:text-fg-secondary">
                   HTML
                 </summary>

@@ -42,7 +42,7 @@ function RowContent({
 }
 
 const rowClass =
-  "flex h-8 w-full cursor-default items-center gap-2 rounded-md px-2 text-left text-meta text-fg-primary outline-none select-none focus-visible:ring-1 focus-visible:ring-focus-ring focus-visible:ring-inset max-md:h-11 max-md:text-[14px]";
+  "flex h-8 w-full cursor-default items-center gap-2 rounded-md px-2 text-left text-meta text-fg-primary outline-none select-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset max-md:h-11 max-md:text-[14px]";
 
 const Empty = ({ children }: { children: ReactNode }) => (
   <p className="px-4 py-6 text-center text-body text-balance text-fg-tertiary max-md:text-[14px]">

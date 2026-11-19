@@ -5,6 +5,13 @@ import { ArrowRight, Bot, CircleSlash, Gauge, MessagesSquare, Square, type Lucid
 import { useState, type ReactNode } from "react";
 
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
+import { buttonClass } from "../../components/ui/Button.tsx";
+import {
+  dialogBackdropClass,
+  dialogDescriptionClass,
+  dialogPopupClass,
+  dialogTitleClass,
+} from "../../components/ui/FormDialog.tsx";
 import { providerName } from "../threads/model.ts";
 import type { LowMeter } from "./handoff.ts";
 
@@ -111,14 +118,14 @@ export function HandoffDialog({
   return (
     <AlertDialog.Root open={handoff !== undefined} onOpenChange={onOpenChange}>
       <AlertDialog.Portal>
-        <AlertDialog.Backdrop className="fixed inset-0 bg-scrim transition-opacity duration-150 data-ending-style:opacity-0 data-starting-style:opacity-0" />
-        <AlertDialog.Popup className="fixed top-[calc(var(--app-top,0px)+var(--app-height,100dvh)/2)] left-1/2 flex max-h-[calc(var(--app-height,100dvh)-2rem)] w-[25rem] max-w-[calc(100vw-2rem)] -translate-1/2 flex-col gap-4 overflow-y-auto overscroll-contain rounded-2xl border border-line-subtle bg-surface-overlay p-5 text-fg-primary shadow-overlay backdrop-blur-2xl transition-[opacity,scale] duration-150 ease-out-soft outline-none data-ending-style:scale-[0.97] data-ending-style:opacity-0 data-starting-style:scale-[0.97] data-starting-style:opacity-0">
+        <AlertDialog.Backdrop className={dialogBackdropClass} />
+        <AlertDialog.Popup className={`${dialogPopupClass("md")} flex flex-col gap-4`}>
           <div className="flex flex-col gap-1.5">
-            <AlertDialog.Title className="flex items-center gap-2 text-reading font-semibold tracking-tight max-md:text-[16px]">
+            <AlertDialog.Title className={`${dialogTitleClass} flex items-center gap-2`}>
               {shown ? <ProviderLogo provider={shown.to} size={16} /> : null}
               <span className="min-w-0 truncate">Continue on {shown?.label}?</span>
             </AlertDialog.Title>
-            <AlertDialog.Description className="text-body leading-relaxed text-fg-secondary max-md:text-[14px]">
+            <AlertDialog.Description className={dialogDescriptionClass}>
               A new {to} session takes over this thread, in the same folder.
             </AlertDialog.Description>
           </div>
@@ -137,14 +144,8 @@ export function HandoffDialog({
             ) : null}
           </ul>
           <div className="flex justify-end gap-2">
-            <AlertDialog.Close className="h-8 rounded-lg border border-line-strong px-3 text-body font-medium text-fg-primary transition-colors hover:bg-surface-hover max-md:h-10 max-md:px-4 max-md:text-[15px]">
-              Cancel
-            </AlertDialog.Close>
-            <Button
-              disabled={moving}
-              onClick={confirm}
-              className="h-8 rounded-lg bg-accent px-3 text-body font-medium text-accent-fg transition-opacity hover:opacity-90 disabled:opacity-50 max-md:h-10 max-md:px-4 max-md:text-[15px]"
-            >
+            <AlertDialog.Close className={buttonClass()}>Cancel</AlertDialog.Close>
+            <Button disabled={moving} onClick={confirm} className={buttonClass({ tone: "primary" })}>
               {moving ? "Handing over…" : `Continue on ${to}`}
             </Button>
           </div>

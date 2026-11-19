@@ -1,4 +1,6 @@
 import type { FileChange } from "@cerium/rpc";
+
+import { dateTime } from "../../../lib/time.ts";
 import { useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
 import { ArrowLeft } from "lucide-react";
@@ -30,7 +32,7 @@ export function CommitView({ root, sha, onBack, onOpenFile }: CommitViewProps) {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex h-9 shrink-0 items-center gap-2 border-b border-line-subtle px-2">
+      <div className="flex h-9 shrink-0 items-center gap-2 border-b border-line-subtle px-2 max-md:h-11">
         <button
           type="button"
           onClick={onBack}
@@ -54,12 +56,7 @@ export function CommitView({ root, sha, onBack, onOpenFile }: CommitViewProps) {
               <p className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-meta text-fg-tertiary max-md:text-[13px]">
                 <span className="truncate">{detail.commit.author}</span>
                 <span aria-hidden>·</span>
-                <time dateTime={new Date(detail.commit.at).toISOString()}>
-                  {new Date(detail.commit.at).toLocaleString(undefined, {
-                    dateStyle: "medium",
-                    timeStyle: "short",
-                  })}
-                </time>
+                <time dateTime={new Date(detail.commit.at).toISOString()}>{dateTime(detail.commit.at)}</time>
               </p>
               <div className="-ml-0.5 flex min-w-0 flex-wrap items-center gap-1">
                 <span className="flex shrink-0 items-center">
@@ -97,7 +94,7 @@ export function CommitView({ root, sha, onBack, onOpenFile }: CommitViewProps) {
                     type="button"
                     onClick={() => onOpenFile(file)}
                     title={file.from === undefined ? file.path : `${file.path}, from ${file.from}`}
-                    className="flex h-7 min-w-0 items-center gap-1.5 rounded-md px-1.5 text-left text-meta outline-none transition-colors select-none hover:bg-surface-hover focus-visible:ring-1 focus-visible:ring-focus-ring focus-visible:ring-inset max-md:h-11 max-md:text-[14px]"
+                    className="flex h-7 min-w-0 items-center gap-1.5 rounded-md px-1.5 text-left text-meta outline-none transition-colors select-none hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset max-md:h-11 max-md:text-[14px]"
                   >
                     <FileIcon path={file.path} className="size-4" />
                     <span className="flex min-w-0 flex-1 items-baseline gap-1.5">

@@ -36,6 +36,7 @@ import { ConfirmDialog } from "../../components/ui/ConfirmDialog.tsx";
 import { DialogButton } from "../../components/ui/FormDialog.tsx";
 import { IconButton } from "../../components/ui/IconButton.tsx";
 import { MenuItem, MenuPopup, MenuRoot, MenuSeparator, MenuTrigger } from "../../components/ui/Menu.tsx";
+import { segmentedTrackClass, toggleClassSmall } from "../../components/ui/Segmented.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { PullStateIcon } from "../github/parts.tsx";
 import { CheckoutChooser, ChooserRow, ViewHeader } from "./CheckoutChooser.tsx";
@@ -71,8 +72,7 @@ const scopes: ReadonlyArray<{ readonly value: Scope; readonly label: string }> =
   { value: "branch", label: "Branch" },
 ];
 
-const toggleClass =
-  "h-6 flex-1 rounded-md px-2 text-meta font-medium whitespace-nowrap text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary";
+const toggleClass = `${toggleClassSmall} h-6 flex-1 whitespace-nowrap`;
 
 const popupClass =
   "flex max-h-[min(var(--available-height),40rem)] w-[26rem] max-w-[calc(100vw-1.5rem)] origin-(--transform-origin) flex-col overflow-hidden rounded-xl border border-line-subtle bg-surface-overlay text-fg-primary shadow-overlay backdrop-blur-2xl transition-[opacity,scale] duration-150 ease-out-soft outline-none data-ending-style:scale-[0.97] data-ending-style:opacity-0 data-starting-style:scale-[0.97] data-starting-style:opacity-0";
@@ -303,7 +303,7 @@ export function WorkspaceStatus({
         >
           <Popover.Trigger
             aria-label="Workspace"
-            className="mr-1 flex h-7 max-w-72 min-w-0 items-center gap-1.5 rounded-md px-2 text-meta text-fg-secondary transition-colors [app-region:no-drag] hover:bg-surface-hover hover:text-fg-primary data-popup-open:bg-surface-selected data-popup-open:text-fg-primary pointer-coarse:h-10 max-md:h-10"
+            className="mr-1 flex h-7 max-w-72 min-w-0 items-center gap-1.5 rounded-md px-2 text-meta text-fg-secondary transition-colors [app-region:no-drag] hover:bg-surface-hover hover:text-fg-primary data-popup-open:bg-surface-active data-popup-open:text-fg-primary pointer-coarse:h-10 max-md:h-10"
           >
             <GitBranch size={13} strokeWidth={1.75} className="shrink-0" />
             {state ? (
@@ -481,7 +481,7 @@ function Overview({
               <MenuTrigger>
                 <Button
                   aria-label="Workspace actions"
-                  className="grid size-7 place-items-center rounded-md text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary data-popup-open:bg-surface-hover data-popup-open:text-fg-primary"
+                  className="grid size-7 place-items-center rounded-md text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary data-popup-open:bg-surface-active data-popup-open:text-fg-primary"
                 >
                   <Ellipsis size={15} strokeWidth={1.75} />
                 </Button>
@@ -542,7 +542,7 @@ function Overview({
               action={
                 setupFailed ? (
                   <NoticeButton disabled={busy} onClick={() => onExecute({ action: "retry_setup" })}>
-                    Retry
+                    Try again
                   </NoticeButton>
                 ) : undefined
               }
@@ -628,7 +628,7 @@ function Overview({
               const next = value[0] as Scope | undefined;
               if (next) onScope(next);
             }}
-            className="flex min-w-0 flex-1 gap-0.5 rounded-lg bg-surface-sunken p-0.5"
+            className={`${segmentedTrackClass} min-w-0 flex-1`}
           >
             {scopes.map((option) => (
               <Toggle key={option.value} value={option.value} className={toggleClass}>
@@ -990,7 +990,7 @@ function Unavailable({ onRetry, onMove }: { onRetry: () => void; onMove: () => v
         </Popover.Description>
       </div>
       <div className="flex justify-end gap-2">
-        <DialogButton onClick={onRetry}>Retry</DialogButton>
+        <DialogButton onClick={onRetry}>Try again</DialogButton>
         <DialogButton tone="primary" onClick={onMove}>
           Choose another…
         </DialogButton>

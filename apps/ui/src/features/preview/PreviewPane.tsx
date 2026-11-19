@@ -280,7 +280,7 @@ export function PreviewPane({
             aria-invalid={refused || undefined}
             spellCheck={false}
             autoComplete="off"
-            className={`h-7 min-w-0 flex-1 rounded-md bg-surface-sunken px-2.5 text-meta text-fg-primary outline-none transition-[box-shadow] placeholder:text-fg-tertiary focus:ring-2 focus:ring-focus-ring disabled:opacity-60 max-md:h-9 max-md:text-[14px] ${
+            className={`h-7 min-w-0 flex-1 rounded-md bg-surface-sunken px-2.5 text-meta text-fg-primary outline-none transition-[box-shadow] placeholder:text-fg-tertiary focus:ring-2 focus:ring-focus-ring disabled:opacity-40 max-md:h-9 max-md:text-[14px] ${
               refused ? "ring-2 ring-error/60" : ""
             }`}
           />

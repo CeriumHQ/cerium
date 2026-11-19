@@ -8,6 +8,7 @@ import { Check, LoaderCircle, Pencil, Search } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { issueChoicesAtom } from "../../backend/issues.ts";
+import { checkBoxClass } from "../../components/ui/Checkbox.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { LabelChip } from "../github/parts.tsx";
@@ -102,12 +103,12 @@ function Row({
   children: ReactNode;
 }) {
   return (
-    <label className="flex w-full cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-left text-body text-fg-primary select-none hover:bg-surface-hover aria-disabled:opacity-60 max-md:py-2.5">
+    <label className="flex w-full cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-left text-body text-fg-primary select-none hover:bg-surface-hover aria-disabled:opacity-40 max-md:py-2.5">
       <Checkbox.Root
         checked={checked}
         disabled={disabled}
         onCheckedChange={onChange}
-        className="grid size-4 shrink-0 place-items-center rounded border border-line-strong outline-none focus-visible:ring-1 focus-visible:ring-focus-ring data-checked:border-transparent data-checked:bg-fg-primary data-checked:text-surface-panel"
+        className={checkBoxClass}
       >
         <Checkbox.Indicator>
           <Check size={11} strokeWidth={2.5} />

@@ -1,5 +1,7 @@
 import type { SpendTotals } from "@cerium/protocol";
 
+import { usd } from "../../lib/format.ts";
+
 // How Settings → Tokens cuts time and words what agents used.
 
 export type SpendRange = "today" | "week" | "month";
@@ -55,10 +57,7 @@ export const cacheShare = (totals: SpendTotals): number | undefined => {
 };
 
 /** Dollars to the cent, as an estimate; a part of a cent that was spent isn't shown as nothing. */
-const dollars = (amount: number): string =>
-  amount > 0 && amount < 0.01
-    ? "<$0.01"
-    : `~${new Intl.NumberFormat(undefined, { style: "currency", currency: "USD" }).format(amount)}`;
+const dollars = (amount: number): string => (amount > 0 && amount < 0.01 ? "<$0.01" : `~${usd(amount)}`);
 
 /**
  * A cost to show. Harnesses price their turns with rates of their own and Cerium adds nothing, so the

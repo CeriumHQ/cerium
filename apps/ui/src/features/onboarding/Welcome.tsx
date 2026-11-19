@@ -230,7 +230,9 @@ export function Welcome({ onDone }: { readonly onDone: () => void }) {
           <header className="relative flex h-10 shrink-0 items-center gap-2 pl-[calc(var(--titlebar-inset)+6px)]">
             {/* The mark that flies to and from the window's: the glass one while hello shows, else this. */}
             <CeriumMark size={18} landing={step !== "hello"} className="text-fg-primary" />
-            <span className="text-body font-medium tracking-tight text-fg-secondary">Cerium</span>
+            <span className="font-display text-body leading-none font-semibold tracking-[0.02em] text-fg-secondary font-stretch-expanded [font-size-adjust:none]">
+              cerium
+            </span>
           </header>
 
           <main ref={setStage} className="relative grid min-h-0 flex-1">
@@ -365,7 +367,7 @@ function ContinueButton({
       onClick={onClick}
       onPointerMove={lean}
       onPointerLeave={settle}
-      className="group flex h-10 items-center gap-2.5 rounded-full bg-accent pr-2 pl-5 text-body font-medium text-accent-fg transition-[translate,opacity] duration-300 ease-out-soft hover:opacity-95 active:opacity-85 motion-reduce:transition-none"
+      className="group flex h-10 items-center gap-2.5 rounded-full bg-accent pr-2 pl-5 text-body font-medium text-accent-fg transition-[translate,opacity] duration-300 ease-out-soft hover:opacity-90 active:opacity-80 motion-reduce:transition-none"
     >
       {children}
       <span className="grid size-6.5 place-items-center rounded-full bg-accent-fg/12 transition-transform duration-300 ease-out-soft group-hover:translate-x-0.5">

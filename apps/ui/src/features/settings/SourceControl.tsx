@@ -1,4 +1,6 @@
 import { Button } from "@base-ui/react/button";
+
+import { buttonClass } from "../../components/ui/Button.tsx";
 import { Select as BaseSelect } from "@base-ui/react/select";
 import type { ProjectInfo } from "@cerium/protocol";
 import { ACTION_NAME_MAX, type ProjectScripts, type ScriptSource } from "@cerium/rpc";
@@ -55,7 +57,8 @@ const borderClass = (invalid: boolean) => (invalid ? "border-error-text" : "bord
 const rowClass =
   "grid grid-cols-[6rem_minmax(0,1fr)_5.5rem] items-center gap-x-2.5 max-sm:grid-cols-[4.5rem_minmax(0,1fr)_1.75rem]";
 
-const messageOf = (error: unknown) => (error instanceof Error ? error.message : "Something went wrong.");
+const messageOf = (error: unknown) =>
+  error instanceof Error ? error.message : "Something went wrong. Try again.";
 
 /**
  * Git and GitHub: the machine's GitHub CLI, which pull requests and issues go through, and a
@@ -145,7 +148,7 @@ export function ProjectSelect({
     <SelectRoot value={shown} onValueChange={(next: string | null) => next !== null && onPick(next)}>
       <BaseSelect.Trigger
         aria-label="Project"
-        className="flex h-7 max-w-56 min-w-0 items-center gap-1.5 rounded-md border border-line-subtle px-2 text-meta text-fg-secondary transition-colors select-none hover:bg-surface-hover hover:text-fg-primary data-popup-open:bg-surface-hover data-popup-open:text-fg-primary"
+        className={`${buttonClass({ size: "sm" })} max-w-56 min-w-0 data-popup-open:bg-surface-active data-popup-open:text-fg-primary`}
       >
         {mark}
         <span className="truncate">{projectName(shown)}</span>
@@ -314,7 +317,7 @@ function ProjectScriptFields({
                   setAdded(nextId);
                   setNextId(nextId + 1);
                 }}
-                className="flex h-6 items-center gap-1 rounded-md px-1.5 text-meta text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
+                className={buttonClass({ tone: "quiet", size: "sm" })}
               >
                 <Plus size={13} strokeWidth={2} />
                 Add
@@ -366,7 +369,7 @@ function ProjectScriptFields({
       ) : null}
 
       <div className="flex min-h-12 flex-wrap items-center gap-x-2 gap-y-1.5 px-4 py-2.5">
-        <Tooltip label="Keeps these on this machine only" side="top">
+        <Tooltip label="Keeps these on this computer only" side="top">
           <RowButton
             tone="primary"
             disabled={!dirty || busy !== undefined || problems.size > 0}

@@ -64,7 +64,7 @@ export function CommentTray({
                       rows={1}
                       placeholder="Add a comment"
                       onChange={(event) => onEdit(comment.id, event.target.value)}
-                      className="mt-1 block max-h-24 w-full resize-none bg-transparent text-body text-fg-primary outline-none [field-sizing:content] placeholder:text-fg-disabled"
+                      className="mt-1 block max-h-24 w-full resize-none bg-transparent text-body text-fg-primary outline-none [field-sizing:content] placeholder:text-fg-tertiary"
                     />
                     {/* Shown at rest on a touch screen, which has no hover to bring it out. */}
                     <button

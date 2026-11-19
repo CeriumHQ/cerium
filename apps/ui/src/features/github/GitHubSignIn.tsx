@@ -1,4 +1,6 @@
 import { Button } from "@base-ui/react/button";
+
+import { buttonClass } from "../../components/ui/Button.tsx";
 import { useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
 import { Check, Copy, ExternalLink, LogIn, RefreshCw } from "lucide-react";
@@ -36,7 +38,7 @@ export function GitHubSignIn({ onSignedIn }: { onSignedIn: () => void }) {
     <div className="flex items-center gap-2">
       <Button
         onClick={() => setAttempt(nextAttempt())}
-        className="flex h-8 w-fit items-center gap-1.5 rounded-lg bg-accent px-3 text-meta font-medium text-accent-fg transition-opacity hover:opacity-90 active:opacity-80"
+        className={`${buttonClass({ tone: "primary" })} w-fit`}
       >
         <LogIn size={13} strokeWidth={2} />
         Sign in to GitHub
@@ -120,7 +122,7 @@ export function GitHubSignInSteps({
           target="_blank"
           rel="noreferrer"
           onClick={copy}
-          className="flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3 font-medium text-accent-fg transition-opacity hover:opacity-90"
+          className={buttonClass({ tone: "primary" })}
         >
           <ExternalLink size={13} strokeWidth={2} />
           Copy and open GitHub
@@ -137,10 +139,7 @@ export function GitHubSignInSteps({
 
 function QuietButton({ onClick, children }: { onClick: () => void; children: string }) {
   return (
-    <Button
-      onClick={onClick}
-      className="flex h-7 shrink-0 items-center rounded-md px-2 text-meta text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
-    >
+    <Button onClick={onClick} className={buttonClass({ tone: "quiet", size: "sm" })}>
       {children}
     </Button>
   );

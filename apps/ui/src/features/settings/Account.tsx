@@ -1,4 +1,6 @@
 import { Button } from "@base-ui/react/button";
+
+import { buttonClass } from "../../components/ui/Button.tsx";
 import { MAX_DEVICE_NAME, type AccountState, type DeviceId, type DeviceInfo } from "@cerium/protocol";
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
@@ -171,7 +173,7 @@ function SignInCard({ account }: { account: Exclude<AccountState, SignedIn> }) {
             <Button
               onClick={begin}
               disabled={starting}
-              className="flex h-8 w-fit shrink-0 items-center gap-1.5 rounded-lg bg-accent px-3 text-meta font-medium text-accent-fg transition-opacity hover:opacity-90 active:opacity-80 disabled:opacity-60"
+              className={`${buttonClass({ tone: "primary" })} w-fit`}
             >
               <LogIn size={13} strokeWidth={2} />
               {starting ? "Opening your browser…" : "Sign in"}
@@ -416,7 +418,7 @@ function DeviceRow({ device, self, live }: { device: DeviceInfo; self: boolean; 
           <MenuTrigger>
             <Button
               aria-label={`More for ${device.name}`}
-              className="grid size-7 shrink-0 place-items-center rounded-md text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-secondary data-popup-open:bg-surface-hover data-popup-open:text-fg-secondary"
+              className="grid size-7 shrink-0 place-items-center rounded-md text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-secondary data-popup-open:bg-surface-active data-popup-open:text-fg-secondary"
             >
               <Ellipsis size={15} strokeWidth={1.75} />
             </Button>

@@ -35,7 +35,7 @@ const severityName: Record<ReviewFinding["severity"], string> = {
 };
 
 const action =
-  "flex h-6 items-center gap-1 rounded-md px-1.5 text-meta text-fg-secondary outline-none transition-colors hover:bg-surface-hover hover:text-fg-primary focus-visible:ring-1 focus-visible:ring-focus-ring disabled:opacity-40 max-md:h-9 max-md:px-2.5 max-md:text-[14px]";
+  "flex h-6 items-center gap-1 rounded-md px-1.5 text-meta text-fg-secondary outline-none transition-colors hover:bg-surface-hover hover:text-fg-primary focus-visible:ring-2 focus-visible:ring-focus-ring disabled:opacity-40 max-md:h-9 max-md:px-2.5 max-md:text-[14px]";
 
 /**
  * What the user does with a review's findings: send one to the thread's agent, in the message box's
@@ -127,7 +127,7 @@ function Snippet({ finding }: { finding: ReviewFinding }) {
   const shown = finding.lines.slice(0, 4);
   if (shown.length === 0) return null;
   return (
-    <pre className="scroll-thin overflow-x-auto rounded-md bg-surface-sunken py-1 font-mono text-[11.5px] leading-[1.55]">
+    <pre className="scroll-thin overflow-x-auto rounded-md bg-surface-sunken py-1 font-mono text-meta leading-relaxed">
       {shown.map((line, index) => (
         <div
           key={index}
@@ -167,7 +167,7 @@ function FindingRow({ placed, actions }: { placed: PlacedFinding; actions: Findi
           <p className="text-body text-fg-primary">
             <Prose text={finding.title} />
           </p>
-          <p className="truncate font-mono text-[11.5px] text-fg-tertiary" title={findingPlace(finding)}>
+          <p className="truncate font-mono text-meta text-fg-tertiary" title={findingPlace(finding)}>
             {findingPlace(finding)}
           </p>
         </div>
@@ -196,7 +196,7 @@ export function FindingComment({ placed, threadId }: { placed: PlacedFinding; th
   return (
     // As wide as the visible view and pinned left, so scrolling sideways never carries it away.
     <div className="sticky left-0 font-sans" style={{ width: "100cqw" }}>
-      <div className="mx-2 my-1.5 flex gap-2.5 rounded-lg border border-line-subtle bg-surface-raised px-3 py-2 shadow-sm">
+      <div className="mx-2 my-1.5 flex gap-2.5 rounded-lg border border-line-subtle bg-surface-raised px-3 py-2 shadow-raised">
         <SeverityDot severity={finding.severity} />
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <div className="flex items-center gap-1.5 text-caption text-fg-tertiary">

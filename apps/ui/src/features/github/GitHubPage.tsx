@@ -18,6 +18,7 @@ import {
   MenuTrigger,
 } from "../../components/ui/Menu.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
+import { buttonClass } from "../../components/ui/Button.tsx";
 import { barButtonClass, SearchBar, SetCount } from "../../components/ui/SearchBar.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { shortAgo } from "../../lib/time.ts";
@@ -42,7 +43,7 @@ const scopeAtom = Atom.make<FeedScope>("open").pipe(Atom.keepAlive);
 const kindAtom = Atom.make<FeedKind>("all").pipe(Atom.keepAlive);
 
 const kindClass =
-  "flex h-6.5 shrink-0 items-center gap-1 rounded-md px-1.5 text-meta font-medium text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-primary data-pressed:bg-surface-selected data-pressed:text-fg-primary max-md:h-9 max-md:px-2.5 max-md:text-sm";
+  "flex h-6.5 shrink-0 items-center gap-1 rounded-md px-1.5 text-meta font-medium text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-primary data-pressed:bg-surface-selected data-pressed:text-fg-primary max-md:h-9 max-md:px-2.5 max-md:text-[14px]";
 
 /**
  * The rail's GitHub page, in the sidebar's place: the open pull requests and issues of every project's
@@ -89,7 +90,7 @@ export function GitHubPageList({
           href={status.installUrl}
           target="_blank"
           rel="noreferrer"
-          className="flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3 text-meta font-medium text-accent-fg transition-opacity hover:opacity-90"
+          className={buttonClass({ tone: "primary" })}
         >
           <ExternalLink size={13} strokeWidth={2} />
           Get GitHub CLI
@@ -104,7 +105,7 @@ export function GitHubPageList({
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-1 px-2 pt-1 pb-2 pl-3.5">
-        <h2 className="text-reading font-semibold text-fg-primary max-md:text-base">GitHub</h2>
+        <h2 className="text-reading font-semibold text-fg-primary max-md:text-[16px]">GitHub</h2>
         <span className="ml-auto" />
         <IconButton icon={RefreshCw} label="Refresh" onClick={refresh} className="max-md:size-10" />
       </div>

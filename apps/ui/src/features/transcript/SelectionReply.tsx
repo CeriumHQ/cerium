@@ -1,4 +1,4 @@
-import { Button } from "@base-ui/react/button";
+import { Button, buttonClass } from "../../components/ui/Button.tsx";
 import { Popover } from "@base-ui/react/popover";
 import { MessageSquareReply } from "lucide-react";
 import { useEffect, useEffectEvent, useRef, useState, type KeyboardEvent, type RefObject } from "react";
@@ -139,27 +139,22 @@ export function SelectionReply({ within }: { within: RefObject<HTMLElement | nul
                   placeholder="Comment on this"
                   onChange={(event) => setText(event.target.value)}
                   onKeyDown={onKeyDown}
-                  className="block max-h-40 min-h-12 w-full resize-none rounded-lg border border-line-subtle bg-surface-raised px-2.5 py-2 text-body outline-none [field-sizing:content] placeholder:text-fg-disabled focus:border-line-strong"
+                  className="block max-h-40 min-h-12 w-full resize-none rounded-lg border border-line-subtle bg-surface-raised px-2.5 py-2 text-body outline-none [field-sizing:content] placeholder:text-fg-tertiary focus:border-line-strong"
                 />
                 <div className="flex items-center justify-end gap-1">
-                  <Popover.Close className="h-7 rounded-md px-2.5 text-meta text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary">
-                    Cancel
-                  </Popover.Close>
-                  <Button
-                    onClick={add}
-                    disabled={text.trim() === ""}
-                    className="h-7 rounded-md bg-accent px-2.5 text-meta font-medium text-accent-fg transition-opacity hover:opacity-90 disabled:opacity-40"
-                  >
+                  <Popover.Close className={buttonClass({ tone: "quiet", size: "sm" })}>Cancel</Popover.Close>
+                  <Button tone="primary" size="sm" onClick={add} disabled={text.trim() === ""}>
                     Add comment
                   </Button>
                 </div>
               </div>
             ) : (
               <Button
+                tone="quiet"
+                size="sm"
                 onClick={() => setWriting(true)}
                 // Pressing it would otherwise clear the selection before the click lands.
                 onPointerDown={(event) => event.preventDefault()}
-                className="flex h-7 items-center gap-1.5 rounded-xl px-2.5 text-meta font-medium text-fg-secondary transition-colors hover:text-fg-primary"
               >
                 <MessageSquareReply size={13} strokeWidth={1.75} />
                 Reply

@@ -115,7 +115,7 @@ function TreeRow({
           }}
           onFocus={() => onFocus(row.path)}
           style={{ paddingLeft: 4 + row.depth * INDENT }}
-          className={`flex h-7 cursor-default items-center gap-1.5 rounded-md pr-2 text-meta outline-none [content-visibility:auto] [contain-intrinsic-size:auto_28px] hover:bg-surface-hover aria-selected:bg-surface-selected focus-visible:ring-1 focus-visible:ring-focus-ring focus-visible:ring-inset data-popup-open:bg-surface-hover max-md:h-11 max-md:text-[14px] max-md:[contain-intrinsic-size:auto_44px] ${
+          className={`flex h-7 cursor-default items-center gap-1.5 rounded-md pr-2 text-meta outline-none [content-visibility:auto] [contain-intrinsic-size:auto_28px] hover:bg-surface-hover aria-selected:bg-surface-selected focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset data-popup-open:bg-surface-active max-md:h-11 max-md:text-[14px] max-md:[contain-intrinsic-size:auto_44px] ${
             changed || touch ? "text-fg-primary" : "text-fg-secondary"
           }`}
         >

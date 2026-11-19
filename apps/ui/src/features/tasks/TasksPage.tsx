@@ -6,6 +6,7 @@ import { useState, type ReactNode } from "react";
 
 import { useCompact } from "../../app/compact.ts";
 import { Disclosure } from "../../components/ui/Disclosure.tsx";
+import { buttonClass } from "../../components/ui/Button.tsx";
 import { IconButton } from "../../components/ui/IconButton.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { shortAgo } from "../../lib/time.ts";
@@ -79,10 +80,8 @@ export function TaskList({
   return (
     <div className="mx-auto flex w-full max-w-[640px] flex-col px-6 pt-10 pb-12 max-md:px-3 max-md:pt-1">
       <header className="mb-5 px-1 max-md:mb-3 max-md:px-1.5">
-        <h1 className="font-display text-[22px] leading-tight font-semibold font-stretch-expanded [font-size-adjust:none] max-md:text-[20px]">
-          Tasks
-        </h1>
-        <p className="mt-0.5 text-body text-fg-tertiary max-md:text-sm">
+        <h1 className="text-heading leading-tight font-semibold tracking-tight">Tasks</h1>
+        <p className="mt-0.5 text-body text-fg-tertiary max-md:text-[14px]">
           {open.length > 0 ? `${open.length} to do` : done.length > 0 ? "All done" : "Nothing to do yet"}
         </p>
       </header>
@@ -191,7 +190,7 @@ function TaskRow({
       />
       <Button
         onClick={onSelect}
-        className="flex h-full min-w-0 flex-1 cursor-default items-center gap-2 self-stretch py-2 pr-3 text-left outline-none"
+        className="flex h-full min-w-0 flex-1 cursor-default items-center gap-2 self-stretch rounded-md py-2 pr-3 text-left focus-visible:-outline-offset-2"
       >
         <span
           className={`min-w-0 flex-1 truncate text-reading max-md:text-[15px] ${
@@ -295,7 +294,7 @@ export function TaskDetail({
               </div>
               <Button
                 onClick={() => onHandOff(task)}
-                className="ml-auto flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-accent px-3 text-meta font-medium text-accent-fg transition-opacity hover:opacity-90 max-md:h-10 max-md:text-sm"
+                className={`${buttonClass({ tone: "primary" })} ml-auto`}
               >
                 Start
                 <ArrowUpRight size={14} strokeWidth={2} />

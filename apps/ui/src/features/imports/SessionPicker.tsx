@@ -7,6 +7,7 @@ import { Check, ChevronRight, Minus } from "lucide-react";
 import { useState } from "react";
 
 import { harnessesAtom, importedThreadsAtom, importSessions } from "../../backend/atoms.ts";
+import { checkBoxClass } from "../../components/ui/Checkbox.tsx";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { shortAgo } from "../../lib/time.ts";
 import { accessLimit, allowedAccess } from "../composer/models.ts";
@@ -129,7 +130,7 @@ function ProjectRow({
           onChange={() => onPick(toggleGroup(group, picked))}
           label={`Import ${group.name}`}
         />
-        <Collapsible.Trigger className="group flex min-w-0 flex-1 items-center gap-2.5 rounded-md text-left outline-none focus-visible:ring-1 focus-visible:ring-line-strong">
+        <Collapsible.Trigger className="group flex min-w-0 flex-1 items-center gap-2.5 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-focus-ring">
           <span className="flex min-w-0 flex-1 flex-col">
             <span className="truncate text-body font-medium text-fg-primary">{group.name}</span>
             <span className="truncate text-meta text-fg-tertiary">
@@ -200,9 +201,9 @@ function Tick({
       disabled={disabled}
       onCheckedChange={onChange}
       aria-label={label}
-      className="group grid size-4 shrink-0 place-items-center rounded-[5px] border border-line-strong outline-none transition-colors focus-visible:border-fg-secondary data-checked:border-accent data-checked:bg-accent data-disabled:opacity-50 data-indeterminate:border-accent data-indeterminate:bg-accent"
+      className={checkBoxClass}
     >
-      <Checkbox.Indicator keepMounted className="text-accent-fg data-unchecked:hidden">
+      <Checkbox.Indicator keepMounted className="data-unchecked:hidden">
         {indeterminate ? <Minus size={10} strokeWidth={3} /> : <Check size={10} strokeWidth={3} />}
       </Checkbox.Indicator>
     </Checkbox.Root>

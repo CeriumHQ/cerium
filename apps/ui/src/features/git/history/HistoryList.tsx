@@ -33,7 +33,7 @@ function CommitRow({ commit, now, onOpen }: { commit: Commit; now: number; onOpe
     <button
       type="button"
       onClick={() => onOpen(commit.sha)}
-      className="flex w-full shrink-0 flex-col gap-0.5 rounded-lg px-2 py-2 text-left outline-none transition-colors select-none hover:bg-surface-hover focus-visible:ring-1 focus-visible:ring-focus-ring focus-visible:ring-inset max-md:py-3"
+      className="flex w-full shrink-0 flex-col gap-0.5 rounded-lg px-2 py-2 text-left outline-none transition-colors select-none hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset max-md:py-3"
     >
       <span className="truncate text-body leading-[18px] text-fg-primary max-md:text-[15px] max-md:leading-5">
         {commit.subject}

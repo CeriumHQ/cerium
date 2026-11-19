@@ -72,6 +72,7 @@
   --accent-strong: oklch(1 0 0);
   --accent-fg: oklch(0.17 0 0);
   --accent-soft: color-mix(in oklab, var(--accent) 11%, transparent);
+  --accent-text: var(--accent);
 
   --selection: color-mix(in oklab, var(--accent) 24%, transparent);
   --focus-ring: color-mix(in oklab, var(--accent) 58%, transparent);
@@ -152,13 +153,14 @@
 
   --fg-primary: oklch(0.18 calc(var(--tint-c) * 0.8) var(--tint-h));
   --fg-secondary: oklch(0.38 calc(var(--tint-c) * 1.2) var(--tint-h));
-  --fg-tertiary: oklch(0.54 calc(var(--tint-c) * 1.2) var(--tint-h));
+  --fg-tertiary: oklch(0.51 calc(var(--tint-c) * 1.2) var(--tint-h));
   --fg-disabled: oklch(0.68 var(--tint-c) var(--tint-h));
 
   --accent: oklch(0.2 0 0);
   --accent-strong: oklch(0.1 0 0);
   --accent-fg: oklch(0.98 0 0);
   --accent-soft: color-mix(in oklab, var(--accent) 9%, transparent);
+  --accent-text: var(--accent);
 
   --selection: color-mix(in oklab, var(--accent) 16%, transparent);
   --focus-ring: color-mix(in oklab, var(--accent) 55%, transparent);
@@ -242,6 +244,7 @@
   --color-accent: var(--accent);
   --color-accent-strong: var(--accent-strong);
   --color-accent-soft: var(--accent-soft);
+  --color-accent-text: var(--accent-text);
   --color-accent-fg: var(--accent-fg);
   --color-scrim: var(--scrim);
 
@@ -278,8 +281,10 @@
   --text-body: 0.8125rem;
   /* What's there to be read, and the headings of panels and sections. */
   --text-reading: 0.875rem;
-  /* A page's or a dialog's title. */
+  /* A dialog's title, and the name beside the mark. */
   --text-title: 1rem;
+  /* A page's heading. */
+  --text-heading: 1.25rem;
 
   /*
    * Motion. What arrives eases out (150ms for a control's own state, 200ms for something that moves

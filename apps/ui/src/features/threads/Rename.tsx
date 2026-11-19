@@ -90,7 +90,7 @@ export function TitleField({
         }
       }}
       onBlur={(event) => finish(event.currentTarget.value, false)}
-      className={`min-w-0 rounded-sm bg-surface-window px-1 text-fg-primary ring-1 ring-line-strong outline-none ${className}`}
+      className={`min-w-0 rounded-md bg-surface-window px-1 text-fg-primary ring-1 ring-line-strong outline-none ${className}`}
     />
   );
 }

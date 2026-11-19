@@ -10,14 +10,15 @@ import { Check, ListFilter } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { issueChoicesAtom } from "../../backend/issues.ts";
+import { checkBoxClass } from "../../components/ui/Checkbox.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { barButtonClass, SetCount } from "../../components/ui/SearchBar.tsx";
+import { segmentedTrackClass, toggleClassSmall } from "../../components/ui/Segmented.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { LabelChip } from "../github/parts.tsx";
 import { filterCount, isFiltered, toggleLabel, withMilestone } from "./model.ts";
 
-const toggleClass =
-  "flex-1 rounded-md px-2 py-1 text-meta font-medium text-fg-tertiary transition-colors duration-150 select-none hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary";
+const toggleClass = `${toggleClassSmall} flex-1`;
 
 const rowClass =
   "flex w-full cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-left text-body text-fg-primary outline-none select-none hover:bg-surface-hover focus-visible:bg-surface-hover";
@@ -38,11 +39,7 @@ function Tick({
 }) {
   return (
     <label className={rowClass}>
-      <Checkbox.Root
-        checked={checked}
-        onCheckedChange={onChange}
-        className="grid size-4 shrink-0 place-items-center rounded border border-line-strong outline-none data-checked:border-transparent data-checked:bg-fg-primary data-checked:text-surface-panel"
-      >
+      <Checkbox.Root checked={checked} onCheckedChange={onChange} className={checkBoxClass}>
         <Checkbox.Indicator>
           <Check size={11} strokeWidth={2.5} />
         </Checkbox.Indicator>
@@ -96,7 +93,7 @@ function FilterForm({
             const next = value[0];
             if (next === "open" || next === "closed" || next === "all") onChange(set({ state: next }));
           }}
-          className="flex items-center rounded-lg bg-surface-sunken p-0.5"
+          className={segmentedTrackClass}
         >
           <Toggle value="open" className={toggleClass}>
             Open

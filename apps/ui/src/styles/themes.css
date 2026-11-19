@@ -186,6 +186,7 @@
   --accent-strong: oklch(0.53 0.2 264);
   --accent-fg: oklch(0.99 0.01 264);
   --accent-soft: color-mix(in oklab, var(--accent) 22%, transparent);
+  --accent-text: oklch(0.8 0.11 264);
   --selection: color-mix(in oklab, var(--accent) 45%, transparent);
   --focus-ring: color-mix(in oklab, var(--accent) 85%, transparent);
 

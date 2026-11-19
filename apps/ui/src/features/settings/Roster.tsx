@@ -204,7 +204,7 @@ function HarnessRoster({
               <MenuTrigger>
                 <Button
                   disabled={disabled}
-                  className="flex h-7 items-center gap-1 rounded-md px-2 text-meta text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary data-disabled:opacity-40 data-popup-open:bg-surface-hover"
+                  className="flex h-7 items-center gap-1 rounded-md px-2 text-meta text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary data-disabled:opacity-40 data-popup-open:bg-surface-active"
                 >
                   <Plus size={13} strokeWidth={1.75} />
                   Add
@@ -225,7 +225,7 @@ function HarnessRoster({
                 <Button
                   aria-label={`More for ${name}`}
                   disabled={disabled}
-                  className="grid size-7 place-items-center rounded-md text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-primary data-disabled:opacity-40 data-popup-open:bg-surface-hover"
+                  className="grid size-7 place-items-center rounded-md text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-primary data-disabled:opacity-40 data-popup-open:bg-surface-active"
                 >
                   <MoreHorizontal size={15} strokeWidth={1.75} />
                 </Button>
@@ -342,7 +342,7 @@ function RosterRow({
               event.preventDefault();
               onStep(event.key === "ArrowUp" ? -1 : 1, "handle");
             }}
-            className="group/handle relative -mr-1 grid h-8 w-6 shrink-0 cursor-grab pointer-coarse:cursor-default place-items-center rounded-md text-fg-tertiary transition-colors outline-none hover:bg-surface-hover hover:text-fg-primary focus-visible:ring-1 focus-visible:ring-focus-ring active:cursor-grabbing data-disabled:cursor-default"
+            className="group/handle relative -mr-1 grid h-8 w-6 shrink-0 cursor-grab pointer-coarse:cursor-default place-items-center rounded-md text-fg-tertiary transition-colors outline-none hover:bg-surface-hover hover:text-fg-primary focus-visible:ring-2 focus-visible:ring-focus-ring active:cursor-grabbing data-disabled:cursor-default"
           >
             <span className="text-meta tabular-nums transition-opacity group-hover/row:opacity-0 group-focus-visible/handle:opacity-0">
               {rank}
@@ -407,7 +407,7 @@ function RosterRow({
                   aria-label={`Move ${model.label} ${label}`}
                   disabled={disabled || end}
                   onClick={() => onStep(by, "button")}
-                  className="grid size-9 place-items-center rounded-md text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary active:bg-surface-active data-disabled:opacity-30"
+                  className="grid size-9 place-items-center rounded-md text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary active:bg-surface-active data-disabled:opacity-40"
                 >
                   <Icon size={16} strokeWidth={1.75} />
                 </Button>

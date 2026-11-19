@@ -1,4 +1,6 @@
 import { Button } from "@base-ui/react/button";
+
+import { buttonClass } from "../../components/ui/Button.tsx";
 import type { GitHubAssociation, GitHubLabel, GitHubReaction, GitHubUser, ReactionKind } from "@cerium/rpc";
 import {
   ChevronDown,
@@ -17,7 +19,7 @@ import { useState, type ReactNode } from "react";
 
 import { MenuItem, MenuPopup, MenuRoot, MenuTrigger } from "../../components/ui/Menu.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
-import { whenAgo } from "../../lib/time.ts";
+import { dateTime, whenAgo } from "../../lib/time.ts";
 import { labelColor, pullStateLabel, type PullStateKind } from "./model.ts";
 
 const pullStateLook: Record<PullStateKind, { icon: LucideIcon; tone: string }> = {
@@ -166,7 +168,7 @@ export function ItemRow({
         if (event.button === 1) onOpen();
       }}
       aria-current={current ? "page" : undefined}
-      className="flex w-full items-start gap-2.5 rounded-lg px-2 py-2 text-left outline-none transition-colors select-none hover:bg-surface-hover focus-visible:ring-1 focus-visible:ring-focus-ring focus-visible:ring-inset aria-[current=page]:bg-surface-selected max-md:py-3"
+      className="flex w-full items-start gap-2.5 rounded-lg px-2 py-2 text-left outline-none transition-colors select-none hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-inset aria-[current=page]:bg-surface-selected max-md:py-3"
     >
       <span className="grid h-[18px] shrink-0 place-items-center max-md:h-5">{icon}</span>
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -224,7 +226,7 @@ export function ViewerTitle({
 }) {
   return (
     <div className="flex flex-col gap-2.5">
-      <h1 className="text-[20px] leading-snug font-semibold tracking-tight text-pretty text-fg-primary max-md:text-[19px]">
+      <h1 className="text-heading leading-snug font-semibold tracking-tight text-pretty text-fg-primary max-md:text-[19px]">
         {title} <span className="font-normal text-fg-tertiary tabular-nums">#{number}</span>
       </h1>
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-body leading-6 text-fg-tertiary max-md:text-[14px]">
@@ -269,7 +271,7 @@ export function StartThreadButton({
           aria-label="Start thread"
           disabled={disabled}
           onClick={() => onStart(worktrees)}
-          className={`flex h-7 items-center gap-1.5 border border-line-strong px-2 text-meta font-medium text-fg-primary transition-colors hover:bg-surface-hover disabled:opacity-40 max-md:h-10 max-md:px-3 ${worktrees ? "rounded-l-md border-r-0" : "rounded-md"}`}
+          className={`${buttonClass({ size: "sm" })} ${worktrees ? "rounded-r-none border-r-0" : ""}`}
         >
           <MessageSquarePlus size={13} strokeWidth={1.75} className="shrink-0 max-md:size-4" />
           <span className="max-md:hidden">Start thread</span>
@@ -281,7 +283,7 @@ export function StartThreadButton({
             <Button
               aria-label="Where the thread starts"
               disabled={disabled}
-              className="grid h-7 w-6 place-items-center rounded-r-md border border-line-strong text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-primary disabled:opacity-40 data-popup-open:bg-surface-hover max-md:h-10 max-md:w-8"
+              className="grid h-7 w-6 place-items-center rounded-r-md border border-line-strong text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-primary disabled:opacity-40 data-popup-open:bg-surface-active max-md:h-10 max-md:w-8"
             >
               <ChevronDown size={13} strokeWidth={2} />
             </Button>
@@ -340,7 +342,7 @@ export function CommentBox({
           aria-label="Comment"
           spellCheck
           disabled={disabled}
-          className="scroll-thin max-h-72 min-h-16 w-full resize-none bg-transparent px-3.5 pt-3 pb-1 text-body leading-relaxed text-fg-primary outline-none [field-sizing:content] placeholder:text-fg-tertiary disabled:opacity-60 max-md:text-[15px]"
+          className="scroll-thin max-h-72 min-h-16 w-full resize-none bg-transparent px-3.5 pt-3 pb-1 text-body leading-relaxed text-fg-primary outline-none [field-sizing:content] placeholder:text-fg-tertiary disabled:opacity-40 max-md:text-[15px]"
         />
         <div className="flex flex-wrap items-center justify-end gap-1.5 p-2">{children}</div>
       </div>
@@ -368,7 +370,7 @@ export function MoreMenu({ children }: { children: ReactNode }) {
         <MenuTrigger>
           <Button
             aria-label="More"
-            className="grid size-7 place-items-center rounded-md text-fg-tertiary transition-colors duration-150 hover:bg-surface-hover hover:text-fg-secondary active:bg-surface-active data-popup-open:bg-surface-hover max-md:size-10 max-md:shrink-0"
+            className="grid size-7 place-items-center rounded-md text-fg-tertiary transition-colors duration-150 hover:bg-surface-hover hover:text-fg-secondary active:bg-surface-active data-popup-open:bg-surface-active max-md:size-10 max-md:shrink-0"
           >
             <Ellipsis size={15} strokeWidth={1.75} />
           </Button>
@@ -413,8 +415,7 @@ export function PersonChip({ user, children }: { user: GitHubUser | undefined; c
   );
 }
 
-const fullDate = (at: number) =>
-  new Date(at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+const fullDate = dateTime;
 
 /** When something happened, as people say it, the exact time on hover. */
 export function When({ at, className }: { at: number; className?: string }) {

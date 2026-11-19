@@ -8,6 +8,7 @@ import type { Question, QuestionResponse } from "@cerium/protocol";
 import { Ban, Check, MessageCircleQuestionMark, X } from "lucide-react";
 import { useEffect, useState, type KeyboardEvent, type ReactNode } from "react";
 
+import { checkMarkClass } from "../../components/ui/Checkbox.tsx";
 import { InfoTip } from "../../components/ui/InfoTip.tsx";
 import { approvalShell, primary, quiet } from "../agents/ApprovalParts.tsx";
 import type { QuestionResolution } from "../transcript/model.ts";
@@ -34,13 +35,13 @@ const row =
 
 /** The ring or box before an option, filled once the option is picked. */
 const mark =
-  "mt-[3px] grid size-3.5 shrink-0 place-items-center border border-line-strong transition-colors group-data-checked:border-accent group-data-checked:bg-accent group-focus-visible:border-fg-secondary";
+  "mt-[3px] grid size-3.5 shrink-0 place-items-center border border-line-strong transition-colors group-data-checked:border-accent group-data-checked:bg-accent group-focus-visible:ring-2 group-focus-visible:ring-focus-ring";
 
 function OptionText({ label, description }: { label: string; description: string | undefined }) {
   const { name, recommended } = optionName(label);
   return (
     <span className="flex min-w-0 flex-col gap-0.5">
-      <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-body leading-[1.35] text-fg-primary max-md:text-[14px]">
+      <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-body leading-snug text-fg-primary max-md:text-[14px]">
         {name}
         {recommended ? (
           <span className="rounded-sm bg-accent-soft px-1.5 text-caption font-medium text-fg-secondary">
@@ -49,7 +50,7 @@ function OptionText({ label, description }: { label: string; description: string
         ) : null}
       </span>
       {description ? (
-        <span className="text-meta leading-[1.45] text-fg-tertiary max-md:text-[13px]">{description}</span>
+        <span className="text-meta leading-normal text-fg-tertiary max-md:text-[13px]">{description}</span>
       ) : null}
     </span>
   );
@@ -82,7 +83,7 @@ function OwnWords({
         rows={2}
         aria-label="Your answer"
         placeholder="Your answer"
-        className="field-sizing-content max-h-40 min-h-16 w-full resize-none rounded-md border border-line-subtle bg-surface-window px-3 py-2 text-body leading-[1.5] text-fg-primary outline-none placeholder:text-fg-tertiary focus:border-line-strong max-md:text-[14px]"
+        className="field-sizing-content max-h-40 min-h-16 w-full resize-none rounded-md border border-line-subtle bg-surface-window px-3 py-2 text-body leading-normal text-fg-primary outline-none placeholder:text-fg-tertiary focus:border-line-strong max-md:text-[14px]"
       />
     );
   }
@@ -135,7 +136,7 @@ function QuestionBody({
   ) : null;
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-reading leading-[1.4] font-semibold break-words whitespace-pre-wrap text-fg-primary select-text max-md:text-[15px]">
+      <p className="text-reading leading-snug font-semibold break-words whitespace-pre-wrap text-fg-primary select-text max-md:text-[15px]">
         {question.question}
         {question.multiSelect && question.options.length > 1 ? (
           <span className="font-normal text-fg-tertiary"> · pick any</span>
@@ -154,8 +155,8 @@ function QuestionBody({
               onCheckedChange={() => onChange(pick(question, draft, option.label))}
               className={row}
             >
-              <span className={`${mark} rounded-[4px]`}>
-                <Checkbox.Indicator className="text-accent-fg data-unchecked:hidden">
+              <span className={`${checkMarkClass} mt-[3px]`}>
+                <Checkbox.Indicator className="data-unchecked:hidden">
                   <Check size={10} strokeWidth={3} />
                 </Checkbox.Indicator>
               </span>
@@ -191,7 +192,7 @@ function QuestionBody({
 }
 
 const tab =
-  "flex h-6 items-center gap-1 rounded-md px-2 text-meta font-medium text-fg-tertiary transition-colors outline-none select-none hover:text-fg-secondary focus-visible:ring-1 focus-visible:ring-line-strong data-active:bg-surface-selected data-active:text-fg-primary max-md:h-8 max-md:px-2.5 max-md:text-[13px]";
+  "flex h-6 items-center gap-1 rounded-md px-2 text-meta font-medium text-fg-tertiary transition-colors outline-none select-none hover:text-fg-secondary focus-visible:ring-2 focus-visible:ring-focus-ring data-active:bg-surface-selected data-active:text-fg-primary max-md:h-8 max-md:px-2.5 max-md:text-[13px]";
 
 /** Ticks once a minute, so a card left open notices when its agent goes cold. */
 function useMinute() {
@@ -353,7 +354,7 @@ export function ClosedQuestions({
         <span className="shrink-0">
           {outcome === "dismissed" ? "Question skipped" : "Not answered before the agent stopped"}
         </span>
-        <span className="text-fg-disabled">·</span>
+        <span className="text-fg-tertiary">·</span>
         <span className="truncate">{first?.header ?? first?.question}</span>
       </div>
     );
@@ -367,8 +368,8 @@ export function ClosedQuestions({
       <dl className="ml-[5px] flex flex-col gap-2 border-l border-line-strong pl-3.5">
         {questions.map((question, at) => (
           <div key={at} className="flex flex-col gap-0.5">
-            <dt className="text-meta leading-[1.45] text-fg-tertiary select-text">{question.question}</dt>
-            <dd className="text-body leading-[1.45] break-words whitespace-pre-wrap text-fg-primary select-text">
+            <dt className="text-meta leading-normal text-fg-tertiary select-text">{question.question}</dt>
+            <dd className="text-body leading-normal break-words whitespace-pre-wrap text-fg-primary select-text">
               {answerLine(resolution?.answers?.[at])}
             </dd>
           </div>

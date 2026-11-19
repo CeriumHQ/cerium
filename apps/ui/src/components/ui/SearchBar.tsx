@@ -7,14 +7,29 @@ import { IconButton } from "./IconButton.tsx";
 export const barButtonClass =
   "relative grid size-7 shrink-0 place-items-center rounded-md transition-colors duration-150 hover:bg-surface-hover hover:text-fg-secondary data-popup-open:bg-surface-active data-popup-open:text-fg-primary max-md:size-10";
 
-/** How many filters are set, as a small count on the corner of the button that sets them. */
-export function SetCount({ count }: { count: number }) {
-  if (count === 0) return null;
+/** A small count on the corner of a control. */
+export function CountBadge({
+  count,
+  tone = "accent",
+  className,
+}: {
+  count: number;
+  tone?: "accent" | "neutral";
+  className?: string;
+}) {
   return (
-    <span className="absolute -top-0.5 -right-0.5 grid h-3.5 min-w-3.5 place-items-center rounded-full bg-accent px-0.5 text-[9px] font-semibold text-accent-fg tabular-nums">
+    <span
+      className={`absolute -top-0.5 -right-0.5 grid h-3.5 min-w-3.5 place-items-center rounded-full px-1 text-[9px] leading-none font-semibold tabular-nums ${tone === "accent" ? "bg-accent text-accent-fg" : "bg-surface-selected text-fg-primary"} ${className ?? ""}`}
+    >
       {count}
     </span>
   );
+}
+
+/** How many filters are set, as a small count on the corner of the button that sets them. */
+export function SetCount({ count }: { count: number }) {
+  if (count === 0) return null;
+  return <CountBadge count={count} />;
 }
 
 /**
@@ -27,6 +42,7 @@ export function SearchBar({
   onChange,
   placeholder,
   label = placeholder,
+  flush = false,
   children,
 }: {
   value: string;
@@ -34,10 +50,14 @@ export function SearchBar({
   placeholder: string;
   /** The field's accessible name, the placeholder unless it says more. */
   label?: string;
+  /** Sits inside a card that draws its own edge, so the bar's bottom border goes. */
+  flush?: boolean;
   children?: ReactNode;
 }) {
   return (
-    <div className="flex h-9 shrink-0 items-center gap-0.5 border-b border-line-subtle pr-1.5 pl-3 max-md:h-12">
+    <div
+      className={`flex h-9 shrink-0 items-center gap-0.5 pr-1.5 pl-3 max-md:h-12 ${flush ? "" : "border-b border-line-subtle"}`}
+    >
       <label className="flex h-full min-w-0 flex-1 items-center gap-2 text-fg-tertiary">
         <Search size={13} strokeWidth={1.75} className="shrink-0" aria-hidden="true" />
         <input

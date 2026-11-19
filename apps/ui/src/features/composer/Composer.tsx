@@ -1160,7 +1160,7 @@ export function Composer({
   const sendPops = turned || (running && sendPhase === "entering");
   // The glass can change rows as the draft clears. Send still fades from a full disc in the new row.
   const sendMotion = leavingSend
-    ? "scale-[0.85] opacity-0 transition-[opacity,scale,filter] duration-140 ease-in-soft starting:scale-100 starting:opacity-100"
+    ? "scale-[0.85] opacity-0 transition-[opacity,scale,filter] duration-150 ease-in-soft starting:scale-100 starting:opacity-100"
     : `transition-[opacity,scale,filter,background-color] group-hover:opacity-90 group-active:scale-95 group-disabled:opacity-100 ${sendPops ? "swap-in" : ""}`;
   const sendButton = (
     <Tooltip

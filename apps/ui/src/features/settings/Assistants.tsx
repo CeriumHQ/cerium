@@ -1,4 +1,6 @@
 import { Button } from "@base-ui/react/button";
+
+import { buttonClass } from "../../components/ui/Button.tsx";
 import { defaultSettings, type AccessMode, type ConnectedAssistant } from "@cerium/protocol";
 import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
@@ -168,7 +170,7 @@ function ConnectedSection() {
                 setCopied(true);
                 setTimeout(() => setCopied(false), 1500);
               }}
-              className="flex h-7 items-center gap-1.5 rounded-md border border-line-subtle px-2.5 text-meta text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
+              className={buttonClass({ size: "sm" })}
             >
               {copied ? <Check size={13} strokeWidth={1.75} /> : <Copy size={13} strokeWidth={1.75} />}
               {copied ? "Copied" : "Copy"}

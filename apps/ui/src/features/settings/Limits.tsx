@@ -1,4 +1,6 @@
 import { Button } from "@base-ui/react/button";
+
+import { buttonClass } from "../../components/ui/Button.tsx";
 import type { ProviderUsage, UsageMeter, UsageSnapshot } from "@cerium/protocol";
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
@@ -357,10 +359,7 @@ function NoSubscriptions({ onOpenHarnesses }: { onOpenHarnesses?: () => void }) 
 
 function LinkButton({ onClick, children }: { onClick: () => void; children: ReactNode }) {
   return (
-    <Button
-      onClick={onClick}
-      className="mt-1.5 flex h-7 w-fit items-center rounded-md border border-line-subtle px-2.5 text-meta text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
-    >
+    <Button onClick={onClick} className={`${buttonClass({ size: "sm" })} mt-1.5 w-fit`}>
       {children}
     </Button>
   );

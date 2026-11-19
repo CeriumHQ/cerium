@@ -181,9 +181,9 @@ export function Notice({
           type="button"
           onClick={onDismiss}
           aria-label="Dismiss"
-          className={`grid place-items-center rounded text-fg-tertiary hover:bg-surface-hover hover:text-fg-secondary ${dismissSlot} ${kind === undefined ? "" : "absolute top-2 right-4"} ${dismissible ? "" : "invisible"}`}
+          className={`relative grid place-items-center rounded text-fg-tertiary hover:bg-surface-hover hover:text-fg-secondary max-md:after:absolute max-md:after:-inset-2 ${dismissSlot} ${kind === undefined ? "" : "absolute top-2 right-4"} ${dismissible ? "" : "invisible"}`}
         >
-          <X size={12} />
+          <X size={12} strokeWidth={1.75} />
         </button>
       ) : null}
     </div>
@@ -214,7 +214,11 @@ function NoticeBody({ tone, clamp, children }: { tone: NoticeTone; clamp: boolea
           size={13}
           strokeWidth={2}
           className={
-            tone === "error" ? "text-error-text" : tone === "update" ? "text-accent" : "text-attention-text"
+            tone === "error"
+              ? "text-error-text"
+              : tone === "update"
+                ? "text-accent-text"
+                : "text-attention-text"
           }
         />
       </span>

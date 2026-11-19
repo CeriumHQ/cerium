@@ -18,6 +18,12 @@ const MINUTE = 60_000;
 const DAY = 86_400_000;
 const relative = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
 
+export const clockTime = (at: number): string =>
+  new Date(at).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+
+export const dateTime = (at: number): string =>
+  new Date(at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+
 /** When something happened, as people say it: "just now", "5 minutes ago", "yesterday", "on 12 Oct". */
 export const whenAgo = (at: number, now = Date.now()): string => {
   const elapsed = Math.max(0, now - at);

@@ -33,7 +33,7 @@ export interface Background {
 const KIND_ICONS = { command: SquareTerminal, agent: Bot, monitor: Radio, other: Workflow } as const;
 
 const iconButton =
-  "grid size-6 shrink-0 place-items-center rounded-md text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-primary disabled:pointer-events-none disabled:opacity-50";
+  "grid size-6 shrink-0 place-items-center rounded-md text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-primary disabled:pointer-events-none disabled:opacity-40";
 
 /** A task's command line reads as code; a description in words, as text. */
 const readsAsCommand = (task: BackgroundTask) => task.kind === "command" && task.command === undefined;

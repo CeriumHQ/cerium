@@ -1,4 +1,6 @@
 import { Button } from "@base-ui/react/button";
+
+import { buttonClass } from "../../components/ui/Button.tsx";
 import type { DiffHunk, ReviewThread } from "@cerium/rpc";
 import { ChevronRight } from "lucide-react";
 import { useState } from "react";
@@ -162,7 +164,7 @@ function ThreadFooter({ thread, actions }: { thread: ReviewThread; actions: Pull
       <div className="flex items-center gap-2 border-t border-line-subtle px-3 py-2">
         <Button
           onClick={() => setWriting(true)}
-          className="flex h-8 min-w-0 flex-1 items-center rounded-lg border border-line-subtle bg-surface-window px-2.5 text-left text-meta text-fg-tertiary transition-colors hover:border-line-strong"
+          className={`${buttonClass()} min-w-0 flex-1 justify-start text-left font-normal text-fg-tertiary`}
         >
           Reply…
         </Button>
@@ -190,7 +192,7 @@ function ThreadFooter({ thread, actions }: { thread: ReviewThread; actions: Pull
         aria-label="Reply"
         spellCheck
         disabled={actions.busy === "reply"}
-        className="max-h-60 min-h-16 w-full resize-none rounded-lg border border-line-strong bg-transparent px-2.5 py-2 text-body leading-relaxed text-fg-primary outline-none [field-sizing:content] placeholder:text-fg-tertiary focus-visible:border-fg-tertiary disabled:opacity-60"
+        className="max-h-60 min-h-16 w-full resize-none rounded-lg border border-line-strong bg-transparent px-2.5 py-2 text-body leading-relaxed text-fg-primary outline-none [field-sizing:content] placeholder:text-fg-tertiary focus-visible:border-fg-tertiary disabled:opacity-40"
       />
       {actions.error === undefined || actions.busy !== undefined ? null : (
         <p role="alert" className="text-meta text-error-text">

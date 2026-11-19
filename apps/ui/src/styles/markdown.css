@@ -93,7 +93,7 @@
 
   /* Inline code at the text's own size: monospace at full size towers over the words around it. */
   :where([data-md="inline-code"]) {
-    border-radius: 0.3125rem;
+    border-radius: 0.25rem;
     background: color-mix(in oklab, var(--fg-primary) 8%, transparent);
     padding: 0.1em 0.35em;
     font-family: var(--font-mono);
@@ -151,7 +151,7 @@
     --alert: var(--status-running);
     --alert-text: var(--status-running-text);
     border: 1px solid color-mix(in oklab, var(--alert) 17%, transparent);
-    border-radius: 0.625rem;
+    border-radius: 0.5rem;
     background: color-mix(in oklab, var(--alert) 7%, transparent);
     padding: 0.65em 0.95em 0.75em;
   }
@@ -196,7 +196,7 @@
   .md :where([data-md="code-block"]) {
     overflow: hidden;
     border: 1px solid var(--line-subtle);
-    border-radius: 0.625rem;
+    border-radius: 0.5rem;
     background: var(--surface-sunken);
   }
   .md :where(:not([data-md="code-block"]) + [data-md="code-block"], [data-md="code-block"] + *) {
@@ -235,13 +235,13 @@
     max-width: 100%;
     max-height: 28rem;
     border: 1px solid var(--line-subtle);
-    border-radius: 0.625rem;
+    border-radius: 0.5rem;
   }
 
   .md :where(kbd) {
     border: 1px solid var(--line-strong);
     border-bottom-width: 2px;
-    border-radius: 0.3125rem;
+    border-radius: 0.25rem;
     padding: 0 0.35em;
     font-family: var(--font-sans);
     font-size: 0.86em;

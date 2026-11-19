@@ -125,7 +125,7 @@ export function HistoryWindow<A extends { readonly id: string }>({
     }
   };
   const button =
-    "self-center rounded-md px-3 py-2 text-meta text-fg-secondary hover:bg-surface-hover disabled:opacity-50";
+    "self-center rounded-md px-3 py-2 text-meta text-fg-secondary hover:bg-surface-hover disabled:opacity-40";
   return (
     <>
       {history?.loadError ? (

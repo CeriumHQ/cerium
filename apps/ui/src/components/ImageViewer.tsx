@@ -710,7 +710,7 @@ function Stage({
         }`}
       >
         <div
-          className={`absolute inset-0 ${eased ? "transition-transform duration-240 ease-out-soft" : ""}`}
+          className={`absolute inset-0 ${eased ? "transition-transform duration-200 ease-out-soft" : ""}`}
           style={{ transform: `translateX(${offset}px)` }}
         >
           {images.map((each, at) =>
@@ -774,7 +774,7 @@ function Stage({
 }
 
 const chromeButton =
-  "grid size-9 shrink-0 place-items-center rounded-full border border-line-subtle bg-surface-raised text-fg-secondary shadow-raised backdrop-blur-xl transition-[color,opacity] duration-150 outline-none hover:text-fg-primary focus-visible:ring-2 focus-visible:ring-accent";
+  "grid size-9 shrink-0 place-items-center rounded-full border border-line-subtle bg-surface-raised text-fg-secondary shadow-raised backdrop-blur-xl transition-[color,opacity] duration-150 outline-none hover:text-fg-primary focus-visible:ring-2 focus-visible:ring-focus-ring";
 
 /** The way to the previous or next image beside it, for a mouse; a finger swipes. */
 function ChromeArrow({

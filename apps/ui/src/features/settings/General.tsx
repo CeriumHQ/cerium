@@ -1,5 +1,7 @@
 import { SLIM_AFTER_DAYS, type SlimThreadsAfter } from "@cerium/protocol";
 import { Button } from "@base-ui/react/button";
+
+import { buttonClass } from "../../components/ui/Button.tsx";
 import { Progress } from "@base-ui/react/progress";
 import { useAtom, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
@@ -67,10 +69,7 @@ export function GeneralSettings() {
     <SettingsPage
       title="General"
       action={
-        <Button
-          onClick={() => openWelcome(true)}
-          className="flex h-7 items-center rounded-md px-2 text-meta text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
-        >
+        <Button onClick={() => openWelcome(true)} className={buttonClass({ tone: "quiet", size: "sm" })}>
           Welcome tour
         </Button>
       }
@@ -151,7 +150,7 @@ function AutocompleteRow() {
       label={
         <span className="flex items-center gap-2">
           Autocomplete
-          <span className="rounded-[5px] border border-line-subtle px-1.5 text-caption leading-[1.4] text-fg-tertiary">
+          <span className="rounded-[5px] border border-line-subtle px-1.5 text-caption leading-snug text-fg-tertiary">
             Beta
           </span>
         </span>
@@ -605,17 +604,14 @@ function UpdatesSection({ updates }: { updates: Updates }) {
             ) : null}
           </div>
           <span className="flex shrink-0 items-center gap-1.5">
-            <Button
-              onClick={() => openWhatsNew(true)}
-              className="flex h-7 items-center rounded-md px-2 text-meta text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary"
-            >
+            <Button onClick={() => openWhatsNew(true)} className={buttonClass({ tone: "quiet", size: "sm" })}>
               What's new
             </Button>
             {status.kind === "current" || status.kind === "unreachable" || status.kind === "checking" ? (
               <Button
                 onClick={() => void bridge?.checkForUpdates?.()}
                 disabled={status.kind === "checking"}
-                className="flex h-7 items-center gap-1.5 rounded-md border border-line-subtle px-2.5 text-meta font-medium text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary disabled:pointer-events-none disabled:opacity-60"
+                className={buttonClass({ size: "sm" })}
               >
                 <RefreshCw
                   size={12}

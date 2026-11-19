@@ -1,4 +1,6 @@
 import { Button } from "@base-ui/react/button";
+
+import { buttonClass } from "../../components/ui/Button.tsx";
 import { Switch } from "@base-ui/react/switch";
 import { useAtomValue } from "@effect/atom-react";
 import { Monitor, RefreshCw } from "lucide-react";
@@ -7,6 +9,7 @@ import { createContext, use, useId, type ReactNode } from "react";
 import { machineAtom } from "../../backend/machine.ts";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { keyCaps } from "../../lib/keys.ts";
+import { clockTime } from "../../lib/time.ts";
 
 /** The sidebar heading over the page's title and whether the page settles in on its own. */
 export const SettingsPageContext = createContext<{ group?: string | undefined; enter: boolean }>({
@@ -58,7 +61,7 @@ export function SettingsPage({
           {group ? <span className="text-meta text-fg-tertiary max-md:hidden">{group}</span> : null}
           {/* The title is hidden there, so the row stays only for what sits beside it. */}
           <div className={`flex min-h-7 items-center gap-2.5 ${badge || action ? "" : "max-md:hidden"}`}>
-            <h1 className="flex items-center gap-2 text-[20px] font-semibold tracking-tight text-fg-primary max-md:hidden">
+            <h1 className="flex items-center gap-2 text-heading font-semibold tracking-tight text-fg-primary max-md:hidden">
               {title}
             </h1>
             {badge}
@@ -114,14 +117,10 @@ export function RefreshAction({
     <div className="flex items-center gap-3">
       {updatedAt ? (
         <span className="text-meta text-fg-tertiary tabular-nums max-sm:hidden">
-          Updated {new Date(updatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+          Updated {clockTime(updatedAt)}
         </span>
       ) : null}
-      <Button
-        onClick={onRefresh}
-        disabled={checking}
-        className="flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-line-subtle px-2.5 text-meta text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary disabled:text-fg-tertiary"
-      >
+      <Button onClick={onRefresh} disabled={checking} className={buttonClass({ size: "sm" })}>
         <RefreshCw size={13} strokeWidth={1.75} className={checking ? "animate-spin" : ""} />
         {checking ? "Checking…" : "Refresh"}
       </Button>

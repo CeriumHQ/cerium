@@ -92,10 +92,10 @@ ${place.join(" · ")}`
         }
         className={
           card
-            ? `grid w-full grid-cols-[18px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-0.5 rounded-lg px-2 pt-2 pb-2.25 text-left text-body transition-colors duration-150 data-popup-open:bg-surface-hover max-md:gap-x-3 max-md:rounded-xl max-md:px-2.5 max-md:py-2.5 max-md:text-[15px] ${moreRoom} ${
+            ? `grid w-full grid-cols-[18px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-0.5 rounded-lg px-2 pt-2 pb-2.25 text-left text-body transition-colors duration-150 data-popup-open:bg-surface-active max-md:gap-x-3 max-md:rounded-xl max-md:px-2.5 max-md:py-2.5 max-md:text-[15px] ${moreRoom} ${
                 selected ? "bg-surface-selected text-fg-primary" : "text-fg-secondary hover:bg-surface-hover"
               }`
-            : `flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-body transition-colors duration-150 data-popup-open:bg-surface-hover max-md:h-11 max-md:gap-3 max-md:rounded-lg max-md:text-[15px] ${moreRoom} ${
+            : `flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-body transition-colors duration-150 data-popup-open:bg-surface-active max-md:h-11 max-md:gap-3 max-md:rounded-lg max-md:text-[15px] ${moreRoom} ${
                 selected
                   ? "bg-surface-selected text-fg-primary"
                   : "text-fg-secondary hover:bg-surface-hover hover:text-fg-primary"

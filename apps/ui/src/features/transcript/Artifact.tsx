@@ -37,6 +37,7 @@ import { useContext, useEffect, useRef, useState, useSyncExternalStore } from "r
 
 import { artifactFilesAtom, renderArtifact, type ArtifactFile } from "../../backend/files.ts";
 import { shellBridge } from "../../backend/shell.ts";
+import { dialogBackdropClass } from "../../components/ui/FormDialog.tsx";
 import { MenuItem, MenuPopup, MenuRoot, MenuTrigger } from "../../components/ui/Menu.tsx";
 import { useMessageBox } from "../composer/messageBox.ts";
 import { artifactFileName, download, openInTab } from "./artifactExport.ts";
@@ -223,10 +224,10 @@ export function ArtifactDialog({
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Backdrop className="fixed inset-0 bg-scrim backdrop-blur-sm transition-opacity duration-150 data-ending-style:opacity-0 data-starting-style:opacity-0" />
+        <Dialog.Backdrop className={dialogBackdropClass} />
         {/* A phone gives the page nearly all of the screen: its own margins would leave the artifact about 190 px at 320. */}
         <Dialog.Popup className="fixed top-[calc(var(--app-top,0px)+var(--app-height,100dvh)/2)] left-1/2 flex h-[calc(var(--app-height,100dvh)-4rem)] w-[min(72rem,calc(100vw-4rem))] -translate-1/2 flex-col overflow-hidden rounded-2xl max-md:h-[calc(var(--app-height,100dvh)-1rem)] max-md:w-[calc(100vw-1rem)] max-md:rounded-xl border border-line-subtle bg-surface-overlay shadow-overlay backdrop-blur-2xl transition-[opacity,scale] duration-150 ease-out-soft outline-none data-ending-style:scale-[0.97] data-ending-style:opacity-0 data-starting-style:scale-[0.97] data-starting-style:opacity-0">
-          <div className="flex h-11 shrink-0 items-center gap-2 border-b border-line-subtle pr-2 pl-4">
+          <div className="flex h-10 shrink-0 items-center gap-2 border-b border-line-subtle pr-2 pl-4">
             <Dialog.Title className="min-w-0 flex-1 truncate text-body font-medium text-fg-secondary">
               {title ?? "Artifact"}
             </Dialog.Title>
