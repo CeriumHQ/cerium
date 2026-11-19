@@ -298,6 +298,32 @@ describe("Checkpoints", () => {
       }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
 
+  it.effect("saves a same-size edit when the file and index share a timestamp", () =>
+    Effect.gen(function* () {
+      const { folder, home, write, checkpoints, fs, path, spawner } = yield* setup;
+      const file = path.join(folder, "src", "a.ts");
+      const timestamp = new Date("2020-01-01T00:00:00Z");
+      yield* fs.utimes(file, timestamp, timestamp);
+      const before = yield* checkpoints.save(folder);
+      const [name] = (yield* fs.readDirectory(home)).filter((entry) => entry !== "shared");
+      const store = path.join(home, name!);
+      // Simulate a filesystem where the edit leaves all of Git's cached stat fields unchanged.
+      yield* spawner.string(
+        ChildProcess.make("git", [`--git-dir=${store}`, "config", "core.trustctime", "false"], {
+          cwd: folder,
+        }),
+      );
+      yield* fs.utimes(path.join(store, "index"), timestamp, timestamp);
+      yield* write("src/a.ts", "two\r\n");
+      yield* fs.utimes(file, timestamp, timestamp);
+
+      const after = yield* checkpoints.save(folder);
+      assert.deepStrictEqual(yield* checkpoints.changes(folder, before, after), [
+        { path: "src/a.ts", change: "modified" },
+      ]);
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
+
   it.effect("packs the shared store without losing a snapshot no ref points at", () =>
     Effect.gen(function* () {
       const { folder, home, write, read, checkpoints, fs, path } = yield* setup;
