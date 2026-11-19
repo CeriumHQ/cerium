@@ -8,6 +8,8 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Changed
 
+- The website loads its animated homepage sooner and reuses downloaded assets on return visits.
+
 - Handing off or restoring one conversation leaves other threads responsive. Find reuses searchable message text and skips intervening tool output on deep jumps.
 - Desktop windows receive tool output for the threads they display. Cloud uploads use stored screenshot references, and desktop audio and video previews can request byte ranges from another updated computer.
 - Provider SDKs load when needed, and subscription checks reuse open harness sessions. Folded code highlights its visible prefix and the highlighting worker shuts down when idle.

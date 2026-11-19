@@ -693,11 +693,9 @@ html:not([data-palette="cerium"]) .glass-light {
 }
 
 .glass-window {
-  background: oklch(0.2 0 0 / 0.25);
-}
-
-.glass-window {
   display: grid;
+  aspect-ratio: 3200 / 2000;
+  background: oklch(0.2 0 0 / 0.25);
 }
 
 .glass-window img {

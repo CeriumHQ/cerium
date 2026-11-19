@@ -6,7 +6,6 @@ import { defineConfig } from "vite-plus";
 // it clear of the UI's dev server.
 export default defineConfig({
   build: {
-    // The home page awaits its fonts at the top level.
     target: "es2022",
     // The hero's three.js scene is one chunk, loaded after the page is up.
     chunkSizeWarningLimit: 600,

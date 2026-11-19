@@ -12,9 +12,12 @@ import {
   DoubleSide,
   ExtrudeGeometry,
   Group,
+  InstancedMesh,
+  Matrix4,
   Mesh,
   MeshBasicMaterial,
   MeshPhysicalMaterial,
+  Object3D,
   PerspectiveCamera,
   PlaneGeometry,
   PMREMGenerator,
@@ -33,8 +36,8 @@ export interface Band {
 }
 
 export interface Prism {
-  /** Plays the beam in, splits it and fans the bands out; resolves when they're out. */
-  readonly play: () => Promise<void>;
+  /** Plays the beam in, splits it and fans the bands out. */
+  readonly play: () => void;
   /** Tints the glass with a theme's hue, in any CSS colour, and takes up the page's new backdrop. */
   readonly tint: (css: string) => void;
 }
@@ -47,6 +50,7 @@ const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
  */
 const pixel = document.createElement("canvas").getContext("2d", { willReadFrequently: true })!;
 export const resolveColor = (css: string, within: Element = document.body): Color => {
+  if (/^#[0-9a-f]{6}$/i.test(css)) return new Color(css);
   const probe = document.createElement("i");
   probe.style.color = css;
   probe.style.display = "none";
@@ -116,36 +120,46 @@ const studio = (): Scene => {
  * value to encode for the canvas: the glass samples a linear copy of the scene, and a shader that
  * wrote screen colours straight out reached it encoded twice, so the glass showed a milky grey.
  */
-const beamMaterial = (color: Color, strength: number) =>
+const beamMaterial = () =>
   new ShaderMaterial({
     uniforms: {
-      uColor: { value: color },
-      uReach: { value: 0 },
-      uStrength: { value: strength },
+      uStill: { value: reduced },
       uTime: { value: 0 },
     },
     vertexShader: /* glsl */ `
+      uniform float uTime;
+      uniform bool uStill;
       varying vec2 vUv;
+      varying vec3 vBeamColor;
+      varying float vReach;
+      varying float vStrength;
       void main() {
         vUv = uv;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        vBeamColor = instanceColor;
+        bool incoming = gl_InstanceID == 0;
+        vStrength = incoming ? 1.1 : 0.95;
+        float delay = incoming ? 0.0 : 1.1 + float(gl_InstanceID - 1) * 0.055;
+        float progress = clamp((uTime - delay) / (incoming ? 1.1 : 1.5), 0.0, 1.0);
+        float left = 1.0 - progress;
+        vReach = uStill ? 1.1 : 1.06 * (1.0 - left * left * left);
+        gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
       }
     `,
     fragmentShader: /* glsl */ `
-      uniform vec3 uColor;
-      uniform float uReach;
-      uniform float uStrength;
       uniform float uTime;
       varying vec2 vUv;
+      varying vec3 vBeamColor;
+      varying float vReach;
+      varying float vStrength;
       void main() {
         float across = abs(vUv.y - 0.5) * 2.0;
         float core = exp(-across * across * 90.0);
         float halo = exp(-across * across * 7.0) * 0.32;
-        float along = smoothstep(uReach, uReach - 0.06, vUv.x);
+        float along = smoothstep(vReach, vReach - 0.06, vUv.x);
         float tail = mix(1.0, 0.35, smoothstep(0.35, 1.0, vUv.x));
         float shimmer = 0.92 + 0.08 * sin(vUv.x * 40.0 - uTime * 2.2);
-        vec3 light = uColor * (core * 1.6 + halo) + vec3(core * 0.55);
-        gl_FragColor = sRGBTransferEOTF(vec4(light * along * tail * shimmer * uStrength, 1.0));
+        vec3 light = vBeamColor * (core * 1.6 + halo) + vec3(core * 0.55);
+        gl_FragColor = sRGBTransferEOTF(vec4(light * along * tail * shimmer * vStrength, 1.0));
         #include <colorspace_fragment>
       }
     `,
@@ -183,7 +197,15 @@ export const mountPrism = (canvas: HTMLCanvasElement, bands: ReadonlyArray<Band>
   const background = new Color();
   scene.background = background;
   const pmrem = new PMREMGenerator(renderer);
-  scene.environment = pmrem.fromScene(studio(), 0).texture;
+  const room = studio();
+  scene.environment = pmrem.fromScene(room).texture;
+  pmrem.dispose();
+  for (const panel of room.children) {
+    if (panel instanceof Mesh) {
+      panel.geometry.dispose();
+      panel.material.dispose();
+    }
+  }
 
   const camera = new PerspectiveCamera(30, 1, 0.1, 100);
   camera.position.set(0, 0, 14);
@@ -193,14 +215,17 @@ export const mountPrism = (canvas: HTMLCanvasElement, bands: ReadonlyArray<Band>
   scene.add(rig);
   // The facet's centre once the geometry below is centred on its bounding box.
   const facetX = 1.27;
-  const beamIn = new Mesh(strip(24, 0.5), beamMaterial(new Color(1, 1, 1), 1.1));
-  beamIn.position.set(facetX - 24, 0, -0.35);
-  rig.add(beamIn);
+  // The transmission pass and the visible pass each draw the whole fan in one submission.
+  const beams = new InstancedMesh(strip(18, 0.42), beamMaterial(), bands.length + 1);
+  beams.setMatrixAt(0, new Matrix4().makeScale(24 / 18, 0.5 / 0.42, 1).setPosition(facetX - 24, 0, -0.35));
+  beams.setColorAt(0, new Color(1, 1, 1));
+  rig.add(beams);
   const fan = bands.map((band, i) => {
-    const mesh = new Mesh(strip(18, 0.42), beamMaterial(resolveColor(band.color), 0.95));
-    mesh.position.set(facetX, 0, -0.35);
-    rig.add(mesh);
-    return { band, mesh, offset: i - (bands.length - 1) / 2 };
+    const anchor = new Object3D();
+    anchor.position.set(facetX, 0, -0.35);
+    rig.add(anchor);
+    beams.setColorAt(i + 1, resolveColor(band.color));
+    return { band, anchor, offset: i - (bands.length - 1) / 2 };
   });
 
   // A slow haze of light behind the glass, so it has something to bend.
@@ -261,6 +286,8 @@ export const mountPrism = (canvas: HTMLCanvasElement, bands: ReadonlyArray<Band>
     bevelSegments: 6,
     curveSegments: 96,
   });
+  // The glass samples the scene in screen space and has no UV-mapped textures.
+  geometry.deleteAttribute("uv");
   geometry.center();
   const mark = new Mesh(geometry, material);
   const pivot = new Group();
@@ -269,16 +296,22 @@ export const mountPrism = (canvas: HTMLCanvasElement, bands: ReadonlyArray<Band>
 
   // Where the mark sits: right of the headline on a wide screen, above it on a narrow one.
   let narrow = false;
-  const place = () => {
-    const width = canvas.clientWidth;
-    const height = canvas.clientHeight;
+  let sized = { width: 0, height: 0 };
+  const place = (width: number, height: number) => {
+    sized = { width, height };
     renderer.setSize(width, height, false);
     camera.aspect = width / height;
     narrow = width < 760;
     camera.fov = narrow ? 44 : 30;
     camera.updateProjectionMatrix();
     const step = ((narrow ? 10.5 : 7.1) * Math.PI) / 180;
-    for (const item of fan) item.mesh.rotation.z = -(item.offset * step);
+    fan.forEach(({ anchor, offset }, i) => {
+      anchor.rotation.z = -(offset * step);
+      anchor.updateMatrix();
+      beams.setMatrixAt(i + 1, anchor.matrix);
+    });
+    beams.instanceMatrix.needsUpdate = true;
+    beams.computeBoundingSphere();
     const x = narrow ? -0.9 : Math.min(1.5, camera.aspect * 0.8);
     const y = narrow ? 1.25 : 1.34;
     const scale = narrow ? 0.78 : 0.8;
@@ -287,25 +320,23 @@ export const mountPrism = (canvas: HTMLCanvasElement, bands: ReadonlyArray<Band>
     rig.position.set(x, y, 0);
     rig.scale.setScalar(scale);
     haze.position.set(x, y, -3);
-    placeLabels();
+    placeLabels(width, height);
   };
 
   // Each label sits a little way along its band, projected onto the page.
   const probe = new Vector3();
-  const placeLabels = () => {
-    const width = canvas.clientWidth;
-    const height = canvas.clientHeight;
+  const placeLabels = (width: number, height: number) => {
     rig.updateMatrixWorld(true);
     camera.updateMatrixWorld();
     const spots: Array<{ label: HTMLElement; x: number; y: number }> = [];
-    for (const { band, mesh } of fan) {
+    for (const { band, anchor } of fan) {
       // Along the band to a point just inside the right edge.
       let reach = 2;
       for (; reach < 17; reach += 0.1) {
-        probe.set(reach, 0, 0).applyMatrix4(mesh.matrixWorld).project(camera);
+        probe.set(reach, 0, 0).applyMatrix4(anchor.matrixWorld).project(camera);
         if ((probe.x + 1) / 2 > (narrow ? 0.97 : 0.955)) break;
       }
-      probe.set(reach, 0, 0).applyMatrix4(mesh.matrixWorld).project(camera);
+      probe.set(reach, 0, 0).applyMatrix4(anchor.matrixWorld).project(camera);
       spots.push({ label: band.label, x: ((probe.x + 1) / 2) * width, y: ((1 - probe.y) / 2) * height });
     }
     // The fan is steep near its ends, so pills can crowd each other; nudge them apart, top to bottom,
@@ -335,84 +366,56 @@ export const mountPrism = (canvas: HTMLCanvasElement, bands: ReadonlyArray<Band>
     { passive: true },
   );
 
-  let visible = true;
+  let visible = false;
   let frame = 0;
-  let started = performance.now();
+  let started: number | undefined;
   const draw = (now: number) => {
-    const t = (now - started) / 1000;
+    frame = 0;
+    if (started === undefined || !visible || document.hidden) return;
+    const elapsed = Math.max(0, now - started);
+    const t = elapsed / 1000;
     tilt.x += (target.x - tilt.x) * 0.04;
     tilt.y += (target.y - tilt.y) * 0.04;
     const drift = reduced ? 0 : Math.sin(t * 0.35) * 0.28;
     pivot.rotation.set(-0.12 + tilt.y * 0.16, -0.38 + drift + tilt.x * 0.3, 0.04 + tilt.x * 0.03);
-    for (const mesh of [haze, beamIn, ...fan.map((f) => f.mesh)]) {
-      (mesh.material as ShaderMaterial).uniforms.uTime!.value = t;
-    }
+    beams.material.uniforms.uTime!.value = t;
+    haze.material.uniforms.uTime!.value = t;
     renderer.render(scene, camera);
+    if (!reduced) requestDraw();
   };
-  const loop = (now: number) => {
-    draw(now);
-    frame = visible && !reduced ? requestAnimationFrame(loop) : 0;
+  const requestDraw = () => {
+    if (started !== undefined && frame === 0 && visible && !document.hidden)
+      frame = requestAnimationFrame(draw);
   };
 
-  new IntersectionObserver(([entry]) => {
-    visible = entry!.isIntersecting;
-    if (visible && frame === 0 && !reduced) frame = requestAnimationFrame(loop);
-  }).observe(canvas);
+  new IntersectionObserver(
+    ([entry]) => {
+      visible = entry!.intersectionRatio >= 0.001;
+      requestDraw();
+    },
+    { threshold: 0.001 },
+  ).observe(canvas);
+  document.addEventListener("visibilitychange", requestDraw);
   new ResizeObserver(() => {
-    place();
-    if (reduced || frame === 0) draw(performance.now());
+    const width = canvas.clientWidth;
+    const height = canvas.clientHeight;
+    if (width === sized.width && height === sized.height) return;
+    place(width, height);
+    requestDraw();
   }).observe(canvas);
 
-  const setBackground = () => {
-    background.copy(resolveColor("var(--scene)", canvas.parentElement!));
-  };
-  setBackground();
-  place();
-
-  // Reach goes 0 → 1 along each strip; the fan waits for the beam to arrive.
-  const reachOf = (mesh: Mesh) => (mesh.material as ShaderMaterial).uniforms.uReach!;
-  const tween = (from: number, to: number, ms: number, step: (v: number) => void) =>
-    new Promise<void>((resolve) => {
-      const begin = performance.now();
-      const tick = (now: number) => {
-        const p = Math.min(1, (now - begin) / ms);
-        const eased = 1 - Math.pow(1 - p, 3);
-        step(from + (to - from) * eased);
-        if (reduced || frame === 0) draw(now);
-        if (p < 1) requestAnimationFrame(tick);
-        else resolve();
-      };
-      requestAnimationFrame(tick);
-    });
-
-  const play = async () => {
+  place(canvas.clientWidth, canvas.clientHeight);
+  const play = () => {
     started = performance.now();
-    if (!reduced) frame = requestAnimationFrame(loop);
-    if (reduced) {
-      for (const mesh of [beamIn, ...fan.map((f) => f.mesh)]) reachOf(mesh).value = 1.1;
-      draw(performance.now());
-      return;
-    }
-    await tween(0, 1.06, 1100, (v) => (reachOf(beamIn).value = v));
-    await Promise.all(
-      fan.map(
-        ({ mesh }, i) =>
-          new Promise<void>((resolve) =>
-            setTimeout(
-              () => void tween(0, 1.06, 1500, (v) => (reachOf(mesh).value = v)).then(resolve),
-              i * 55,
-            ),
-          ),
-      ),
-    );
+    requestDraw();
   };
 
   const tint = (css: string) => {
     const color = resolveColor(css);
     material.attenuationColor.copy(color);
     (haze.material as ShaderMaterial).uniforms.uTint!.value.copy(color);
-    setBackground();
-    if (reduced || frame === 0) draw(performance.now());
+    background.copy(resolveColor("var(--scene)", canvas.parentElement!));
+    requestDraw();
   };
 
   return { play, tint };

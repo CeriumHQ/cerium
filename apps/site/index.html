@@ -115,7 +115,7 @@
             <video
               width="2560"
               height="1440"
-              autoplay
+              preload="none"
               muted
               loop
               playsinline
@@ -126,6 +126,30 @@
               <source media="(max-width: 760px)" src="./src/media/footage/hero-small.mp4" type="video/mp4" />
               <source src="./src/media/footage/hero.mp4" type="video/mp4" />
             </video>
+            <noscript>
+              <style>
+                .proof [data-footage] {
+                  display: none;
+                }
+              </style>
+              <video
+                width="2560"
+                height="1440"
+                autoplay
+                muted
+                loop
+                playsinline
+                disablepictureinpicture
+                aria-label="A prompt typed on Cerium's home screen: a Claude lead takes it and hands the tests to a Codex agent, the docs to an OpenCode agent and a timing review to a Cursor agent, all in one thread"
+              >
+                <source
+                  media="(max-width: 760px)"
+                  src="./src/media/footage/hero-small.mp4"
+                  type="video/mp4"
+                />
+                <source src="./src/media/footage/hero.mp4" type="video/mp4" />
+              </video>
+            </noscript>
           </figure>
         </div>
       </section>
@@ -264,7 +288,7 @@
             <video
               width="3712"
               height="2088"
-              preload="metadata"
+              preload="none"
               muted
               loop
               playsinline
@@ -326,80 +350,101 @@
         <div class="glass-stage">
           <div class="glass-light" aria-hidden="true"></div>
           <figure class="window glass-window" data-shots>
-            <img
-              data-shot="cerium"
-              src="./src/media/themes/cerium-dark.webp"
-              srcset="
-                ./src/media/themes/cerium-dark-1600.webp 1600w,
-                ./src/media/themes/cerium-dark.webp      3200w
-              "
-              sizes="92vw"
-              width="3200"
-              height="2000"
-              alt="Cerium in its clear Cerium theme"
-            />
-            <img
-              data-shot="amber"
-              src="./src/media/themes/amber-dark.webp"
-              srcset="./src/media/themes/amber-dark-1600.webp 1600w, ./src/media/themes/amber-dark.webp 3200w"
-              sizes="92vw"
-              width="3200"
-              height="2000"
-              loading="lazy"
-              alt="Cerium in the Amber theme"
-            />
-            <img
-              data-shot="uranium"
-              src="./src/media/themes/uranium-dark.webp"
-              srcset="
-                ./src/media/themes/uranium-dark-1600.webp 1600w,
-                ./src/media/themes/uranium-dark.webp      3200w
-              "
-              sizes="92vw"
-              width="3200"
-              height="2000"
-              loading="lazy"
-              alt="Cerium in the Uranium theme"
-            />
-            <img
-              data-shot="seaglass"
-              src="./src/media/themes/seaglass-dark.webp"
-              srcset="
-                ./src/media/themes/seaglass-dark-1600.webp 1600w,
-                ./src/media/themes/seaglass-dark.webp      3200w
-              "
-              sizes="92vw"
-              width="3200"
-              height="2000"
-              loading="lazy"
-              alt="Cerium in the Sea glass theme"
-            />
-            <img
-              data-shot="cobalt"
-              src="./src/media/themes/cobalt-dark.webp"
-              srcset="
-                ./src/media/themes/cobalt-dark-1600.webp 1600w,
-                ./src/media/themes/cobalt-dark.webp      3200w
-              "
-              sizes="92vw"
-              width="3200"
-              height="2000"
-              loading="lazy"
-              alt="Cerium in the Cobalt theme"
-            />
-            <img
-              data-shot="cranberry"
-              src="./src/media/themes/cranberry-dark.webp"
-              srcset="
-                ./src/media/themes/cranberry-dark-1600.webp 1600w,
-                ./src/media/themes/cranberry-dark.webp      3200w
-              "
-              sizes="92vw"
-              width="3200"
-              height="2000"
-              loading="lazy"
-              alt="Cerium in the Cranberry theme"
-            />
+            <template>
+              <img
+                loading="lazy"
+                data-shot="cerium"
+                src="./src/media/themes/cerium-dark.webp"
+                srcset="
+                  ./src/media/themes/cerium-dark-1600.webp 1600w,
+                  ./src/media/themes/cerium-dark.webp      3200w
+                "
+                sizes="92vw"
+                width="3200"
+                height="2000"
+                alt="Cerium in its clear Cerium theme"
+              />
+              <img
+                data-shot="amber"
+                src="./src/media/themes/amber-dark.webp"
+                srcset="
+                  ./src/media/themes/amber-dark-1600.webp 1600w,
+                  ./src/media/themes/amber-dark.webp      3200w
+                "
+                sizes="92vw"
+                width="3200"
+                height="2000"
+                loading="lazy"
+                alt="Cerium in the Amber theme"
+              />
+              <img
+                data-shot="uranium"
+                src="./src/media/themes/uranium-dark.webp"
+                srcset="
+                  ./src/media/themes/uranium-dark-1600.webp 1600w,
+                  ./src/media/themes/uranium-dark.webp      3200w
+                "
+                sizes="92vw"
+                width="3200"
+                height="2000"
+                loading="lazy"
+                alt="Cerium in the Uranium theme"
+              />
+              <img
+                data-shot="seaglass"
+                src="./src/media/themes/seaglass-dark.webp"
+                srcset="
+                  ./src/media/themes/seaglass-dark-1600.webp 1600w,
+                  ./src/media/themes/seaglass-dark.webp      3200w
+                "
+                sizes="92vw"
+                width="3200"
+                height="2000"
+                loading="lazy"
+                alt="Cerium in the Sea glass theme"
+              />
+              <img
+                data-shot="cobalt"
+                src="./src/media/themes/cobalt-dark.webp"
+                srcset="
+                  ./src/media/themes/cobalt-dark-1600.webp 1600w,
+                  ./src/media/themes/cobalt-dark.webp      3200w
+                "
+                sizes="92vw"
+                width="3200"
+                height="2000"
+                loading="lazy"
+                alt="Cerium in the Cobalt theme"
+              />
+              <img
+                data-shot="cranberry"
+                src="./src/media/themes/cranberry-dark.webp"
+                srcset="
+                  ./src/media/themes/cranberry-dark-1600.webp 1600w,
+                  ./src/media/themes/cranberry-dark.webp      3200w
+                "
+                sizes="92vw"
+                width="3200"
+                height="2000"
+                loading="lazy"
+                alt="Cerium in the Cranberry theme"
+              />
+            </template>
+            <noscript>
+              <img
+                loading="lazy"
+                data-on
+                src="./src/media/themes/cerium-dark.webp"
+                srcset="
+                  ./src/media/themes/cerium-dark-1600.webp 1600w,
+                  ./src/media/themes/cerium-dark.webp      3200w
+                "
+                sizes="92vw"
+                width="3200"
+                height="2000"
+                alt="Cerium in its clear Cerium theme"
+              />
+            </noscript>
           </figure>
         </div>
       </section>

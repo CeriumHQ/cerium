@@ -16,7 +16,7 @@ const key = "cerium-site:palette";
 export const savedPalette = (): string => {
   try {
     const saved = localStorage.getItem(key);
-    return saved !== null && saved in palettes ? saved : "cerium";
+    return saved !== null && Object.hasOwn(palettes, saved) ? saved : "cerium";
   } catch {
     return "cerium";
   }

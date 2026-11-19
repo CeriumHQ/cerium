@@ -35,17 +35,26 @@ const pointApp = () => {
     use.setAttribute("href", "/icons.svg#mark-cerium");
 };
 
+const smoothScroll = () => {
+  let frame = 0;
+  const lenis = new Lenis({ lerp: 0.11, anchors: { onStart: wake } });
+  function advance(time: number) {
+    lenis.raf(time);
+    frame = lenis.isScrolling === "smooth" ? requestAnimationFrame(advance) : 0;
+  }
+  function wake() {
+    if (frame) return;
+    // Start this gesture's clock at the current frame, excluding the time spent idle.
+    lenis.time = Number(document.timeline.currentTime ?? performance.now());
+    frame = requestAnimationFrame(advance);
+  }
+  lenis.on("virtual-scroll", wake);
+  return lenis;
+};
+
 /** `appOnHandheld`: on a phone or tablet, which runs no build, the download buttons open the web app. */
 export const startChrome = ({ appOnHandheld = false } = {}) => {
-  const lenis = reduced ? undefined : new Lenis({ lerp: 0.11, anchors: true });
-  if (lenis !== undefined) {
-    const raf = (time: number) => {
-      lenis.raf(time);
-      requestAnimationFrame(raf);
-    };
-    requestAnimationFrame(raf);
-  }
-
+  const lenis = reduced ? undefined : smoothScroll();
   const bar = document.querySelector<HTMLElement>("[data-bar]");
   const onScroll = () => bar?.toggleAttribute("data-scrolled", scrollY > 24);
   addEventListener("scroll", onScroll, { passive: true });

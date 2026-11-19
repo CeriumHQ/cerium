@@ -1,15 +1,9 @@
 import "./styles/home.css";
 import "./styles/sections.css";
 
-import { gsap } from "gsap";
-import { ScrollTrigger } from "gsap/ScrollTrigger";
-
 import { startChrome } from "./chrome.ts";
 import type { Prism } from "./prism.ts";
 import { palettes, savedPalette, setPalette } from "./palette.ts";
-
-gsap.registerPlugin(ScrollTrigger);
-const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /** Splits a headline's lines into letters the width animation can stretch one by one. */
 const split = (root: HTMLElement) => {
@@ -36,8 +30,11 @@ const split = (root: HTMLElement) => {
 };
 
 const lenis = startChrome({ appOnHandheld: true });
-lenis?.on("scroll", () => ScrollTrigger.update());
+
 for (const root of document.querySelectorAll<HTMLElement>("[data-split]")) split(root);
+// Start the entrance as soon as its display face is ready, independently of below-fold fonts.
+const enter = () => document.documentElement.classList.add("ready");
+void document.fonts.load('1em "Anybody Variable"').then(enter, enter);
 
 const hero = document.querySelector<HTMLElement>(".hero")!;
 const labels = [...hero.querySelectorAll<HTMLElement>("[data-band]")];
@@ -45,109 +42,60 @@ labels.forEach((label, i) => label.style.setProperty("--i", String(i)));
 // The prism's scene loads on its own, so the headline never waits for three.js.
 let prism: Prism | undefined;
 
-// The app window lies back on the bench and stands up as it scrolls in.
-if (!reduced) {
-  gsap.fromTo(
-    "[data-tilt] .window",
-    { rotateX: 32, scale: 0.84, y: -40 },
-    {
-      rotateX: 0,
-      scale: 1,
-      y: 0,
-      ease: "none",
-      scrollTrigger: { trigger: "[data-tilt]", start: "top 95%", end: "top 18%", scrub: 0.6 },
+// The sections start below a full-height hero. Warm them on the first scroll, or immediately
+// when opening an anchor or restoring a visit partway down the page.
+const startSections = () => {
+  void import("./scroll.ts").then(({ startScrollEffects }) => startScrollEffects(lenis));
+  const footage = new IntersectionObserver(
+    (entries) => {
+      for (const { target, isIntersecting } of entries) {
+        const video = target as HTMLVideoElement;
+        if (isIntersecting) void video.play().catch(() => {});
+        else video.pause();
+      }
     },
+    { rootMargin: "50% 0px" },
   );
-}
-
-// The artifact close-up pulls back as it scrolls through.
-if (!reduced) {
-  gsap.fromTo(
-    ".window-flat",
-    { "--zoom": 1.55 },
-    {
-      "--zoom": 1.22,
-      ease: "none",
-      scrollTrigger: { trigger: ".window-flat", start: "top bottom", end: "bottom 30%", scrub: 0.6 },
-    },
-  );
-}
-
-// The footage plays only while it is on screen, so the artifact's clip loads when the page nears it.
-const footage = new IntersectionObserver(
-  (entries) => {
-    for (const { target, isIntersecting } of entries) {
-      const video = target as HTMLVideoElement;
-      if (isIntersecting) void video.play().catch(() => {});
-      else video.pause();
-    }
-  },
-  { rootMargin: "50% 0px" },
-);
-for (const video of document.querySelectorAll<HTMLVideoElement>("[data-footage]")) footage.observe(video);
-
-// Each roster line widens and lights as it crosses the middle of the screen, then dims as it leaves,
-// widening only as far as the page has room for it.
-const roster = [...document.querySelectorAll<HTMLElement>("[data-stretch]")];
-const widest = new Map<HTMLElement, number>();
-const measure = () => {
-  for (const line of roster) {
-    const was = line.style.getPropertyValue("--stretch");
-    line.style.setProperty("--stretch", "100%");
-    const words = line.querySelector("span")!;
-    const room = (line.clientWidth - words.offsetLeft) / words.offsetWidth;
-    line.style.setProperty("--stretch", was);
-    widest.set(line, Math.max(70, Math.min(120, room * 90)));
-  }
+  for (const video of document.querySelectorAll("[data-footage]")) footage.observe(video);
 };
-await document.fonts.ready;
-measure();
-addEventListener("resize", measure);
-for (const line of roster) {
-  if (reduced) {
-    line.style.setProperty("--lit", "1");
-    line.style.setProperty("--stretch", `${widest.get(line)}%`);
-    continue;
-  }
-  ScrollTrigger.create({
-    trigger: line,
-    start: "top bottom",
-    end: "bottom top",
-    onUpdate: ({ progress }) => {
-      // 0 at the bottom edge, 1 at the middle, 0 again at the top.
-      const near = 1 - Math.min(1, Math.abs(progress - 0.5) / 0.32);
-      const eased = near * near * (3 - 2 * near);
-      line.style.setProperty("--lit", eased.toFixed(3));
-      const wide = widest.get(line) ?? 110;
-      line.style.setProperty("--stretch", `${(62 + eased * (wide - 62)).toFixed(1)}%`);
-    },
-  });
-}
-
-// The closing word is sized to span the page.
-const word = document.querySelector<HTMLElement>("[data-fit]");
-const fit = () => {
-  if (word === null) return;
-  word.style.setProperty("--fit", "100px");
-  const inner = word.firstElementChild as HTMLElement;
-  word.style.setProperty("--fit", `${(100 * word.clientWidth * 0.98) / inner.offsetWidth}px`);
-};
-fit();
-addEventListener("resize", fit);
+if (scrollY > 0 || location.hash) startSections();
+else addEventListener("scroll", startSections, { passive: true, once: true });
 
 // The glass picker tints the whole page, the hero's prism and the bench light with it.
-const shots = [...document.querySelectorAll<HTMLElement>("[data-shot]")];
+const stage = document.querySelector<HTMLElement>("[data-shots]")!;
+const previews = stage.querySelector("template")!;
+const shots = [...previews.content.querySelectorAll<HTMLImageElement>("[data-shot]")];
 const picks = [...document.querySelectorAll<HTMLButtonElement>("[data-pick]")];
+// Keep the current screenshot on screen until the visitor's choice can crossfade in.
+const warmShot = (id: string) => {
+  const shot = shots.find((image) => image.dataset.shot === id)!;
+  if (shot.parentElement !== stage) stage.append(shot);
+  return shot;
+};
+const showShot = (shot: HTMLImageElement) => {
+  if (shot.dataset.shot !== document.documentElement.dataset.palette) return;
+  for (const image of shots) image.toggleAttribute("data-on", image === shot);
+};
+for (const shot of shots) shot.addEventListener("load", () => showShot(shot));
+
 const pick = (id: string) => {
   setPalette(id);
   for (const button of picks) {
     button.setAttribute("aria-checked", String(button.dataset.pick === id));
     button.tabIndex = button.dataset.pick === id ? 0 : -1;
   }
-  for (const shot of shots) shot.toggleAttribute("data-on", shot.dataset.shot === id);
+  const shot = warmShot(id);
+  if ((shot.complete && shot.naturalWidth > 0) || !shots.some((image) => image.hasAttribute("data-on"))) {
+    showShot(shot);
+  }
   prism?.tint(palettes[id] ?? "#ffffff");
 };
-for (const button of picks) button.addEventListener("click", () => pick(button.dataset.pick!));
+for (const button of picks) {
+  const id = button.dataset.pick!;
+  button.addEventListener("pointerenter", () => warmShot(id), { once: true });
+  button.addEventListener("focus", () => warmShot(id), { once: true });
+  button.addEventListener("click", () => pick(id));
+}
 // Arrow keys move the choice, as a radio group's do.
 document.querySelector("[data-picker]")?.addEventListener("keydown", (event) => {
   const key = (event as KeyboardEvent).key;
@@ -162,18 +110,41 @@ document.querySelector("[data-picker]")?.addEventListener("keydown", (event) => 
 });
 pick(savedPalette());
 
-document.documentElement.classList.add("ready");
-const { mountPrism } = await import("./prism.ts");
-prism = mountPrism(
-  hero.querySelector<HTMLCanvasElement>("[data-scene]")!,
-  labels.map((label) => ({ label, color: getComputedStyle(label).getPropertyValue("--band").trim() })),
-);
-if (prism === undefined) {
-  hero.toggleAttribute("data-no-webgl", true);
-  hero.toggleAttribute("data-lit", true);
-} else {
+// A restored scroll position or a link to a lower section can skip the scene entirely.
+const canvas = hero.querySelector<HTMLCanvasElement>("[data-scene]")!;
+let inView = false;
+let loading = false;
+const startScene = async () => {
+  if (loading || !inView || document.hidden || document.readyState !== "complete") return;
+  loading = true;
+  const { mountPrism } = await import("./prism.ts");
+  if (!inView || document.hidden) {
+    loading = false;
+    return;
+  }
+  seen.disconnect();
+  document.removeEventListener("visibilitychange", startScene);
+  prism = mountPrism(
+    canvas,
+    labels.map((label) => ({ label, color: getComputedStyle(label).getPropertyValue("--band").trim() })),
+  );
+  if (prism === undefined) {
+    hero.toggleAttribute("data-no-webgl", true);
+    hero.toggleAttribute("data-lit", true);
+    return;
+  }
   prism.tint(palettes[savedPalette()] ?? "#ffffff");
-  void prism.play();
+  prism.play();
   // The labels land as their bands reach them.
   setTimeout(() => hero.toggleAttribute("data-lit", true), 1700);
-}
+};
+const seen = new IntersectionObserver(
+  ([entry]) => {
+    inView = entry!.intersectionRatio >= 0.001;
+    void startScene();
+  },
+  { threshold: 0.001 },
+);
+seen.observe(hero);
+addEventListener("load", startScene, { once: true });
+document.addEventListener("visibilitychange", startScene);
