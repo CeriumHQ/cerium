@@ -11,32 +11,66 @@
 [data-welcome] {
   /* The welcome's margin, which its steps and its foot line up on. */
   --welcome-gutter: clamp(28px, 6.4vw, 112px);
+  --step-in: 16px;
+  --step-out: -28px;
+}
+
+[data-welcome][data-direction="back"] {
+  --step-in: -16px;
+  --step-out: 28px;
 }
 
 [data-welcome] [data-letter] {
   display: inline-block;
 }
 
-[data-welcome] [data-state="enter"] [data-letter] {
+[data-welcome] [data-stagger] [data-letter] {
   animation: welcome-letter 1150ms var(--ease-out-soft) calc(var(--i) * 26ms + 60ms + var(--after, 0ms)) both;
 }
 
-[data-welcome] [data-state="enter"] [data-reveal] {
+[data-welcome] [data-stagger] [data-reveal] {
   animation: welcome-rise 900ms var(--ease-out-soft) calc(var(--d) * 90ms + 220ms + var(--after, 0ms)) both;
 }
 
 /* A step coming in as another goes waits for it to have mostly gone. */
-[data-welcome] [data-state="enter"][data-after] {
+[data-welcome] [data-stagger="after"] {
   --after: 300ms;
 }
 
-[data-welcome] [data-state="leave"] {
-  pointer-events: none;
-  animation: welcome-leave 420ms cubic-bezier(0.55, 0, 0.6, 0.2) both;
+[data-welcome] [data-step]:is([data-state="enter"], [data-state="shown"]) {
+  z-index: 1;
 }
 
-[data-welcome][data-direction="back"] [data-state="leave"] {
-  animation-name: welcome-leave-back;
+/* If a step goes before its parts come in, carry them out where they stand. */
+[data-welcome] [data-step][data-state="leave"] :is([data-letter], [data-reveal]) {
+  animation-play-state: paused;
+}
+
+[data-welcome] [data-step][data-state="leave"] {
+  opacity: 0;
+  translate: 0 var(--step-out);
+  transition:
+    opacity 420ms cubic-bezier(0.55, 0, 0.6, 0.2),
+    translate 420ms cubic-bezier(0.55, 0, 0.6, 0.2);
+}
+
+[data-welcome][data-quick] [data-step][data-state="leave"] {
+  transition-duration: 240ms;
+  transition-timing-function: var(--ease-out-soft), var(--ease-in-soft);
+}
+
+[data-welcome][data-quick] [data-step][data-state="enter"] {
+  transition:
+    opacity 240ms var(--ease-out-soft),
+    translate 240ms var(--ease-out-soft);
+}
+
+/* A step already on its way out turns back from where it stands. Only a fresh one starts here. */
+@starting-style {
+  [data-welcome][data-quick] [data-step][data-state="enter"] {
+    opacity: 0;
+    translate: 0 var(--step-in);
+  }
 }
 
 /*
@@ -67,34 +101,23 @@
   }
 }
 
-@keyframes welcome-leave {
-  to {
-    opacity: 0;
-    translate: 0 -28px;
-  }
-}
-
-@keyframes welcome-leave-back {
-  to {
-    opacity: 0;
-    translate: 0 28px;
-  }
-}
-
 /* Without motion, every part simply fades in and out. */
 @media (prefers-reduced-motion: reduce) {
-  [data-welcome] [data-state="enter"] :is([data-letter], [data-reveal]) {
+  [data-welcome],
+  [data-welcome][data-direction="back"] {
+    --step-in: 0px;
+    --step-out: 0px;
+  }
+
+  [data-welcome] [data-stagger] :is([data-letter], [data-reveal]) {
     animation: launch-fade 300ms ease-out both;
   }
 
-  [data-welcome] [data-state="leave"] {
-    animation: welcome-fade-out 200ms ease-in both;
-  }
-}
-
-@keyframes welcome-fade-out {
-  to {
-    opacity: 0;
+  [data-welcome] [data-step][data-state="leave"],
+  [data-welcome][data-quick] [data-step][data-state="leave"],
+  [data-welcome][data-quick] [data-step][data-state="enter"] {
+    transition-property: opacity;
+    transition-duration: 200ms;
   }
 }
 

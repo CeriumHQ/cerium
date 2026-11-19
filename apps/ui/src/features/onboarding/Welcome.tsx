@@ -4,10 +4,11 @@ import type { PastSession } from "@cerium/protocol";
 import { useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
 import { ArrowLeft, ArrowRight } from "lucide-react";
-import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
+import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import { harnessesAtom, pastSessionsAtom } from "../../backend/atoms.ts";
 import { CeriumMark } from "../../components/CeriumMark.tsx";
+import { settled } from "../../lib/motion.ts";
 import { useSessionImport, type SessionImport } from "../imports/SessionPicker.tsx";
 import { Connect } from "./steps/Connect.tsx";
 import { Glass } from "./steps/Glass.tsx";
@@ -15,16 +16,22 @@ import { Hello } from "./steps/Hello.tsx";
 import { Import } from "./steps/Import.tsx";
 import { needsHarness, stepFromQuery, stepsFor, welcomeKey, type StepId } from "./model.ts";
 
-/** How long a step takes to go, while the next one comes in after it. */
-const LEAVE_MS = 520;
-/**
- * How long a step takes to come in, every part of it. Its parts' animations end then, so nothing on the
- * stage stays faded or lifted, and a pane's glass blurs what's behind it again. The step after it is
- * warmed from then on (below).
- */
+/** How long the longest entrance has to finish, even if the window hasn't painted it. */
 const ENTER_MS = 2_600;
+/** How long a step that turns back from its exit has to bring in any parts still on their way. */
+const QUICK_MS = 240;
 /** How long the welcome takes to close: its step and its foot fade, and the window is handed over. */
 const CLOSE_MS = 420;
+
+interface StepMotion {
+  readonly step: StepId;
+  readonly stagger: "first" | "after" | undefined;
+}
+
+interface Entry extends StepMotion {
+  readonly back: boolean;
+  readonly quick: boolean;
+}
 
 /** What each step is handed by the stage. */
 export interface StepProps {
@@ -57,28 +64,31 @@ export function Welcome({ onDone }: { readonly onDone: () => void }) {
   const importer = useSessionImport(offered);
   const steps = stepsFor(asks, offered.length > 0);
 
-  const [entry, setEntry] = useState(() => ({
-    step: asked ?? ("hello" as StepId),
-    /** It came in as another step went, so it waits for that one to go first. */
-    after: false,
+  const [entry, setEntry] = useState<Entry>(() => ({
+    step: asked ?? "hello",
+    stagger: "first",
+    back: false,
+    quick: false,
   }));
   const index = Math.max(0, steps.indexOf(entry.step));
   const step = steps[index]!;
   const last = index === steps.length - 1;
-  /** The step on its way out, and which way the welcome is going. */
-  const [leaving, setLeaving] = useState<{ readonly step: StepId; readonly direction: 1 | -1 }>();
-  /** The step whose parts have all come in. */
-  const [settled, setSettled] = useState<StepId>();
+  /** Steps stay drawn until their own exits end, unless they turn back into view. */
+  const [leaving, setLeaving] = useState<ReadonlyArray<StepMotion>>([]);
+  const [rested, setRested] = useState<{ readonly entry: Entry; readonly step: StepId }>();
+  const still = rested?.entry === entry && rested.step === step;
+  const stagger = still ? undefined : entry.stagger;
   const [visited, setVisited] = useState(index);
-  const stage = useRef<HTMLDivElement>(null);
+  const dialog = useRef<HTMLDivElement>(null);
+  const [stage, setStage] = useState<HTMLElement | null>(null);
 
   const go = (to: number) => {
     const next = steps[to];
     if (next === undefined || to === index) return;
-    setLeaving({ step, direction: to > index ? 1 : -1 });
-    setEntry({ step: next, after: true });
-    // A step come back to comes in again, however soon.
-    setSettled(undefined);
+    const quick = !still || leaving.length > 0;
+    const returning = leaving.find((exit) => exit.step === next);
+    setLeaving((current) => [...current.filter((exit) => exit.step !== next), { step, stagger }]);
+    setEntry({ step: next, stagger: quick ? returning?.stagger : "after", back: to < index, quick });
     setVisited((most) => Math.max(most, to));
   };
   /** The welcome is closing, for good: its step fades and the window is handed over. */
@@ -105,19 +115,60 @@ export function Welcome({ onDone }: { readonly onDone: () => void }) {
   }, [closing]);
 
   useEffect(() => {
-    if (leaving === undefined) return;
-    const timer = setTimeout(() => setLeaving(undefined), LEAVE_MS);
-    return () => clearTimeout(timer);
-  }, [leaving]);
-  useEffect(() => {
-    const timer = setTimeout(() => setSettled(step), ENTER_MS);
-    return () => clearTimeout(timer);
-  }, [step]);
+    let live = true;
+    for (const exit of leaving) {
+      const section = stage?.querySelector(`[data-step="${exit.step}"]`);
+      if (!section) continue;
+      void settled(section).then(() => {
+        if (live) setLeaving((current) => current.filter((item) => item !== exit));
+      });
+    }
+    return () => {
+      live = false;
+    };
+  }, [leaving, stage]);
+
+  useLayoutEffect(() => {
+    const section = stage?.querySelector(`[data-step="${step}"]`);
+    if (!section) return;
+    const parts =
+      entry.stagger === undefined ? [] : [...section.querySelectorAll("[data-letter], [data-reveal]")];
+    const animations = parts
+      .flatMap((part) => part.getAnimations())
+      .filter((animation) => animation instanceof CSSAnimation && animation.playState !== "finished");
+    // The parts stopped where they were as the step went out. Let them finish from there together
+    // with the step's return, including any that were still waiting for their turn.
+    if (entry.quick && animations.length > 0) {
+      const remaining = Math.max(
+        ...animations.map(
+          (animation) =>
+            Number(animation.effect?.getComputedTiming().endTime ?? 0) - Number(animation.currentTime),
+        ),
+      );
+      const rate = Math.max(1, remaining / QUICK_MS);
+      for (const animation of animations) animation.updatePlaybackRate(rate);
+    }
+    let live = true;
+    const finish = () => {
+      if (live) setRested({ entry, step });
+    };
+    const timer = setTimeout(finish, ENTER_MS);
+    void Promise.allSettled([settled(section), ...animations.map((animation) => animation.finished)]).then(
+      () => {
+        clearTimeout(timer);
+        finish();
+      },
+    );
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
+  }, [entry, stage, step]);
 
   // The headline takes focus as each step comes in, so a screen reader reads where the welcome is.
   useEffect(() => {
-    stage.current?.querySelector<HTMLElement>(`#${titleIdOf(step)}`)?.focus({ preventScroll: true });
-  }, [step]);
+    stage?.querySelector<HTMLElement>(`#${titleIdOf(step)}`)?.focus({ preventScroll: true });
+  }, [stage, step]);
 
   /**
    * The welcome's keys, from anywhere on it. A dialog opened over it, such as a harness's sign-in,
@@ -126,7 +177,7 @@ export function Welcome({ onDone }: { readonly onDone: () => void }) {
   const onKey = (event: React.KeyboardEvent) => {
     const target = event.target instanceof HTMLElement ? event.target : undefined;
     if (
-      (target?.closest("dialog, [role='dialog'], [role='alertdialog']") ?? stage.current) !== stage.current
+      (target?.closest("dialog, [role='dialog'], [role='alertdialog']") ?? dialog.current) !== dialog.current
     ) {
       return;
     }
@@ -155,26 +206,22 @@ export function Welcome({ onDone }: { readonly onDone: () => void }) {
    * next step's are ready by the time it comes in, so its entrance doesn't stutter. It keeps its key,
    * so it becomes the step that comes in.
    */
-  const upcoming = settled === step && leaving === undefined && !closing ? steps[index + 1] : undefined;
-  const shown = [
-    ...(leaving === undefined ? [] : [{ id: leaving.step, state: "leave" as const }]),
-    { id: step, state: settled === step ? ("shown" as const) : ("enter" as const) },
-    ...(upcoming === undefined ? [] : [{ id: upcoming, state: "warm" as const }]),
-  ];
+  const upcoming = still && leaving.length === 0 && !closing ? steps[index + 1] : undefined;
   return (
     <Dialog.Root open disablePointerDismissal>
       <Dialog.Portal>
         <Dialog.Popup
-          ref={stage}
+          ref={dialog}
           tabIndex={-1}
           initialFocus={() =>
-            stage.current?.querySelector<HTMLElement>(`#${titleIdOf(step)}`) ?? stage.current
+            dialog.current?.querySelector<HTMLElement>(`#${titleIdOf(step)}`) ?? dialog.current
           }
           onKeyDown={onKey}
           aria-modal="true"
           aria-labelledby={titleIdOf(step)}
           data-welcome=""
-          data-direction={leaving?.direction === -1 ? "back" : "forward"}
+          data-direction={entry.back ? "back" : "forward"}
+          data-quick={entry.quick ? "" : undefined}
           data-closing={closing ? "" : undefined}
           className="fixed inset-0 m-0 flex size-full max-h-none max-w-none flex-col overflow-hidden border-0 bg-surface-window p-0 text-fg-primary outline-none"
         >
@@ -186,27 +233,32 @@ export function Welcome({ onDone }: { readonly onDone: () => void }) {
             <span className="text-body font-medium tracking-tight text-fg-secondary">Cerium</span>
           </header>
 
-          <main className="relative grid min-h-0 flex-1">
-            {shown.map(({ id, state }) => (
-              <section
-                key={id}
-                data-step={id}
-                data-state={state}
-                data-after={entry.after ? "" : undefined}
-                aria-hidden={state === "leave" || state === "warm" ? true : undefined}
-                inert={state === "leave" || state === "warm"}
-                className="col-start-1 row-start-1 min-h-0"
-              >
-                <Step
-                  id={id}
-                  number={steps.indexOf(id) + 1}
-                  titleId={titleIdOf(id)}
-                  active={state !== "leave" && state !== "warm" && !closing}
-                  sessions={offered}
-                  importer={importer}
-                />
-              </section>
-            ))}
+          <main ref={setStage} className="relative grid min-h-0 flex-1">
+            {steps.map((id, at) => {
+              const active = id === step;
+              const exit = leaving.find((item) => item.step === id);
+              if (!active && !exit && id !== upcoming) return null;
+              return (
+                <section
+                  key={id}
+                  data-step={id}
+                  data-state={active ? (still ? "shown" : "enter") : exit ? "leave" : "warm"}
+                  data-stagger={active ? stagger : exit?.stagger}
+                  aria-hidden={active ? undefined : true}
+                  inert={!active}
+                  className="col-start-1 row-start-1 min-h-0"
+                >
+                  <Step
+                    id={id}
+                    number={at + 1}
+                    titleId={titleIdOf(id)}
+                    active={active && !closing}
+                    sessions={offered}
+                    importer={importer}
+                  />
+                </section>
+              );
+            })}
           </main>
 
           <footer className="relative flex shrink-0 items-center gap-8 px-(--welcome-gutter) pt-4 pb-6">
