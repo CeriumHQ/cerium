@@ -9,6 +9,7 @@ import {
   type CdpSession,
   type Listener,
 } from "@cerium/browser";
+import { viewportWidths, type PreviewInspectorState, type PreviewViewport } from "@cerium/browser/inspector";
 import type { BrowserOutcome } from "@cerium/rpc";
 import {
   BaseWindow,
@@ -21,6 +22,7 @@ import {
   type NavigationEntry,
 } from "electron";
 
+import { PreviewInspector } from "./previewInspector.ts";
 import { releasablePreviews } from "./previewRetention.ts";
 
 // The Preview pane's browser: one page per thread, in a view of its own over the window, which the
@@ -46,7 +48,7 @@ const PARKING_AT = { x: -32_000, y: -32_000 };
 const FIRST_SIZE = { width: 1280, height: 800 };
 
 /** What the pane's toolbar shows of its page. */
-export interface PreviewState {
+export interface PreviewState extends Partial<PreviewInspectorState> {
   readonly threadId: string;
   readonly url: string;
   readonly title: string;
@@ -73,6 +75,7 @@ interface Preview {
   size: { width: number; height: number };
   parkedUntil: number;
   page: Promise<Page> | undefined;
+  inspector?: PreviewInspector;
   error: string | undefined;
   calls: number;
   lastUsed: number;
@@ -188,6 +191,7 @@ export const previews = (window: () => BrowserWindow | undefined) => {
     const contents = preview.view.webContents;
     const url = urlOf(contents);
     return {
+      ...preview.inspector?.state,
       threadId: preview.threadId,
       url,
       title: url === "" ? "" : contents.getTitle(),
@@ -316,8 +320,19 @@ export const previews = (window: () => BrowserWindow | undefined) => {
       preview.error = undefined;
       changed();
     });
+    contents.on("before-input-event", (event, input) => {
+      if (input.type === "keyDown" && input.key === "Escape" && preview.inspector?.state.picking) {
+        event.preventDefault();
+        preview.inspector.cancel();
+      }
+    });
     contents.on("did-stop-loading", changed);
-    contents.on("did-navigate", changed);
+    contents.on("did-navigate", () => {
+      const history = contents.navigationHistory;
+      if (history.getActiveIndex() === 1 && history.getEntryAtIndex(0)?.url === "about:blank")
+        history.removeEntryAtIndex(0);
+      changed();
+    });
     contents.on("did-navigate-in-page", changed);
     contents.on("page-title-updated", changed);
     contents.on("did-fail-load", (_event, code, description, url, isMainFrame) => {
@@ -337,6 +352,7 @@ export const previews = (window: () => BrowserWindow | undefined) => {
       preview.restoring = contents.navigationHistory
         .restore({ entries: history.entries, index: history.index })
         .catch(() => undefined);
+      void pageOf(preview).catch(() => undefined);
     }
     scheduleCleanup();
     return preview;
@@ -399,14 +415,41 @@ export const previews = (window: () => BrowserWindow | undefined) => {
    */
   const pageOf = (preview: Preview): Promise<Page> => {
     const contents = preview.view.webContents;
-    if (preview.page === undefined || !contents.debugger.isAttached()) {
+    if (preview.page === undefined) {
       const attached = (async () => {
         await preview.restoring;
+        if (contents.isDestroyed()) throw new CdpError("The page is closed.");
         if (contents.getURL() === "") await contents.loadURL("about:blank");
         if (!contents.debugger.isAttached()) contents.debugger.attach("1.3");
         const session = debuggerSession(contents);
         try {
-          const page = await Page.attach(session);
+          let scheduled = false;
+          const inspector = new PreviewInspector(
+            session,
+            contents,
+            () => preview.size,
+            () => {
+              if (scheduled) return;
+              scheduled = true;
+              setImmediate(() => {
+                scheduled = false;
+                report(preview);
+              });
+            },
+            (element, png) => {
+              const owner = window();
+              if (all.get(preview.threadId) === preview && owner && !owner.isDestroyed())
+                owner.webContents.send("cerium:preview-picked", preview.threadId, element, png);
+            },
+          );
+          preview.inspector = inspector;
+          contents.debugger.once("detach", () => {
+            if (preview.inspector !== inspector) return;
+            delete preview.inspector;
+            preview.page = undefined;
+            report(preview);
+          });
+          const page = await Page.attach(session, inspector.addIssue);
           // The page takes the agents' clicks and keys as if it had focus: the window's own page
           // holds it, and Chromium drops input to a view without it, whether or not the user sees it.
           await page.cdp.send("Emulation.setFocusEmulationEnabled", { enabled: true });
@@ -484,8 +527,10 @@ export const previews = (window: () => BrowserWindow | undefined) => {
     const preview = bounds === null ? all.get(threadId) : open(threadId);
     if (preview === undefined) return;
     preview.lastUsed = Date.now();
-    if (bounds === null) preview.shown = undefined;
-    else {
+    if (bounds === null) {
+      preview.shown = undefined;
+      preview.inspector?.cancel();
+    } else {
       const zoom = owner.webContents.getZoomFactor();
       const shown = {
         x: Math.round(bounds.x * zoom),
@@ -494,17 +539,43 @@ export const previews = (window: () => BrowserWindow | undefined) => {
         height: Math.max(1, Math.round(bounds.height * zoom)),
       };
       preview.shown = shown;
+      const resized = shown.width !== preview.size.width || shown.height !== preview.size.height;
       preview.size = { width: shown.width, height: shown.height };
+      if (resized) void preview.inspector?.resize().catch(() => undefined);
     }
     place(preview);
   });
+
+  ipcMain.handle(
+    "cerium:preview-inspector",
+    async (event, threadId: unknown, action: unknown, value: unknown) => {
+      if (event.sender !== window()?.webContents || !isThread(threadId)) throw new Error("Invalid preview.");
+      const preview = all.get(threadId);
+      if (!preview) throw new Error("The preview has closed.");
+      await pageOf(preview);
+      const inspector = preview.inspector;
+      if (!inspector) throw new Error("The debugger has disconnected.");
+      if (action === "picking" && typeof value === "boolean") return inspector.setPicking(value);
+      if (action === "viewport" && typeof value === "string" && Object.hasOwn(viewportWidths, value))
+        return inspector.setViewport(value as PreviewViewport);
+      if (action === "theme" && (value === "light" || value === "dark" || value === "system"))
+        return inspector.setTheme(value);
+      if (action === "issues") return { url: urlOf(preview.view.webContents), issues: inspector.snapshot() };
+      if (action === "acknowledge" && typeof value === "number") return inspector.acknowledge(value);
+      throw new Error("Unknown preview control.");
+    },
+  );
 
   /** The user typed an address, or pressed back, forward, reload or stop. */
   ipcMain.handle("cerium:preview-navigate", async (_event, threadId: unknown, input: unknown) => {
     if (!isThread(threadId) || typeof input !== "string") return false;
     const url = previewUrl(input);
     if (url === undefined) return false;
-    void load(open(threadId), url).catch(() => undefined);
+    const preview = open(threadId);
+    // Listen before navigation so the first script error or failed fetch reaches the toolbar.
+    await pageOf(preview).catch(() => undefined);
+    if (all.get(threadId) !== preview) return false;
+    void load(preview, url).catch(() => undefined);
     return true;
   });
   ipcMain.on("cerium:preview-go", (_event, threadId: unknown, go: unknown) => {
@@ -576,6 +647,7 @@ export const previews = (window: () => BrowserWindow | undefined) => {
       for (const preview of all.values()) {
         if (preview.shown !== undefined) preview.lastUsed = Date.now();
         preview.shown = undefined;
+        preview.inspector?.cancel();
         place(preview);
       }
     },

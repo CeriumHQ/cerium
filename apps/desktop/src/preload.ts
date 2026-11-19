@@ -1,3 +1,4 @@
+import type { PreviewElement, PreviewTheme, PreviewViewport } from "@cerium/browser/inspector";
 import type { NotificationKind } from "@cerium/protocol";
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 
@@ -117,6 +118,21 @@ contextBridge.exposeInMainWorld("cerium", {
   },
   // The Preview pane's pages, which the shell lays over the window where the pane says.
   preview: {
+    setPicking: (threadId: string, enabled: boolean) =>
+      ipcRenderer.invoke("cerium:preview-inspector", threadId, "picking", enabled),
+    setViewport: (threadId: string, viewport: PreviewViewport) =>
+      ipcRenderer.invoke("cerium:preview-inspector", threadId, "viewport", viewport),
+    setTheme: (threadId: string, theme: PreviewTheme) =>
+      ipcRenderer.invoke("cerium:preview-inspector", threadId, "theme", theme),
+    issues: (threadId: string) => ipcRenderer.invoke("cerium:preview-inspector", threadId, "issues"),
+    acknowledge: (threadId: string, lastId: number) =>
+      ipcRenderer.invoke("cerium:preview-inspector", threadId, "acknowledge", lastId),
+    onPicked: (listener: (threadId: string, element: PreviewElement, png: string) => void) => {
+      const forward = (_event: unknown, threadId: string, element: PreviewElement, png: string) =>
+        listener(threadId, element, png);
+      ipcRenderer.on("cerium:preview-picked", forward);
+      return () => ipcRenderer.off("cerium:preview-picked", forward);
+    },
     place: (threadId: string, bounds: { x: number; y: number; width: number; height: number } | null): void =>
       ipcRenderer.send("cerium:preview-place", threadId, bounds),
     navigate: (threadId: string, input: string): Promise<boolean> =>

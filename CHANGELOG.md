@@ -38,6 +38,7 @@ All notable changes to Cerium are recorded here. The format follows
 ### Added
 
 - Antigravity, GitHub Copilot and xAI Grok Build join the coding harnesses you can use in a Cerium thread. Each runs locally with its own sign-in.
+- The desktop preview pane can inspect the page. Pick an element to attach it to your message with its selector, size, styles, HTML, component and a screenshot. Resize the page to desktop, tablet or phone width, preview it in light or dark, and send the issues the page reported to the thread's agent in one click.
 
 - Archiving a single thread from the inbox offers Undo at the foot of the list.
 - Composer autocomplete is a beta feature enabled by default. It suggests a short follow-up when the open thread’s lead finishes with a clear next step. Press Tab in the empty composer to edit the suggestion, or type your own message. Suggestions use the thread’s current model.

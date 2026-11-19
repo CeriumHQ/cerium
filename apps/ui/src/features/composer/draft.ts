@@ -1,3 +1,4 @@
+import type { PreviewElement } from "@cerium/browser/inspector";
 import {
   mentionToken,
   type AccessMode,
@@ -82,6 +83,7 @@ export interface DraftComment {
   readonly text: string;
   /** Set when the comment sits on lines of a diff rather than on a passage of the reply. */
   readonly file?: DraftCommentFile;
+  readonly element?: PreviewElement & { readonly screenshot: Attachment };
 }
 
 export interface Draft {
@@ -132,9 +134,25 @@ const fenced = (comment: DraftComment): string => {
 /** What the agent reads: each comment (a quoted passage, or a marked-out diff run), then the text. */
 export const withComments = (text: string, comments: ReadonlyArray<DraftComment>): string =>
   [
-    ...comments.flatMap((comment) =>
-      comment.file === undefined ? [quoted(comment.quote), comment.text.trim()] : [fenced(comment)],
-    ),
+    ...comments.flatMap((comment) => {
+      if (comment.element) {
+        const element = comment.element;
+        const fence = "`".repeat(
+          1 + Math.max(2, ...Array.from(element.html.matchAll(/`+/g), (run) => run[0].length)),
+        );
+        return [
+          `Preview element ${element.selector} (${element.width} × ${element.height}) on ${element.url}`,
+          [element.component, element.source].filter(Boolean).join(" · "),
+          `Computed styles: ${JSON.stringify(element.styles)}`,
+          `DOM snippet:\n${fence}html\n${element.html}\n${fence}`,
+          `Screenshot: ${element.screenshot.name}`,
+          comment.text.trim(),
+        ]
+          .filter(Boolean)
+          .join("\n");
+      }
+      return comment.file === undefined ? [quoted(comment.quote), comment.text.trim()] : [fenced(comment)];
+    }),
     text.trim(),
   ]
     .filter((part) => part !== "")

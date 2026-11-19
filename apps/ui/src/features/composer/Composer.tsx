@@ -421,10 +421,13 @@ export function Composer({
   const needsFolder = isNew && target.mode === "work" && target.folder === undefined;
   const text = draftText(draft.segments);
   const preparing = draft.attachments.some((attachment) => attachment.state._tag === "Preparing");
-  const ready = draft.attachments.flatMap((attachment) =>
-    attachment.state._tag === "Ready" ? [attachment.state.attachment] : [],
-  );
   const comments = draft.comments ?? [];
+  const ready = [
+    ...draft.attachments.flatMap((attachment) =>
+      attachment.state._tag === "Ready" ? [attachment.state.attachment] : [],
+    ),
+    ...comments.flatMap((comment) => (comment.element ? [comment.element.screenshot] : [])),
+  ];
   const written = text.trim() !== "" || ready.length > 0 || comments.length > 0;
   // As the editor counts it: only line breaks left, no files, no comments.
   const blankBox =
