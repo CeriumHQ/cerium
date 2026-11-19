@@ -248,6 +248,7 @@ export function PromptEditor({
 
   const report = () => {
     if (!root.current) return;
+    onEdit?.();
     keepCaret();
     onChange(read(root.current));
     onTrigger(currentTrigger(root.current));
@@ -391,7 +392,9 @@ export function PromptEditor({
   const ghost = empty && suggestion !== undefined && !cover;
 
   return (
-    <div className={`group/editor ${ghost ? "grid" : ""} ${inline ? "relative min-w-0 flex-1" : "relative"}`}>
+    <div
+      className={`prompt-editor group/editor ${ghost ? "grid" : ""} ${inline ? "relative min-w-0 flex-1" : "relative"}`}
+    >
       <div
         ref={(element) => {
           root.current = element;
@@ -480,9 +483,11 @@ export function PromptEditor({
             <span className="hidden pointer-coarse:inline">Use</span>
           </button>
         </span>
-      ) : empty ? (
+      ) : null}
+      {empty ? (
         <span
           aria-hidden
+          data-editor-placeholder=""
           className={`pointer-events-none absolute text-reading leading-[1.6] text-fg-tertiary select-none max-md:text-base ${
             inline ? "inset-x-1 top-2 truncate" : "top-3 left-4"
           } ${cover ? "opacity-0 transition-opacity duration-150 group-hover/editor:opacity-100 group-focus-within/editor:opacity-100" : ""}`}

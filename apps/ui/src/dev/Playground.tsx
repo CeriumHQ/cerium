@@ -1,6 +1,9 @@
 import type { AgentEvent, EventId } from "@cerium/protocol";
-import { useEffect, useState } from "react";
+import { RegistryContext, RegistryProvider } from "@effect/atom-react";
+import { AsyncResult } from "effect/reactivity";
+import { useContext, useEffect, useState } from "react";
 
+import { followupEventAtom } from "../backend/atoms.ts";
 import { ThreadLog } from "../backend/threadLog.ts";
 import { Composer } from "../features/composer/Composer.tsx";
 import { useTheme } from "../features/settings/theme.ts";
@@ -13,7 +16,7 @@ import { diagrams, explanation, leadFixture, transcriptFixture } from "./transcr
 // leaves it running; `&diagrams` swaps the explaining reply for one with a diagram and math; `&stream` replays the explaining reply as it would stream in, and `&at=<n>`
 // holds it at its nth character.
 // &history=5000 starts with a long settled log; &grow=300 appends completed turns to it.
-// &turn-end replays a turn completing and reporting its changed files.
+// &turn-end replays a turn completing and reporting its changed files. &followup=<ms> adds a stub reply.
 // &turn-start runs a scripted response when the composer sends. &fast skips the visible wait.
 
 const last = transcriptFixture.at(-1)!;
@@ -83,7 +86,10 @@ export function Playground() {
   useTheme("system");
   const search = new URLSearchParams(location.search);
   if (search.has("turn-start")) return <TurnStartFixture wait={search.has("fast") ? 100 : 950} />;
-  if (search.has("turn-end")) return <TurnEndFixture />;
+  if (search.has("turn-end")) {
+    const followup = search.get("followup");
+    return followup === null ? <TurnEndFixture /> : <FollowupFixture delay={Number(followup)} />;
+  }
   return <TranscriptFixture search={search} />;
 }
 
@@ -252,7 +258,22 @@ const turnEndEvents = [
   }),
 ];
 
-function TurnEndFixture() {
+const fixtureFollowupEvent = followupEventAtom(last.agentId);
+
+function FollowupFixture({ delay }: { delay: number }) {
+  const [run, setRun] = useState(0);
+  return (
+    <RegistryProvider key={run} initialValues={[[fixtureFollowupEvent, AsyncResult.success(null)]]}>
+      <TurnEndFixture followupDelay={delay} replay={() => setRun((run) => run + 1)} />
+    </RegistryProvider>
+  );
+}
+
+function TurnEndFixture({ followupDelay, replay }: { followupDelay?: number; replay?: () => void }) {
+  const registry = useContext(RegistryContext);
+  const [draftKey] = useState(() =>
+    followupDelay === undefined ? "fixture-turn-end" : `fixture-followup:${crypto.randomUUID()}`,
+  );
   const [log] = useState(() => {
     const log = new ThreadLog();
     for (let n = 0; n < 5; n++) log.add(syntheticTurn(n, n * 3, turnEndInput.at - (5 - n) * 3));
@@ -306,8 +327,24 @@ function TurnEndFixture() {
         turnFiles={{ open: () => undefined, revert: async () => false }}
       />
       <Composer
-        target={{ kind: "thread", ...leadFixture, modelId: leadFixture.model }}
-        draftKey="fixture-turn-end"
+        target={{
+          kind: "thread",
+          ...leadFixture,
+          modelId: leadFixture.model,
+          ...(followupDelay === undefined
+            ? {}
+            : {
+                followup: {
+                  agentId: last.agentId,
+                  ready: true,
+                  suggest: async () => {
+                    await new Promise((resolve) => setTimeout(resolve, followupDelay));
+                    return "Check whether the logout flow has the same race.";
+                  },
+                },
+              }),
+        }}
+        draftKey={draftKey}
         running={phase === 0}
         onHeight={setHeight}
         onSend={async () => false}
@@ -317,10 +354,21 @@ function TurnEndFixture() {
       <button
         type="button"
         className="absolute top-4 right-4 rounded border border-line-subtle bg-surface-raised px-3 py-1 text-meta"
-        onClick={() => setPhase(2)}
-        disabled={phase !== 0}
+        onClick={() => {
+          if (phase !== 0) {
+            replay?.();
+            return;
+          }
+          setPhase(2);
+          if (followupDelay !== undefined) {
+            registry
+              .ensureNode(fixtureFollowupEvent)
+              .setInitialValue(AsyncResult.success(turnEndEvents[1]!.sequence));
+          }
+        }}
+        disabled={phase !== 0 && replay === undefined}
       >
-        Finish fixture turn
+        {phase !== 0 && replay ? "Replay fixture turn" : "Finish fixture turn"}
       </button>
     </div>
   );

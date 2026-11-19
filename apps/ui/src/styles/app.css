@@ -252,6 +252,13 @@ html[data-target="web"] :is(button, [role="button"], [role="treeitem"], a) {
   initial-value: 0ms;
 }
 
+/* The composer reads the resolved time to wait out the last beat of the footer. */
+@property --turn-end-duration {
+  syntax: "<time>";
+  inherits: true;
+  initial-value: 0ms;
+}
+
 @keyframes unroll {
   from {
     clip-path: inset(-8px -8px 100% -8px);
@@ -557,14 +564,13 @@ html:active-view-transition-type(launch)::view-transition-new(root) {
   }
 
   /* Work folds first, then room opens for the files and the footer fills in underneath. */
-  .transcript-motion {
+  :root {
     --turn-fold: 180ms;
     --turn-files-at: 110ms;
     --turn-files-duration: 180ms;
     --turn-footer-at: calc(var(--turn-files-at) + 130ms);
     --turn-footer-step: 35ms;
     --turn-footer-duration: 145ms;
-    /* The composer's follow-up can use this offset to arrive after the last footer part. */
     --turn-end-duration: calc(
       var(--turn-footer-at) + 2 * var(--turn-footer-step) + var(--turn-footer-duration)
     );
@@ -616,8 +622,22 @@ html:active-view-transition-type(launch)::view-transition-new(root) {
     animation-delay: calc(var(--turn-end-duration) - var(--turn-footer-duration));
   }
 
+  .prompt-editor {
+    --followup-fade: 140ms;
+  }
+
+  /* The ghost and Tab hint replace the empty line together. Only the entrance moves. */
+  [data-followup] {
+    animation: fade-in var(--followup-fade) var(--ease-out-soft) backwards;
+  }
+
+  [data-followup] ~ [data-editor-placeholder] {
+    opacity: 0;
+    transition: opacity var(--followup-fade) var(--ease-out-soft);
+  }
+
   @media (prefers-reduced-motion: reduce) {
-    .transcript-motion {
+    :root {
       --turn-fold: 0ms;
       --turn-files-at: 0ms;
       --turn-files-duration: 0ms;

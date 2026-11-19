@@ -805,8 +805,9 @@ export function Composer({
   const followup = useFollowup({
     followup: target.kind === "thread" ? target.followup : undefined,
     empty: blankBox && !listening,
+    running,
   });
-  const suggestion = running ? undefined : followup.text;
+  const suggestion = followup.text;
   const acceptSuggestion = () => {
     if (suggestion === undefined) return;
     followup.dismiss();
@@ -951,16 +952,25 @@ export function Composer({
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     // The suggestion answers only a plain Tab, which then writes it as ordinary text, and Esc, which
     // drops it. Shift Tab, a composing IME and every other key go on as they would.
-    if (suggestion !== undefined && !event.nativeEvent.isComposing) {
-      if (event.key === "Tab" && !event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey) {
+    if (!event.nativeEvent.isComposing) {
+      if (
+        suggestion !== undefined &&
+        event.key === "Tab" &&
+        !event.shiftKey &&
+        !event.ctrlKey &&
+        !event.altKey &&
+        !event.metaKey
+      ) {
         event.preventDefault();
         acceptSuggestion();
         return;
       }
       if (event.key === "Escape") {
-        event.preventDefault();
         followup.dismiss();
-        return;
+        if (suggestion !== undefined) {
+          event.preventDefault();
+          return;
+        }
       }
     }
     const count = results.options.length;
