@@ -13,7 +13,7 @@ import type {
 import type { AutomationInput, AutomationView, PushRecord } from "@cerium/rpc";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Context, Deferred, Effect, FileSystem, Layer, Queue, Stream } from "effect";
+import { Context, Deferred, Effect, FileSystem, Layer, PlatformError, Queue, Stream } from "effect";
 import { TestClock } from "effect/testing";
 
 import { Automations } from "../src/automations.ts";
@@ -28,10 +28,26 @@ const at = (day: number, hours: number, minutes = 0) => new Date(2026, 9, day, h
 /** A backend whose orchestrator records the threads it's asked for, and whose pushes the test ends. */
 const makeBackend = (github?: Layer.Layer<GitHub>, reviews?: Layer.Layer<Reviews>) =>
   Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem;
-    const root = yield* fs.makeTempDirectoryScoped();
+    const root = "/automations-test";
     const project = `${root}/app`;
-    yield* fs.makeDirectory(project);
+    const directories = new Set([root, project]);
+    const files = new Map<string, string>();
+    const missing = (method: string, path: string) =>
+      PlatformError.systemError({ _tag: "NotFound", module: "FileSystem", method, pathOrDescriptor: path });
+    const fileSystem = FileSystem.layerNoop({
+      exists: (path) => Effect.succeed(directories.has(path) || files.has(path)),
+      makeDirectory: (path) => Effect.sync(() => directories.add(path)),
+      writeFileString: (path, data) => Effect.sync(() => files.set(path, data)),
+      readFileString: (path) =>
+        files.has(path) ? Effect.succeed(files.get(path)!) : Effect.fail(missing("readFileString", path)),
+      rename: (oldPath, newPath) =>
+        files.has(oldPath)
+          ? Effect.sync(() => {
+              files.set(newPath, files.get(oldPath)!);
+              files.delete(oldPath);
+            })
+          : Effect.fail(missing("rename", oldPath)),
+    });
     const ended = yield* Queue.unbounded<PushRecord>();
     const activity = yield* Queue.unbounded<AgentEvent>();
     const told: Array<ThreadNotification> = [];
@@ -108,6 +124,7 @@ const makeBackend = (github?: Layer.Layer<GitHub>, reviews?: Layer.Layer<Reviews
             orchestrator,
             pushes,
             NodeServices.layer,
+            fileSystem,
             github ?? Layer.empty,
             notifications,
             reviews ?? Layer.empty,
@@ -124,7 +141,7 @@ const makeBackend = (github?: Layer.Layer<GitHub>, reviews?: Layer.Layer<Reviews
       lead: { provider: "claude", model: "opus", access: "auto" },
       when,
     });
-    /** Lets the scheduler and the trigger take their turn, `seconds` on, and save to the real disk. */
+    /** Lets the scheduler and the trigger take their turn, `seconds` on, and save to the memory files. */
     const settle = Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 100)));
     const wait = (seconds: number) =>
       Effect.gen(function* () {
