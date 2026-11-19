@@ -13,6 +13,13 @@
 
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
+/* The backdrop and controls fade around the moving image. */
+@property --image-viewer-opacity {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 1;
+}
+
 html,
 body,
 #root {
