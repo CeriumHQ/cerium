@@ -1444,25 +1444,22 @@ export function Composer({
               <BackgroundTray background={background} />
             </div>
           ) : null}
-          <Reveal className={inline ? "min-w-0 basis-full" : ""}>
-            {queue ? (
-              <QueueTray
-                queue={queue}
-                onEdit={(message) =>
-                  appendToDraft({
-                    segments: segmentsOf(message.text, message.mentions),
-                    attachments: message.attachments,
-                  })
-                }
-              />
-            ) : null}
-          </Reveal>
-          <Reveal className={inline ? "min-w-0 basis-full" : ""}>
+          <QueueTray
+            queue={queue}
+            className={inline ? "min-w-0 basis-full" : ""}
+            onEdit={(message) =>
+              appendToDraft({
+                segments: segmentsOf(message.text, message.mentions),
+                attachments: message.attachments,
+              })
+            }
+          />
+          <Reveal carry className={inline ? "min-w-0 basis-full" : ""}>
             {comments.length > 0 ? (
               <CommentTray comments={comments} onEdit={editComment} onRemove={removeComment} />
             ) : null}
           </Reveal>
-          <Reveal className={inline ? "min-w-0 basis-full" : ""}>
+          <Reveal carry className={inline ? "min-w-0 basis-full" : ""}>
             {draft.attachments.length > 0 ? (
               <AttachmentTray attachments={draft.attachments} onRemove={removeAttachment} />
             ) : null}

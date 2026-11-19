@@ -50,8 +50,13 @@ export function BackgroundTray({ background }: { readonly background: Background
   /** Tasks asked to stop, until they leave the list. */
   const [stopping, setStopping] = useState<ReadonlySet<string>>(new Set());
   const [now, setNow] = useState(() => Date.now());
-  const [rows, release] = useLingering(entries, (entry) => `${entry.agentId}:${entry.task.id}`);
   const several = entries.length > 1;
+  // A row leaves on its own only when the list stays in view.
+  const [rows, release] = useLingering(
+    entries,
+    (entry) => `${entry.agentId}:${entry.task.id}`,
+    (before, after) => after.length > 0 && (open || (before.length === 1 && after.length === 1)),
+  );
 
   useEffect(() => {
     if (entries.length === 0) return;
@@ -131,7 +136,7 @@ export function BackgroundTray({ background }: { readonly background: Background
   };
 
   return (
-    <Reveal>
+    <Reveal carry>
       {entries.length === 0 ? null : (
         <div className="mx-2.5 mt-2.5 rounded-xl border border-line-subtle p-1">
           {several ? (
@@ -158,7 +163,7 @@ export function BackgroundTray({ background }: { readonly background: Background
               />
             </Button>
           ) : null}
-          <Reveal>
+          <Reveal carry>
             {several && !open ? null : (
               <ol>
                 {rows.map(({ key, item, present }) => (
