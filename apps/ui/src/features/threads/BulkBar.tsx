@@ -71,6 +71,8 @@ export function SelectBox({
   label,
   onChange,
   className = "",
+  visible,
+  returnFocus,
 }: {
   readonly checked: boolean;
   /** Some, but not all, of a run card's threads are picked. */
@@ -79,10 +81,25 @@ export function SelectBox({
   readonly onChange: () => void;
   /** Where it floats, such as `left-2 top-2` on a card or `left-2 top-1/2` on a row. */
   readonly className?: string;
+  /** Inbox cards show their checkbox only while bulk picking. */
+  readonly visible?: boolean;
+  readonly returnFocus?: () => void;
 }) {
   const shown = checked || mixed;
+  const checkbox = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    if (visible === false && checkbox.current?.contains(document.activeElement)) returnFocus?.();
+  }, [visible, returnFocus]);
+  const visibility =
+    visible === undefined
+      ? shown
+        ? "opacity-100 duration-150"
+        : "opacity-0 duration-150 group-hover/row:opacity-100 group-has-[:focus-visible]/row:opacity-100 pointer-coarse:opacity-100"
+      : `duration-180 ease-out-soft ${visible ? "opacity-100 starting:opacity-0" : "opacity-0"}`;
   return (
     <Checkbox.Root
+      ref={checkbox}
+      inert={visible === false}
       checked={checked}
       onClick={(event) => event.stopPropagation()}
       onMouseDown={(event) => event.stopPropagation()}
@@ -90,11 +107,7 @@ export function SelectBox({
       onCheckedChange={onChange}
       aria-label={label}
       title={label}
-      className={`absolute z-10 shrink-0 cursor-default rounded-[4px] outline-none select-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
-        shown
-          ? "opacity-100"
-          : "opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 group-has-[:focus-visible]/row:opacity-100 pointer-coarse:opacity-100"
-      } ${className}`}
+      className={`absolute z-10 shrink-0 cursor-default rounded-[4px] outline-none select-none transition-opacity focus-visible:ring-2 focus-visible:ring-focus-ring ${visibility} ${className}`}
     >
       <span
         className={`grid size-4 place-items-center rounded-[4px] border shadow-raised transition-colors ${
@@ -146,6 +159,7 @@ export function BulkBar({
   onLater,
   onMarkRead,
   onDelete,
+  onMoving,
   onSettled,
   onNote,
 }: {
@@ -165,6 +179,8 @@ export function BulkBar({
   readonly onLater: ((threadId: string, until: number) => Promise<boolean>) | undefined;
   readonly onMarkRead: (threads: ReadonlyArray<ThreadSummary>) => void;
   readonly onDelete: (threadId: string) => Promise<boolean>;
+  /** Holds the rows an action is moving until its result is ready to show. */
+  readonly onMoving?: (threads: ReadonlyArray<ThreadSummary>) => (taken: ReadonlyArray<string>) => void;
   /** Drops the threads an action took, so what it didn't stays picked for another try. */
   readonly onSettled: (threadIds: ReadonlyArray<string>) => void;
   readonly onNote: (note: string) => void;
@@ -181,6 +197,10 @@ export function BulkBar({
    */
   const run = async (action: BulkAction, take: (thread: ThreadSummary) => boolean | Promise<boolean>) => {
     const plan = planBulk(byId, ids, action);
+    const release =
+      action === "archive" || action === "later" || action === "restore" || action === "delete"
+        ? onMoving?.(plan.act)
+        : undefined;
     const taken: Array<ThreadSummary> = [];
     const failed: Array<BulkSkip> = [];
     for (const thread of plan.act) {
@@ -192,7 +212,9 @@ export function BulkBar({
       }
     }
     onNote(summarizeBulk(action, { act: taken, skipped: [...plan.skipped, ...failed] }));
-    onSettled(taken.map((thread) => thread.id));
+    const moved = taken.map((thread) => thread.id);
+    onSettled(moved);
+    release?.(moved);
   };
 
   const pin = threads.some((thread) => !pins.includes(thread.id))

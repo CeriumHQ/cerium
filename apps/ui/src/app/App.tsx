@@ -2727,14 +2727,26 @@ function Workspace() {
               },
             );
           }}
-          onRestore={(threadId): Promise<boolean> =>
-            attempt(setArchived({ payload: { threadId: threadId as ThreadId, archived: false } })).then(
-              (restored) => {
-                if (restored) refreshThreads();
-                return restored;
-              },
-            )
-          }
+          onRestore={(threadId): Promise<boolean> => {
+            const away = puttingAway.get(threadId);
+            return attempt(
+              setArchived({ payload: { threadId: threadId as ThreadId, archived: false } }),
+            ).then((restored) => {
+              if (restored) {
+                // Undo can restore the thread before the list ever sees it archived.
+                if (away !== undefined) {
+                  setPuttingAway((all) => {
+                    if (all.get(threadId) !== away) return all;
+                    const next = new Map(all);
+                    next.delete(threadId);
+                    return next;
+                  });
+                }
+                refreshThreads();
+              }
+              return restored;
+            });
+          }}
           // Deleting a thread closes its tab.
           // Its dialog said a worktree goes with it.
           onDelete={(threadId): Promise<boolean> => {
