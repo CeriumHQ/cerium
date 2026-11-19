@@ -674,11 +674,14 @@ export const checkpointsLayer = (options: { readonly directory: string }) =>
         const scratch = path.join(store, `index-${randomUUID()}`);
         return Effect.gen(function* () {
           if (yield* fs.exists(index).pipe(Effect.orElseSucceed(() => false))) {
-            yield* fs
-              .copyFile(index, scratch)
-              .pipe(
-                Effect.mapError(() => new CheckpointError({ message: "Couldn't read the snapshot store." })),
-              );
+            yield* Effect.gen(function* () {
+              const { mtime } = yield* fs.stat(index);
+              yield* fs.copyFile(index, scratch);
+              // Git rechecks files as new as the index. A newer copy can hide a same-size edit.
+              if (Option.isSome(mtime)) yield* fs.utimes(scratch, mtime.value, mtime.value);
+            }).pipe(
+              Effect.mapError(() => new CheckpointError({ message: "Couldn't read the snapshot store." })),
+            );
           }
           const result = yield* use(scratch);
           if (keep) {
