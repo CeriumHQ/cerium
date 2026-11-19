@@ -38,7 +38,6 @@ All notable changes to Cerium are recorded here. The format follows
 - Dialogs share one shell and title size, and the clone dialog's main action uses the accent.
 - Keyboard focus is visible again on controls that hid it, and disabled buttons dim the same way everywhere.
 - Placeholder text and captions are easier to read against the window.
-- Page headings share one size across the app.
 - The thread count on a grouped inbox card is legible.
 - The website and sign-in link page match the app's colours, and the Sea glass theme keeps its name spelled as two words.
 

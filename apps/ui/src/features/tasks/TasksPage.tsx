@@ -80,7 +80,9 @@ export function TaskList({
   return (
     <div className="mx-auto flex w-full max-w-[640px] flex-col px-6 pt-10 pb-12 max-md:px-3 max-md:pt-1">
       <header className="mb-5 px-1 max-md:mb-3 max-md:px-1.5">
-        <h1 className="text-heading leading-tight font-semibold tracking-tight">Tasks</h1>
+        <h1 className="font-display text-[22px] leading-tight font-semibold font-stretch-expanded [font-size-adjust:none] max-md:text-[20px]">
+          Tasks
+        </h1>
         <p className="mt-0.5 text-body text-fg-tertiary max-md:text-[14px]">
           {open.length > 0 ? `${open.length} to do` : done.length > 0 ? "All done" : "Nothing to do yet"}
         </p>
