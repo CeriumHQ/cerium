@@ -616,6 +616,7 @@ export function ThreadPane({
                           onAnswer={actions.answerApproval}
                           onAnswerSpawn={actions.answerSpawn}
                           onAnswerQuestion={actions.answerQuestion}
+                          onFocusComposer={() => input.current?.focus({ preventScroll: true })}
                         />
                         {viewed && actions.confirmsSetup ? (
                           <SetupGuessNotice thread={viewed.thread} attempt={actions.attempt} />

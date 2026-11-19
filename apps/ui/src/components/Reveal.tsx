@@ -16,6 +16,7 @@ export function Reveal({
   kind = "fold",
   appear = true,
   carry = false,
+  inertWhileEntering = false,
   shift,
   onGone,
   className = "",
@@ -26,6 +27,8 @@ export function Reveal({
   appear?: boolean;
   /** Reveals that mount inside this one while it moves arrive with it. */
   carry?: boolean;
+  /** Holds off interaction until the content is in place. */
+  inertWhileEntering?: boolean;
   /** How far a fold moves along the way: positive rises from below, negative drops from above. */
   shift?: number;
   /** It has left, after its children went. */
@@ -43,7 +46,7 @@ export function Reveal({
     <div
       ref={element}
       data-phase={phase}
-      inert={phase === "leaving"}
+      inert={phase === "leaving" || (inertWhileEntering && phase === "entering")}
       style={shift === undefined ? undefined : ({ "--reveal-shift": `${shift}px` } as CSSProperties)}
       className={`${kind === "fold" ? "reveal" : "pop"} ${className}`}
     >
