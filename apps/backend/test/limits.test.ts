@@ -153,6 +153,7 @@ describe("the limit warnings of a running backend", () => {
       const notifications = Layer.succeed(Notifications, {
         told: Stream.empty,
         tell: (notification: ThreadNotification) => Effect.sync(() => void told.push(notification)),
+        reviewCompletionWith: () => Effect.void,
       });
       yield* Layer.build(limitWarnings.pipe(Layer.provide(Layer.mergeAll(store, usage, notifications))));
       const read = (meter: UsageMeter) =>

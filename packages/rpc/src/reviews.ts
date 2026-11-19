@@ -19,7 +19,11 @@ import { CeriumError } from "./error.ts";
 /** What a review reads. */
 export const ReviewTarget = Schema.Union([
   /** What the next commit takes in the repository at `root`: what's staged, or everything when nothing is. */
-  Schema.TaggedStruct("Changes", { root: Schema.NonEmptyString }),
+  Schema.TaggedStruct("Changes", {
+    root: Schema.NonEmptyString,
+    /** When set, includes commits and working changes since this automation's base. */
+    base: Schema.optionalKey(Schema.NonEmptyString),
+  }),
   /** The commits of the branch checked out at `cwd` that `base` doesn't have, before a pull request. */
   Schema.TaggedStruct("Branch", { cwd: Schema.NonEmptyString, base: Schema.NonEmptyString }),
   /** The files one of an agent's turns changed, between the folder's snapshots from before and after it. */

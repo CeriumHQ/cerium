@@ -10,6 +10,9 @@ import { machineAtom } from "./machine.ts";
 /** The `RPC_VERSION` that brought automations; an older machine has none to show. */
 export const AUTOMATIONS_VERSION = 36;
 
+/** The `RPC_VERSION` that brought GitHub triggers and cross-lab review. */
+export { GITHUB_AUTOMATIONS_RPC_VERSION as GITHUB_AUTOMATIONS_VERSION } from "@cerium/rpc";
+
 /** Every automation with its next time and last runs, now and after every change. */
 export const automationsAtom = Backend.runtime
   .atom((get) => {

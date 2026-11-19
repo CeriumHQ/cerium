@@ -137,18 +137,9 @@ export const backendLayer = (options: BackendOptions) => {
     },
   )
     .pipe(
-      Layer.provideMerge(
-        SourceControl.host.pipe(
-          Layer.provideMerge(
-            SourceControl.layer({ file: join(options.dataDirectory, "source-control.json") }),
-          ),
-        ),
-      ),
-    )
-    .pipe(
       // Tells when a subscription's usage limit nears (limits.ts), through the notifications below.
       // Beside it, the bus's `push` tool, and the pushes and CI checks each thread shows; over them, the
-      // user's automations, which start threads on a schedule or when a push's CI fails.
+      // user's automations, which start threads on a schedule or in response to CI and GitHub events.
       Layer.provideMerge(
         Automations.layer({ file: join(options.dataDirectory, "automations.json") }).pipe(
           Layer.provideMerge(
@@ -158,6 +149,15 @@ export const backendLayer = (options: BackendOptions) => {
               // The reviews of a diff by another harness each thread holds.
               Reviews.layer({ file: join(options.dataDirectory, "reviews.json") }),
             ),
+          ),
+        ),
+      ),
+    )
+    .pipe(
+      Layer.provideMerge(
+        SourceControl.host.pipe(
+          Layer.provideMerge(
+            SourceControl.layer({ file: join(options.dataDirectory, "source-control.json") }),
           ),
         ),
       ),

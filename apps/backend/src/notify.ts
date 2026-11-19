@@ -3,13 +3,14 @@ import { Orchestrator } from "@cerium/orchestrator";
 import {
   MAX_NOTIFICATION_DETAIL,
   MAX_THREAD_TITLE,
+  REVIEWER_ROLE,
   type AgentId,
   type AgentInfo,
   type NotificationKind,
   type ThreadId,
   type ThreadNotification,
 } from "@cerium/protocol";
-import { Context, Effect, FiberMap, Layer, PubSub, Stream } from "effect";
+import { Context, Effect, FiberMap, Layer, PubSub, Stream, type Scope } from "effect";
 
 // Notifications. This machine says when one of its threads waits on the user, finished or failed:
 // to its own window, which shows it natively, and to the relay, which tells the account's browsers. A change
@@ -40,6 +41,11 @@ export interface Verdict {
   /** What a thread tells; a `limit` is told by `LimitWarnings` (limits.ts). */
   readonly kind: Exclude<NotificationKind, "limit">;
   readonly detail?: string;
+}
+
+interface CompletionReview {
+  readonly finish: (threadId: ThreadId) => Effect.Effect<string | undefined>;
+  readonly isRunning: (threadId: ThreadId) => boolean;
 }
 
 /**
@@ -93,6 +99,7 @@ export class Notifications extends Context.Service<
     readonly told: Stream.Stream<ThreadNotification>;
     /** Tells this machine's window and the account's browsers now: for what no thread's events say. */
     readonly tell: (notification: ThreadNotification) => Effect.Effect<void>;
+    readonly reviewCompletionWith: (review: CompletionReview) => Effect.Effect<void, never, Scope.Scope>;
   }
 >()("cerium/backend/Notifications") {
   static readonly layer = Layer.effect(
@@ -100,14 +107,28 @@ export class Notifications extends Context.Service<
     Effect.gen(function* () {
       const account = yield* Account;
       const orchestrator = yield* Orchestrator;
+      let completionReview: CompletionReview | undefined;
       const feed = yield* PubSub.unbounded<ThreadNotification>();
       const tell = (notification: ThreadNotification) =>
         Effect.gen(function* () {
           yield* PubSub.publish(feed, notification);
           yield* account.send({ _tag: "Notify", ...notification }).pipe(Effect.ignore);
         });
-      yield* startNotifier(orchestrator, tell);
-      return Notifications.of({ told: Stream.fromPubSub(feed), tell });
+      yield* startNotifier(orchestrator, tell, () => completionReview);
+      return Notifications.of({
+        told: Stream.fromPubSub(feed),
+        tell,
+        reviewCompletionWith: (review) =>
+          Effect.acquireRelease(
+            Effect.sync(() => {
+              completionReview = review;
+            }),
+            () =>
+              Effect.sync(() => {
+                completionReview = undefined;
+              }),
+          ),
+      });
     }),
   );
 }
@@ -116,6 +137,7 @@ export class Notifications extends Context.Service<
 const startNotifier = (
   orchestrator: Orchestrator["Service"],
   notify: (notification: ThreadNotification) => Effect.Effect<void>,
+  completionReview: () => CompletionReview | undefined,
 ) =>
   Effect.gen(function* () {
     const settling = yield* FiberMap.make<ThreadId>();
@@ -136,7 +158,17 @@ const startNotifier = (
         const thread = (yield* orchestrator.listThreads).find((each) => each.id === threadId);
         if (thread === undefined) return;
         const title = thread.title.slice(0, MAX_THREAD_TITLE);
-        yield* notify({ threadId, title, ...verdict });
+        const gate = completionReview();
+        const review =
+          verdict.kind === "finished" && gate !== undefined ? yield* gate.finish(threadId) : undefined;
+        const detail =
+          review === undefined
+            ? verdict.detail
+            : `${review}${verdict.detail === undefined ? "" : ` ${verdict.detail}`}`.slice(
+                0,
+                MAX_NOTIFICATION_DETAIL,
+              );
+        yield* notify({ threadId, title, kind: verdict.kind, ...(detail === undefined ? {} : { detail }) });
       }).pipe(Effect.ignore);
 
     const note = (threadId: ThreadId, change: Happened) =>
@@ -169,9 +201,20 @@ const startNotifier = (
               asked: notificationLine(`Start a ${payload.role} agent on ${payload.model}`) ?? payload.role,
             });
           case "AgentStateChanged":
-            if (payload.state === "failed") return note(threadId, { failed: agentId });
-            if (payload.state === "idle") return note(threadId, { wentIdle: true });
-            return Effect.void;
+            return Effect.gen(function* () {
+              if (payload.state !== "failed" && payload.state !== "idle") return;
+              if (completionReview()?.isRunning(threadId)) {
+                const agents = yield* orchestrator.listAgents(threadId).pipe(Effect.orElseSucceed(() => []));
+                if (
+                  agents.some(
+                    (agent) =>
+                      agent.id === agentId && agent.parentId !== undefined && agent.role === REVIEWER_ROLE,
+                  )
+                )
+                  return;
+              }
+              yield* note(threadId, payload.state === "failed" ? { failed: agentId } : { wentIdle: true });
+            });
           default:
             return Effect.void;
         }

@@ -14,11 +14,42 @@ import type { ThreadSummary } from "../threads/model.ts";
 /** How an automation goes off, as its form's first select offers it. */
 export type Repeat = AutomationWhen["_tag"];
 
+/** The repeats that watch GitHub rather than a clock or CI; a machine before `GITHUB_AUTOMATIONS_RPC_VERSION` has none. */
+export const gitHubRepeats = [
+  "PullRequestReview",
+  "PullRequestConflicts",
+  "IssueAssigned",
+  "IssueLabeled",
+] as const satisfies ReadonlyArray<Repeat>;
+
+export const isGitHubRepeat = (repeat: Repeat): boolean =>
+  (gitHubRepeats as ReadonlyArray<Repeat>).includes(repeat);
+
+/** What an issue trigger's thread does with the issue. */
+export type IssueAction = "triage" | "draftPr";
+
+export const issueActionLabel: Record<IssueAction, string> = {
+  triage: "Triage it",
+  draftPr: "Draft a PR",
+};
+
+export const issueActionHint: Record<IssueAction, string> = {
+  triage: "Read the issue, find the cause, and write up a plan",
+  draftPr: "Implement the issue, run checks, and open a draft pull request when ready",
+};
+
+/** The label an issue-label trigger starts with. */
+export const DEFAULT_ISSUE_LABEL = "agent-ready";
+
 export const repeatLabel: Record<Repeat, string> = {
   Hourly: "Every hour",
   Daily: "Every day",
   Weekdays: "Weekdays",
   CiFailed: "When CI fails",
+  PullRequestReview: "PR review needed",
+  PullRequestConflicts: "PR has conflicts",
+  IssueAssigned: "Issue assigned",
+  IssueLabeled: "Issue labeled",
 };
 
 export const repeatHint: Record<Repeat, string> = {
@@ -26,6 +57,10 @@ export const repeatHint: Record<Repeat, string> = {
   Daily: "Once a day, at a time",
   Weekdays: "Monday to Friday, at a time",
   CiFailed: "On a commit an agent pushed in the project",
+  PullRequestReview: "Review requested of you, or new comments on your PRs",
+  PullRequestConflicts: "One of your pull requests can't merge cleanly",
+  IssueAssigned: "An issue is assigned to you, or someone you name",
+  IssueLabeled: "An issue gets a label, such as agent-ready",
 };
 
 const clockFormat = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
@@ -45,6 +80,16 @@ export const whenLabel = (when: AutomationWhen): string => {
       return `Weekdays at ${clockLabel(when.at)}`;
     case "CiFailed":
       return "When CI fails";
+    case "PullRequestReview":
+      return "On PR review requests or comments";
+    case "PullRequestConflicts":
+      return "When your PR has conflicts";
+    case "IssueAssigned":
+      return when.assignee
+        ? `When an issue is assigned to ${when.assignee}`
+        : "When an issue is assigned to you";
+    case "IssueLabeled":
+      return `When an issue gets ${when.label}`;
   }
 };
 
@@ -119,7 +164,7 @@ export const runCauseLabel = (run: AutomationRun): string => {
     case "manual":
       return run.detail === undefined ? "Run now" : `Run now · ${run.detail}`;
     case "trigger":
-      return run.detail ?? "CI failed";
+      return run.detail ?? "Triggered";
   }
 };
 
@@ -141,6 +186,14 @@ export interface Draft {
   readonly minute: number;
   /** Minutes since midnight, for `Daily` and `Weekdays`. */
   readonly at: number;
+  /** The GitHub user an `IssueAssigned` trigger watches; blank is whoever `gh` is signed in as. */
+  readonly assignee: string;
+  /** The label an `IssueLabeled` trigger watches. */
+  readonly label: string;
+  /** What an issue trigger's thread does with the issue. */
+  readonly issueAction: IssueAction;
+  /** A model from another lab reviews each run's work once it's done. */
+  readonly reviewOnCompletion: boolean;
 }
 
 /** A new automation's form: weekdays at nine, with the composer's own defaults for the rest. */
@@ -162,6 +215,10 @@ export const newDraft = (defaults: {
   repeat: "Weekdays",
   minute: 0,
   at: 9 * 60,
+  assignee: "",
+  label: DEFAULT_ISSUE_LABEL,
+  issueAction: "triage",
+  reviewOnCompletion: false,
 });
 
 /** A saved automation's form. */
@@ -178,6 +235,13 @@ export const draftOf = (automation: Automation): Draft => ({
   repeat: automation.when._tag,
   minute: automation.when._tag === "Hourly" ? automation.when.minute : 0,
   at: automation.when._tag === "Daily" || automation.when._tag === "Weekdays" ? automation.when.at : 9 * 60,
+  assignee: automation.when._tag === "IssueAssigned" ? (automation.when.assignee ?? "") : "",
+  label: automation.when._tag === "IssueLabeled" ? automation.when.label : DEFAULT_ISSUE_LABEL,
+  issueAction:
+    automation.when._tag === "IssueAssigned" || automation.when._tag === "IssueLabeled"
+      ? automation.when.action
+      : "triage",
+  reviewOnCompletion: automation.reviewOnCompletion === true,
 });
 
 const whenOf = (draft: Draft): AutomationWhen => {
@@ -190,6 +254,20 @@ const whenOf = (draft: Draft): AutomationWhen => {
       return { _tag: "Weekdays", at: draft.at };
     case "CiFailed":
       return { _tag: "CiFailed" };
+    case "PullRequestReview":
+      return { _tag: "PullRequestReview" };
+    case "PullRequestConflicts":
+      return { _tag: "PullRequestConflicts" };
+    case "IssueAssigned": {
+      const assignee = draft.assignee.trim().replace(/^@/, "");
+      return {
+        _tag: "IssueAssigned",
+        ...(assignee === "" ? {} : { assignee }),
+        action: draft.issueAction,
+      };
+    }
+    case "IssueLabeled":
+      return { _tag: "IssueLabeled", label: draft.label.trim(), action: draft.issueAction };
   }
 };
 
@@ -203,6 +281,7 @@ export const inputOf = (
   if (draft.prompt.trim() === "") return { missing: "Say what the agent should do" };
   if (draft.project === undefined) return { missing: "Pick a project" };
   if (model === undefined) return { missing: "Pick a model" };
+  if (draft.repeat === "IssueLabeled" && draft.label.trim() === "") return { missing: "Name the label" };
   const effort =
     draft.effort !== undefined && model.efforts.includes(draft.effort) ? draft.effort : undefined;
   return {
@@ -210,7 +289,8 @@ export const inputOf = (
       name: name.slice(0, MAX_AUTOMATION_NAME),
       prompt: draft.prompt,
       project: draft.project,
-      worktree: draft.worktree,
+      // A GitHub trigger's thread always works in a worktree, never the project's own checkout.
+      worktree: draft.worktree || isGitHubRepeat(draft.repeat),
       lead: {
         provider: model.provider,
         model: model.id,
@@ -220,6 +300,7 @@ export const inputOf = (
       },
       when: whenOf(draft),
       ...(draft.onLimit ? { onLimit: draft.onLimit } : {}),
+      ...(draft.reviewOnCompletion ? { reviewOnCompletion: true } : {}),
     },
   };
 };

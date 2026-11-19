@@ -40,11 +40,27 @@ export type AutomationSchedule = typeof AutomationSchedule.Type;
 /** CI failed on a commit an agent pushed with Cerium's `push` tool, in the automation's project. */
 export const CiFailed = Schema.TaggedStruct("CiFailed", {});
 
-export const AutomationTrigger = Schema.Union([CiFailed]);
+export const GITHUB_AUTOMATIONS_RPC_VERSION = 52;
+
+export const PullRequestReview = Schema.TaggedStruct("PullRequestReview", {});
+export const PullRequestConflicts = Schema.TaggedStruct("PullRequestConflicts", {});
+const IssueAction = Schema.Literals(["triage", "draftPr"]);
+const Filter = Schema.Trimmed.check(Schema.isBetweenLength(1, 100));
+export const IssueAssigned = Schema.TaggedStruct("IssueAssigned", {
+  assignee: Schema.optionalKey(Filter),
+  action: IssueAction,
+});
+export const IssueLabeled = Schema.TaggedStruct("IssueLabeled", { label: Filter, action: IssueAction });
+
+const githubTriggers = [PullRequestReview, PullRequestConflicts, IssueAssigned, IssueLabeled] as const;
+export const GitHubAutomationTrigger = Schema.Union(githubTriggers);
+export type GitHubAutomationTrigger = typeof GitHubAutomationTrigger.Type;
+
+export const AutomationTrigger = Schema.Union([CiFailed, ...githubTriggers]);
 export type AutomationTrigger = typeof AutomationTrigger.Type;
 
 /** When an automation starts a thread: a schedule's times, or a trigger's event. */
-export const AutomationWhen = Schema.Union([Hourly, Daily, Weekdays, CiFailed]);
+export const AutomationWhen = Schema.Union([Hourly, Daily, Weekdays, CiFailed, ...githubTriggers]);
 export type AutomationWhen = typeof AutomationWhen.Type;
 
 /** The lead each run's thread starts with. */
@@ -68,6 +84,8 @@ export const AutomationInput = Schema.Struct({
   worktree: Schema.Boolean,
   lead: AutomationLead,
   when: AutomationWhen,
+  /** Runs a read-only reviewer on another harness after a successful automation turn. */
+  reviewOnCompletion: Schema.optionalKey(Schema.Boolean),
   /**
    * What each run's thread does when its harness's limit runs out; absent follows the setting for all
    * threads. Since `RPC_VERSION` 41.
@@ -150,7 +168,11 @@ export const AutomationRpcs = RpcGroup.make(
 const HOUR = 60 * 60 * 1000;
 
 /** Whether `when` is a schedule rather than a trigger. */
-export const isSchedule = (when: AutomationWhen): when is AutomationSchedule => when._tag !== "CiFailed";
+export const isSchedule = (when: AutomationWhen): when is AutomationSchedule =>
+  when._tag === "Hourly" || when._tag === "Daily" || when._tag === "Weekdays";
+
+export const isGitHubAutomationTrigger = (when: AutomationWhen): when is GitHubAutomationTrigger =>
+  when._tag !== "CiFailed" && !isSchedule(when);
 
 const isWeekday = (date: Date) => date.getDay() !== 0 && date.getDay() !== 6;
 
