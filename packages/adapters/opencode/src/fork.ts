@@ -22,20 +22,33 @@ const listPrompts = (client: OpenCodeClient, sessionId: string) =>
     return ids;
   });
 
-/** Copies an OpenCode session up to the user message that started `before`, with `session.fork`. */
+/** Copies an OpenCode session up to the next excluded user message, with `session.fork`. */
 export const forkOpenCodeSession = (client: OpenCodeClient, request: ForkRequest) =>
   Effect.gen(function* () {
     const prompts = yield* listPrompts(client, request.sessionId);
-    const before = prompts[request.before.index];
-    if (before === undefined) {
+    const index = request.through === undefined ? request.before.index : request.through.index + 1;
+    const before = prompts[index];
+    if (before === undefined && !(request.through !== undefined && index === prompts.length)) {
       return yield* new HarnessFailure({
         provider: "opencode",
         message: "Could not find that message in the OpenCode session.",
-        cause: { prompts: prompts.length, before: request.before.index },
+        cause: { prompts: prompts.length, index },
       });
     }
     const forked = yield* call("fork the session", (signal) =>
-      client.session.fork({ sessionID: request.sessionId, before }, { signal }),
+      client.session.fork(
+        { sessionID: request.sessionId, ...(before === undefined ? {} : { before }) },
+        { signal },
+      ),
     );
+    // Forking without a boundary copies the whole session. Reject it if a new prompt arrived
+    // between reading the last turn and forking.
+    if (before === undefined && (yield* listPrompts(client, forked.id)).length !== index) {
+      return yield* new HarnessFailure({
+        provider: "opencode",
+        message: "The OpenCode session advanced while being forked.",
+        cause: undefined,
+      });
+    }
     return forked.id;
   });

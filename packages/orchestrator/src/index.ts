@@ -33,6 +33,7 @@ export {
   Orchestrator,
   type AssistantThreadRequest,
   type CreateThreadInput,
+  type ForkThreadInput,
   type HandoffTarget,
   type ModelChoice,
   type SpawnApproval,

@@ -95,6 +95,8 @@ export const ThreadInfo = Schema.Struct({
   cwd: Schema.optionalKey(Schema.NonEmptyString),
   /** The thread's own worktree, when it runs in one; `cwd` is inside it. */
   worktree: Schema.optionalKey(ThreadWorktree),
+  /** The thread and turn this independent conversation started from. */
+  forkedFrom: Schema.optionalKey(Schema.Struct({ threadId: ThreadId, turn: Schema.NonEmptyString })),
   createdAt: EpochMillis,
   updatedAt: EpochMillis,
   /** When the user archived it; archived threads leave the sidebar until restored. */

@@ -102,7 +102,10 @@ export class Worktrees extends Context.Service<
      * Checks a planned worktree out, copying in the git-ignored files its include list names;
      * resolves with those files, relative to its root.
      */
-    checkOut(worktree: ThreadWorktree): Effect.Effect<ReadonlyArray<string>, WorktreeError>;
+    checkOut(
+      worktree: ThreadWorktree,
+      options?: { readonly copyIgnored?: boolean },
+    ): Effect.Effect<ReadonlyArray<string>, WorktreeError>;
     /** What the worktree holds that its base doesn't. */
     changes(worktree: ThreadWorktree): Effect.Effect<WorktreeChanges, WorktreeError>;
     /**
@@ -187,6 +190,8 @@ export class Checkpoints extends Context.Service<
       snapshot: string,
       paths: ReadonlyArray<string>,
     ): Effect.Effect<void, CheckpointError>;
+    /** Applies a snapshot from another folder to a newly checked out workspace. */
+    restoreInto(source: string, snapshot: string, destination: string): Effect.Effect<void, CheckpointError>;
   }
 >()("cerium/orchestrator/Checkpoints") {
   /** For builds and tests without git: no turn saves the files, so a restore leaves them as they are. */
@@ -196,6 +201,7 @@ export class Checkpoints extends Context.Service<
     lines: () => Effect.succeed([]),
     diff: () => Effect.fail(new CheckpointError({ message: "Snapshots aren't available here." })),
     restore: () => Effect.fail(new CheckpointError({ message: "Snapshots aren't available here." })),
+    restoreInto: () => Effect.fail(new CheckpointError({ message: "Snapshots aren't available here." })),
   });
 }
 

@@ -1,0 +1,1 @@
+ALTER TABLE `threads` ADD `forked_from` text;

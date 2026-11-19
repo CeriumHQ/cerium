@@ -854,6 +854,8 @@ export const fileChangesAtom = threadSideEvents("files");
 export const queueEventsAtom = Atom.family((threadId: ThreadId) => eventsOfKinds(threadId, QUEUE_TAGS));
 
 export const createThread = Backend.mutation("CreateThread");
+export const forkThread = Backend.mutation("ForkThread");
+export const previewForkThread = Backend.mutation("PreviewForkThread");
 export const sendMessage = Backend.mutation("SendMessage");
 export const editMessage = Backend.mutation("EditMessage");
 export const previewRestore = Backend.mutation("PreviewRestore");

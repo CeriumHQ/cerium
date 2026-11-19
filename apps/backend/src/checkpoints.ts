@@ -914,6 +914,32 @@ export const checkpointsLayer = (options: { readonly directory: string }) =>
         );
       });
 
-      return Checkpoints.of({ save, changes, lines, diff, restore });
+      const restoreInto = Effect.fn("Checkpoints.restoreInto")(function* (
+        source: string,
+        snapshot: string,
+        destination: string,
+      ) {
+        const sourceStore = storeOf(source);
+        const destinationStore = storeOf(destination);
+        yield* save(destination);
+        // Seed the temporary index with the new checkout so git removes files absent from the
+        // snapshot and handles file/directory replacements, without staging changes in the worktree.
+        yield* withScratchIndex(
+          destinationStore,
+          (index) =>
+            gitOk(
+              sourceStore,
+              destination,
+              ["read-tree", "--reset", "-u", snapshot],
+              "Couldn't restore the turn's snapshot into the worktree.",
+              { index },
+            ),
+          false,
+        );
+        const entry = recentWatcher(destinationStore);
+        if (entry !== undefined) entry.dirty = true;
+      });
+
+      return Checkpoints.of({ save, changes, lines, diff, restore, restoreInto });
     }),
   );

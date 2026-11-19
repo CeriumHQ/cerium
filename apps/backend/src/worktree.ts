@@ -286,6 +286,7 @@ export const worktreesLayer = (options: { readonly directory: string }) =>
       const checkOut = Effect.fn("Worktrees.checkOut")(function* (
         toplevel: string,
         worktree: ThreadWorktree,
+        copyIgnored = true,
       ) {
         if (yield* exists(path.join(worktree.root, ".git"))) return [];
         yield* fs
@@ -310,6 +311,7 @@ export const worktreesLayer = (options: { readonly directory: string }) =>
               ],
           "Git couldn't make the worktree",
         );
+        if (!copyIgnored) return [];
         return yield* copyIncluded(toplevel, worktree.root).pipe(
           Effect.catch(() =>
             Effect.logWarning("Couldn't copy the included files into the worktree").pipe(
@@ -516,9 +518,9 @@ export const worktreesLayer = (options: { readonly directory: string }) =>
           return { worktree, cwd: prefix === "" ? worktree.root : path.resolve(worktree.root, prefix) };
         }, picking.withPermits(1)),
 
-        checkOut: (worktree) =>
+        checkOut: (worktree, checkout) =>
           toplevelOf(worktree.project).pipe(
-            Effect.flatMap((toplevel) => checkOut(toplevel, worktree)),
+            Effect.flatMap((toplevel) => checkOut(toplevel, worktree, checkout?.copyIgnored)),
             // Its folder and branch keep the name from here on, or it's free again.
             Effect.ensuring(Effect.sync(() => planned.delete(worktree.root))),
           ),

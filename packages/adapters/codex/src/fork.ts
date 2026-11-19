@@ -35,7 +35,7 @@ const listTurns = (server: AppServer, threadId: string) =>
   });
 
 /**
- * Copies a Codex thread through the turn before `before` with `thread/fork`, on an app-server of its
+ * Copies a Codex thread through the selected turn with `thread/fork`, on an app-server of its
  * own. Codex makes its own turn ids, so the turn is found by its place.
  */
 export const forkCodexThread = Effect.fn("CodexAdapter.fork")(function* (
@@ -46,12 +46,13 @@ export const forkCodexThread = Effect.fn("CodexAdapter.fork")(function* (
   const turns = yield* listTurns(server, request.sessionId).pipe(
     Effect.mapError(failure("Could not read the Codex thread's turns")),
   );
-  const lastTurnId = turns[request.before.index - 1]?.id;
-  if (lastTurnId === undefined || request.before.index > turns.length) {
+  const index = request.through === undefined ? request.before.index - 1 : request.through.index;
+  const lastTurnId = turns[index]?.id;
+  if (lastTurnId === undefined) {
     return yield* new HarnessFailure({
       provider: "codex",
       message: "Could not find that message in the Codex thread.",
-      cause: { turns: turns.length, before: request.before.index },
+      cause: { turns: turns.length, index },
     });
   }
   const { thread } = yield* server

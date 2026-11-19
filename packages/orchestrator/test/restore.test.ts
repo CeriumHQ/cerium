@@ -113,6 +113,7 @@ const fakeFolder = () => {
           }));
       }),
     diff: () => Effect.succeed(""),
+    restoreInto: () => Effect.void,
     restore: (_folder, snapshot, paths) =>
       Effect.sync(() => {
         restores.push({ snapshot, paths });

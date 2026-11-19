@@ -1,6 +1,13 @@
 import { harnessName, type AgentId } from "@cerium/protocol";
 import { HelperUsage } from "./helperUsage.ts";
-import type { AgentEvent, AgentInfo, LeadHandedOff, ModelChoice, TodoItem } from "@cerium/protocol";
+import type {
+  AgentEvent,
+  AgentInfo,
+  LeadHandedOff,
+  ForkContext,
+  ModelChoice,
+  TodoItem,
+} from "@cerium/protocol";
 import { Context, Effect, FileSystem, Layer, Option, Path } from "effect";
 
 import { renderTurn } from "./prompts.ts";
@@ -128,6 +135,7 @@ export interface BriefContext {
   readonly from: ModelChoice;
   /** Why the lead moved: the user chose to (the default), or the first harness ran out of usage. */
   readonly cause?: "user" | "limit" | undefined;
+  readonly forked?: boolean;
   /** The older turns condensed (`Condenser`); without it, the brief lists their requests. */
   readonly summary?: string | undefined;
   /** The agents the lead spawned that still run, and report to it. */
@@ -202,9 +210,11 @@ export const handoffBrief = (live: ReadonlyArray<AgentEvent>, context: BriefCont
   const named = [...files].slice(-MAX_FILES);
   const interrupted = interruptedWork(live);
   const moved =
-    context.cause === "limit"
-      ? `${harnessName[context.from.provider]} (${context.from.model}) ran out of usage in the middle of a turn, so Cerium moved this thread to you`
-      : `The user moved this thread from ${harnessName[context.from.provider]} (${context.from.model}) to you`;
+    context.forked === true
+      ? `The user forked this conversation at an earlier turn of ${harnessName[context.from.provider]} (${context.from.model})`
+      : context.cause === "limit"
+        ? `${harnessName[context.from.provider]} (${context.from.model}) ran out of usage in the middle of a turn, so Cerium moved this thread to you`
+        : `The user moved this thread from ${harnessName[context.from.provider]} (${context.from.model}) to you`;
   const sections = [
     `${HANDOFF_PREFACE} ${moved}, to carry on where it left off. Only the text below came across:` +
       " that session's memory, tool results and open requests stayed behind, so read files again before" +
@@ -258,11 +268,12 @@ export const olderTurns = (live: ReadonlyArray<AgentEvent>): ReadonlyArray<Excha
  * The handoff whose brief the lead's next turn still owes its new session: the last handoff, when no
  * turn has begun since.
  */
-export const pendingHandoff = (live: ReadonlyArray<AgentEvent>): LeadHandedOff | undefined => {
+export const pendingHandoff = (live: ReadonlyArray<AgentEvent>): LeadHandedOff | ForkContext | undefined => {
   for (let index = live.length - 1; index >= 0; index--) {
     const { payload } = live[index]!;
     if (payload._tag === "TurnInput" || payload._tag === "ConversationRewound") return undefined;
     if (payload._tag === "LeadHandedOff") return payload;
+    if (payload._tag === "ForkContext") return payload;
     if (payload._tag === "WorkspaceMoved") return { ...payload, _tag: "LeadHandedOff" };
   }
   return undefined;

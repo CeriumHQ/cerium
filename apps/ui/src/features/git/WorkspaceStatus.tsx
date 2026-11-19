@@ -18,6 +18,7 @@ import {
   Ellipsis,
   FolderGit2,
   GitBranch,
+  GitFork,
   Link2,
   MessageSquare,
   RefreshCw,
@@ -53,6 +54,13 @@ import {
 // click everything Cerium keeps with it: the threads that share it, the pull requests and issues
 // linked to it, a review of its changes, and moving the thread or clearing checkouts away.
 
+/** Where the open thread was forked from, and the threads forked from it. */
+export interface Lineage {
+  /** The thread this one was forked from; its title is absent when that thread is gone. */
+  readonly parent?: { readonly id: string; readonly title: string | undefined };
+  readonly forks: ReadonlyArray<{ readonly id: string; readonly title: string }>;
+}
+
 type Scope = "turn" | "thread" | "uncommitted" | "branch";
 type View = "overview" | "move" | "checkouts";
 
@@ -72,12 +80,92 @@ const popupClass =
 /** The longest review the popover draws; the source control panel has the rest. */
 const DIFF_LINES = 1500;
 
+/** The titlebar entry for threads without a workspace popover. */
+export function ThreadLineage({
+  lineage,
+  onOpenThread,
+}: {
+  readonly lineage: Lineage;
+  readonly onOpenThread: (threadId: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  if (!lineage.parent && lineage.forks.length === 0) return null;
+  return (
+    <Popover.Root open={open} onOpenChange={setOpen}>
+      <Tooltip label="Thread lineage">
+        <Popover.Trigger
+          aria-label="Thread lineage"
+          className="grid size-8 place-items-center rounded-md text-fg-tertiary hover:bg-surface-hover hover:text-fg-primary"
+        >
+          <GitFork size={15} />
+        </Popover.Trigger>
+      </Tooltip>
+      <Popover.Portal>
+        <Popover.Positioner side="bottom" align="end" sideOffset={6} className="z-50 outline-none">
+          <Popover.Popup className={`${popupClass} !w-72 overflow-y-auto`}>
+            <LineageEntries
+              lineage={lineage}
+              onOpenThread={(id) => {
+                setOpen(false);
+                onOpenThread(id);
+              }}
+            />
+          </Popover.Popup>
+        </Popover.Positioner>
+      </Popover.Portal>
+    </Popover.Root>
+  );
+}
+
+function LineageEntries({
+  lineage,
+  onOpenThread,
+}: {
+  readonly lineage: Lineage | undefined;
+  readonly onOpenThread: (threadId: string) => void;
+}) {
+  if (lineage === undefined) return null;
+  const { parent, forks } = lineage;
+  return (
+    <>
+      {parent ? (
+        <div className="px-3 py-2">
+          <Notice
+            icon={GitFork}
+            tone="quiet"
+            action={
+              parent.title === undefined ? undefined : (
+                <NoticeButton onClick={() => onOpenThread(parent.id)}>Open</NoticeButton>
+              )
+            }
+          >
+            {parent.title === undefined ? "Source thread unavailable" : `Forked from ${quoted(parent.title)}`}
+          </Notice>
+        </div>
+      ) : null}
+      {forks.length > 0 ? (
+        <Section label="Forked from here">
+          {forks.map((fork) => (
+            <ChooserRow
+              key={fork.id}
+              icon={GitFork}
+              title={fork.title}
+              onClick={() => onOpenThread(fork.id)}
+            />
+          ))}
+        </Section>
+      ) : null}
+    </>
+  );
+}
+
 export function WorkspaceStatus({
   threadId,
   checkoutFolder,
   projectRoot,
   onOpenSourceControl,
   onOpenThread,
+  lineage,
 }: {
   readonly threadId: ThreadId;
   readonly checkoutFolder: string;
@@ -85,6 +173,7 @@ export function WorkspaceStatus({
   readonly projectRoot: string;
   readonly onOpenSourceControl: () => void;
   readonly onOpenThread: (threadId: string) => void;
+  readonly lineage?: Lineage | undefined;
 }) {
   const registry = useContext(RegistryContext);
   const result = useAtomValue(workspaceAtom(threadId));
@@ -184,6 +273,9 @@ export function WorkspaceStatus({
     void execute({ action: "list" });
   };
 
+  if (state === undefined && (lineage?.parent || (lineage?.forks.length ?? 0) > 0)) {
+    return lineage ? <ThreadLineage lineage={lineage} onOpenThread={onOpenThread} /> : null;
+  }
   if (state === undefined && !AsyncResult.isFailure(result)) return null;
 
   const changed = state ? state.staged + state.unstaged : 0;
@@ -275,6 +367,7 @@ export function WorkspaceStatus({
               ) : state ? (
                 <Overview
                   state={state}
+                  lineage={lineage}
                   threadId={threadId}
                   busy={busy}
                   scope={scope}
@@ -335,6 +428,7 @@ export function WorkspaceStatus({
 
 function Overview({
   state,
+  lineage,
   threadId,
   busy,
   scope,
@@ -351,6 +445,7 @@ function Overview({
   onOpenSourceControl,
 }: {
   state: SourceControlSnapshot;
+  lineage: Lineage | undefined;
   threadId: ThreadId;
   busy: boolean;
   scope: Scope;
@@ -467,6 +562,8 @@ function Overview({
           ) : null}
         </div>
       ) : null}
+
+      <LineageEntries lineage={lineage} onOpenThread={onOpenThread} />
 
       {others.length > 0 ? (
         <Section label="Threads here">

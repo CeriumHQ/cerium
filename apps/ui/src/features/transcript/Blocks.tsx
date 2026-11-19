@@ -56,12 +56,15 @@ export function UserMessage({
   block,
   onEdit,
   onRestore,
+  onFork,
 }: {
   block: Block<"user">;
   /** Sends a new version of the message; resolves whether it went. Absent where it can't be edited. */
   onEdit?: ((message: OutgoingMessage) => Promise<boolean>) | undefined;
   /** Asks to restore the thread to before the message. Absent where it can't be. */
   onRestore?: (() => void) | undefined;
+  /** Asks to fork the thread into a new one from the message. Absent where it can't be. */
+  onFork?: (() => void) | undefined;
 }) {
   const images = block.attachments.filter((attachment) => attachment.mediaType.startsWith("image/"));
   const files = block.attachments.filter((attachment) => !attachment.mediaType.startsWith("image/"));
@@ -99,6 +102,7 @@ export function UserMessage({
         onSavePrompt={text === "" ? undefined : () => setPromptOpen(true)}
         onEdit={editable ? () => setEditing(true) : undefined}
         onRestore={restorable ? onRestore : undefined}
+        onFork={onFork}
         className="group/user relative flex max-w-[85%] flex-col items-end gap-1.5"
       >
         {editable || restorable ? (
