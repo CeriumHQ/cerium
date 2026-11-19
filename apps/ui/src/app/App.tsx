@@ -1475,9 +1475,9 @@ function Workspace() {
       return;
     }
     const showing = paneShowing(panes.root, source.key);
-    if (zone !== "center") applyPanes(splitPane(panes, target, zone, source.key, newPaneId()));
-    // Dropped on a pane, a tab shown elsewhere trades places with what it showed.
-    else if (showing !== undefined) applyPanes(movePane(panes, showing.id, target, "center"));
+    // A tab shown elsewhere carries its pane with it, or trades places on a center drop.
+    if (showing !== undefined) applyPanes(movePane(panes, showing.id, target, zone));
+    else if (zone !== "center") applyPanes(splitPane(panes, target, zone, source.key, newPaneId()));
     else applyPanes(showInPane(panes, target, source.key));
   };
 
