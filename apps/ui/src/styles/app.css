@@ -560,6 +560,24 @@ html:active-view-transition-type(launch)::view-transition-new(root) {
     animation-duration: 0s !important;
     animation-iteration-count: 1 !important;
   }
+
+  /* The working indicator still waits a moment, so quick responses don't flash it. */
+  :not(.arrive-late),
+  ::before,
+  ::after {
+    animation-delay: 0s !important;
+  }
+
+  /* Resize handles keep their hover-intent delay. */
+  :not(.delay-150),
+  ::before,
+  ::after {
+    transition-delay: 0s !important;
+  }
+
+  .unroll.asks > * {
+    animation-name: none;
+  }
 }
 
 /* In the base layer so a component with its own focus style can opt out with `outline-none`. */
