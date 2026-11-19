@@ -81,13 +81,22 @@ let backendStarting: Promise<void> | undefined;
 let updater: ReturnType<typeof startUpdater> | undefined;
 let mainWindow: BrowserWindow | undefined;
 
+const backendActivity = new AbortController();
+let backendActivityEnded: Promise<void> = Promise.resolve();
+const ACTIVITY_CLOSE_TIMEOUT_MS = 2_000;
+const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
 /** Stops the backend once, for quitting and for restarting into an update alike. */
 let backendStop: Promise<void> | undefined;
 let backendStopped = false;
-const stopBackend = (): Promise<void> =>
-  (backendStop ??= (backend?.stop() ?? Promise.resolve()).then(() => {
-    backendStopped = true;
-  }));
+const stopBackend = (): Promise<void> => {
+  backendActivity.abort();
+  return (backendStop ??= Promise.race([backendActivityEnded, delay(ACTIVITY_CLOSE_TIMEOUT_MS)])
+    .then(() => backend?.stop() ?? Promise.resolve())
+    .then(() => {
+      backendStopped = true;
+    }));
+};
 /** Windows is signing the user out or shutting down, or a Mac is shutting down. */
 let sessionEnding = false;
 
@@ -385,7 +394,6 @@ const loadPage = (window: BrowserWindow, thread?: { threadId: string; mode: Thre
 
 /** Cerium is quitting, which closes every window: a thread's own comes back next start. */
 let quitting = false;
-const backendActivity = new AbortController();
 app.on("before-quit", () => {
   quitting = true;
   clearTimeout(hibernateTimer);
@@ -906,7 +914,7 @@ void app.whenReady().then(() => {
     screens: () => screen.getAllDisplays().map((display) => display.workArea),
   });
   createWindow();
-  watchBackendActivity({
+  backendActivityEnded = watchBackendActivity({
     signal: backendActivity.signal,
     connection: activityConnection,
     signedIn: (signedIn) => {
@@ -941,10 +949,7 @@ void app.whenReady().then(() => {
         if (backend === undefined) throw new Error("no backend runs beside the UI dev server");
         return backend.connection();
       },
-      stop: () => {
-        backendActivity.abort();
-        return stopBackend();
-      },
+      stop: stopBackend,
     });
   }
   if (startHidden) {
