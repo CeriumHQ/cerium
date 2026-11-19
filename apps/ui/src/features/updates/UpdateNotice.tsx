@@ -28,7 +28,7 @@ export function UpdateNotice() {
   // It drops in under the titlebar, and folds back up once dismissed.
   if (updates === undefined || version === undefined || (version === dismissed && !installing)) {
     return (
-      <Reveal shift={-6} className="shrink-0">
+      <Reveal shift={-6} className="shrink-0" carry inertWhileEntering>
         {null}
       </Reveal>
     );
@@ -40,10 +40,12 @@ export function UpdateNotice() {
     setDismissed(version);
   };
   const { status } = updates;
+  const kind = status.kind === "ready" && confirming ? "confirming" : status.kind;
 
   return (
-    <Reveal shift={-6} className="shrink-0">
+    <Reveal shift={-6} className="shrink-0" carry inertWhileEntering>
       <Notice
+        kind={kind}
         tone={status.kind === "failed" ? "error" : "update"}
         onDismiss={installing ? undefined : dismiss}
       >
@@ -56,7 +58,7 @@ export function UpdateNotice() {
               Restart anyway
             </button>
             <span className="text-fg-tertiary"> · </span>
-            <button type="button" onClick={cancel} className={linkClass}>
+            <button type="button" onClick={cancel} className={linkClass} data-notice-focus>
               Not now
             </button>
           </>
@@ -87,7 +89,7 @@ export function UpdateNotice() {
         ) : status.kind === "ready" ? (
           <>
             {versionLabel(version)} is ready.{" "}
-            <button type="button" onClick={() => restart()} className={linkClass}>
+            <button type="button" onClick={() => restart()} className={linkClass} data-notice-focus>
               Restart to update
             </button>
           </>

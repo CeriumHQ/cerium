@@ -312,7 +312,7 @@ import type { AppMode } from "./mode.ts";
 import { BackendFailureNotice, useBackendFailure } from "../features/crash/BackendFailureNotice.tsx";
 import { CrashGuard } from "../features/crash/CrashGuard.tsx";
 import { PaneCrash } from "../features/crash/CrashViews.tsx";
-import { Notice } from "./Notice.tsx";
+import { Notice, NoticeSwap } from "./Notice.tsx";
 import type { SidePanelId } from "./panelLayout.ts";
 import { Rail } from "./Rail.tsx";
 import { freshBlank, rememberSession, restoredSession } from "./session.ts";
@@ -2220,29 +2220,37 @@ function Workspace() {
   /** The notices over the open thread's conversation, each dropping in and folding back up. */
   const notices = (
     <>
-      <Reveal shift={-6} className="shrink-0">
+      <Reveal shift={-6} className="shrink-0" carry inertWhileEntering>
         {connection === "unreachable" && driven !== undefined ? (
-          <UnreachableNotice
-            machine={driven.name}
-            presence={drivenDevice && !drivenDevice.online ? presenceLabel(drivenDevice) : undefined}
-            onBack={WEB ? undefined : () => driveMachine(registry, undefined)}
-          />
+          <NoticeSwap kind="remote">
+            <UnreachableNotice
+              machine={driven.name}
+              presence={drivenDevice && !drivenDevice.online ? presenceLabel(drivenDevice) : undefined}
+              onBack={WEB ? undefined : () => driveMachine(registry, undefined)}
+            />
+          </NoticeSwap>
         ) : backendFailure !== undefined && driven === undefined ? (
-          <BackendFailureNotice failure={backendFailure} />
+          <NoticeSwap kind="crash">
+            <BackendFailureNotice failure={backendFailure} />
+          </NoticeSwap>
         ) : connection === "unreachable" && !WEB ? (
-          <Notice tone="attention">
-            Reconnecting to Cerium's backend…
-            {import.meta.env.DEV ? (
-              <>
-                {" "}
-                Start it with <code>bun run dev</code>.
-              </>
-            ) : null}
-          </Notice>
+          <NoticeSwap kind="reconnecting">
+            <Notice tone="attention">
+              Reconnecting to Cerium's backend…
+              {import.meta.env.DEV ? (
+                <>
+                  {" "}
+                  Start it with <code>bun run dev</code>.
+                </>
+              ) : null}
+            </Notice>
+          </NoticeSwap>
         ) : AsyncResult.isFailure(threadsResult) ? (
-          <Notice tone="error" clamp>
-            {messageOf(Cause.squash(threadsResult.cause))}
-          </Notice>
+          <NoticeSwap kind="threads">
+            <Notice tone="error" clamp>
+              {messageOf(Cause.squash(threadsResult.cause))}
+            </Notice>
+          </NoticeSwap>
         ) : null}
       </Reveal>
       {/* The main window has the app's own news; a thread's own window, its thread's. */}
