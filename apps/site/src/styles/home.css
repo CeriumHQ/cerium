@@ -101,7 +101,7 @@
 .hero[data-lit] .bands li {
   opacity: 1;
   filter: none;
-  transition-delay: calc(var(--i, 0) * 90ms);
+  transition-delay: calc(var(--i, 0) * 60ms);
 }
 
 .hero-copy {

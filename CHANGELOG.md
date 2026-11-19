@@ -40,6 +40,7 @@ All notable changes to Cerium are recorded here. The format follows
 - Placeholder text and captions are easier to read against the window.
 - The thread count on a grouped inbox card is legible.
 - The website and sign-in link page match the app's colours, and the Sea glass theme keeps its name spelled as two words.
+- Rewrote the marketing site copy across the home, downloads, and privacy pages, and updated the hero prism to display all eight supported coding harnesses (adding Antigravity, GitHub Copilot, and Grok Build).
 
 ### Added
 

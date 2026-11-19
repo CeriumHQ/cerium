@@ -1,5 +1,5 @@
 // The hero's scene: Cerium's mark, Prism C, cut from real glass. One white beam comes in from the left,
-// passes through the glass and leaves from the facet split into five, one band of the spectrum for
+// passes through the glass and leaves from the facet split into eight, one band of the spectrum for
 // each harness the lead hands work to. The glass refracts and disperses whatever lies behind it, so
 // the beams bend and fringe as the mark turns.
 //
@@ -197,12 +197,10 @@ export const mountPrism = (canvas: HTMLCanvasElement, bands: ReadonlyArray<Band>
   beamIn.position.set(facetX - 24, 0, -0.35);
   rig.add(beamIn);
   const fan = bands.map((band, i) => {
-    const angle = ((i - (bands.length - 1) / 2) * 8.4 * Math.PI) / 180;
     const mesh = new Mesh(strip(18, 0.42), beamMaterial(resolveColor(band.color), 0.95));
     mesh.position.set(facetX, 0, -0.35);
-    mesh.rotation.z = -angle;
     rig.add(mesh);
-    return { band, mesh, angle };
+    return { band, mesh, offset: i - (bands.length - 1) / 2 };
   });
 
   // A slow haze of light behind the glass, so it has something to bend.
@@ -279,6 +277,8 @@ export const mountPrism = (canvas: HTMLCanvasElement, bands: ReadonlyArray<Band>
     narrow = width < 760;
     camera.fov = narrow ? 44 : 30;
     camera.updateProjectionMatrix();
+    const step = ((narrow ? 10.5 : 7.1) * Math.PI) / 180;
+    for (const item of fan) item.mesh.rotation.z = -(item.offset * step);
     const x = narrow ? -0.9 : Math.min(1.5, camera.aspect * 0.8);
     const y = narrow ? 1.25 : 1.34;
     const scale = narrow ? 0.78 : 0.8;
@@ -297,6 +297,7 @@ export const mountPrism = (canvas: HTMLCanvasElement, bands: ReadonlyArray<Band>
     const height = canvas.clientHeight;
     rig.updateMatrixWorld(true);
     camera.updateMatrixWorld();
+    const spots: Array<{ label: HTMLElement; x: number; y: number }> = [];
     for (const { band, mesh } of fan) {
       // Along the band to a point just inside the right edge.
       let reach = 2;
@@ -305,8 +306,21 @@ export const mountPrism = (canvas: HTMLCanvasElement, bands: ReadonlyArray<Band>
         if ((probe.x + 1) / 2 > (narrow ? 0.97 : 0.955)) break;
       }
       probe.set(reach, 0, 0).applyMatrix4(mesh.matrixWorld).project(camera);
-      band.label.style.translate = `${((probe.x + 1) / 2) * width}px ${((1 - probe.y) / 2) * height}px`;
+      spots.push({ label: band.label, x: ((probe.x + 1) / 2) * width, y: ((1 - probe.y) / 2) * height });
     }
+    // The fan is steep near its ends, so pills can crowd each other; nudge them apart, top to bottom,
+    // then recentre the stack on where the fan's middle sits.
+    const gap = narrow ? 5 : 8;
+    const heights = spots.map((s) => s.label.offsetHeight || (narrow ? 27 : 32));
+    const wanted = spots.map((s) => s.y);
+    for (let i = 1; i < spots.length; i++) {
+      const least = spots[i - 1]!.y + (heights[i - 1]! + heights[i]!) / 2 + gap;
+      if (spots[i]!.y < least) spots[i]!.y = least;
+    }
+    const shift =
+      wanted.reduce((sum, y) => sum + y, 0) / spots.length -
+      spots.reduce((sum, s) => sum + s.y, 0) / spots.length;
+    for (const { label, x, y } of spots) label.style.translate = `${x}px ${y + shift}px`;
   };
 
   // Pointer tilt, eased.
@@ -386,7 +400,7 @@ export const mountPrism = (canvas: HTMLCanvasElement, bands: ReadonlyArray<Band>
           new Promise<void>((resolve) =>
             setTimeout(
               () => void tween(0, 1.06, 1500, (v) => (reachOf(mesh).value = v)).then(resolve),
-              i * 70,
+              i * 55,
             ),
           ),
       ),

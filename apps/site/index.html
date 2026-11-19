@@ -3,18 +3,18 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Cerium: your coding agents, one team</title>
+    <title>Cerium — Run every coding agent in one thread</title>
     <meta
       name="description"
-      content="One prompt, a whole team: Cerium's lead agent splits the work across Claude Code, Codex, Cursor, OpenCode and Muse Code, and hands you one answer. Free and open source."
+      content="Local-first desktop app that runs Claude Code, Codex, Cursor, OpenCode, Muse Code, Copilot, Grok Build, and Antigravity together in one thread on your existing plans. Free and open source."
     />
     <meta name="theme-color" content="#121316" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://cerium.nonlooped.xyz/" />
-    <meta property="og:title" content="Cerium: your coding agents, one team" />
+    <meta property="og:title" content="Cerium — Run every coding agent in one thread" />
     <meta
       property="og:description"
-      content="One prompt splits across Claude Code, Codex, Cursor, OpenCode and Muse Code. One answer comes back."
+      content="Run Claude Code, Codex, Cursor, OpenCode, and your other local harnesses together on your existing plans, with no custom wrapper or API markup."
     />
     <meta property="og:image" content="https://cerium.nonlooped.xyz/og-prism.png" />
     <meta property="og:image:width" content="1732" />
@@ -53,40 +53,49 @@
         <div class="hero-fallback" aria-hidden="true">
           <svg><use href="/icons.svg#mark-cerium" /></svg>
         </div>
-        <ol class="bands" aria-label="The harnesses a lead can hand work to">
+        <ol class="bands" aria-label="Supported local coding harnesses">
           <li data-band style="--band: #d97757">
             <svg aria-hidden="true"><use href="/icons.svg#mark-claude" /></svg>Claude Code
           </li>
-          <li data-band style="--band: #e8e8ea">
-            <svg aria-hidden="true"><use href="/icons.svg#mark-cursor" /></svg>Cursor
+          <li data-band style="--band: #f0b43c">
+            <svg aria-hidden="true"><use href="/icons.svg#mark-antigravity" /></svg>Antigravity
           </li>
           <li data-band style="--band: #10a37f">
             <svg aria-hidden="true"><use href="/icons.svg#mark-openai" /></svg>Codex
           </li>
-          <li data-band style="--band: #a8a29e">
-            <svg aria-hidden="true"><use href="/icons.svg#mark-opencode" /></svg>OpenCode
+          <li data-band style="--band: #4fd0e0">
+            <svg aria-hidden="true"><use href="/icons.svg#mark-grok" /></svg>Grok Build
           </li>
           <li data-band style="--band: #0866ff">
             <svg aria-hidden="true"><use href="/icons.svg#mark-meta" /></svg>Muse Code
+          </li>
+          <li data-band style="--band: #a371f7">
+            <svg aria-hidden="true"><use href="/icons.svg#mark-copilot" /></svg>GitHub Copilot
+          </li>
+          <li data-band style="--band: #e8e8ea">
+            <svg aria-hidden="true"><use href="/icons.svg#mark-cursor" /></svg>Cursor
+          </li>
+          <li data-band style="--band: #a8a29e">
+            <svg aria-hidden="true"><use href="/icons.svg#mark-opencode" /></svg>OpenCode
           </li>
         </ol>
 
         <div class="hero-copy">
           <h1 class="display hero-title" id="hero-title" data-split>
-            <span>One prompt.</span>
-            <span>A whole team.</span>
+            <span>One thread.</span>
+            <span>Every agent.</span>
           </h1>
           <div class="hero-foot" data-rise>
             <p class="lede">
-              A lead agent splits your job across every coding agent you use. They work at once, talk to each
-              other, and hand you one answer.
+              Run Claude Code, Codex, Cursor, and your other local harnesses together on your existing plans,
+              with no custom wrapper or API markup.
             </p>
             <div class="hero-actions">
               <a class="button button-solid" href="/downloads/" data-download>
                 <svg aria-hidden="true" data-system-mark><use href="/icons.svg#mark-windows" /></svg>
                 <span data-download-label>Download for Windows</span>
               </a>
-              <a class="button button-glass" href="#team">See it work</a>
+              <a class="button button-glass" href="#team">Watch a run</a>
             </div>
           </div>
         </div>
@@ -95,10 +104,10 @@
       <!-- The proof: the real app, rising off the bench and flattening as it comes into view. -->
       <section class="proof" id="team" aria-labelledby="proof-title">
         <div class="proof-head">
-          <h2 class="display proof-title" id="proof-title">Ask once.</h2>
+          <h2 class="display proof-title" id="proof-title">Delegate across labs.</h2>
           <p class="lede">
-            The lead picks a harness, a model and the access each helper needs, and keeps them all in your
-            thread.
+            A lead agent assigns subtasks to whichever local harness fits best, with scoped permissions and
+            full visibility in one thread.
           </p>
         </div>
         <div class="proof-stage" data-tilt>
@@ -122,41 +131,41 @@
       </section>
 
       <!-- Who does what, in the words the lead reports it. Each line widens as it crosses the middle. -->
-      <section class="roster" aria-label="How a team splits one job">
+      <section class="roster" aria-label="How agents divide work in one thread">
         <p class="roster-line" data-stretch style="--band: var(--sp-cranberry)">
           <svg aria-hidden="true"><use href="/icons.svg#mark-claude" /></svg>
-          <span>Claude takes the lead.</span>
+          <span>Claude builds it.</span>
         </p>
         <p class="roster-line" data-stretch style="--band: var(--sp-uranium)">
           <svg aria-hidden="true"><use href="/icons.svg#mark-openai" /></svg>
-          <span>Codex writes the tests.</span>
+          <span>Codex writes tests.</span>
         </p>
         <p class="roster-line" data-stretch style="--band: var(--sp-seaglass)">
           <svg aria-hidden="true"><use href="/icons.svg#mark-opencode" /></svg>
-          <span>OpenCode writes the docs.</span>
+          <span>OpenCode writes docs.</span>
         </p>
         <p class="roster-line" data-stretch style="--band: var(--sp-amber)">
           <svg aria-hidden="true"><use href="/icons.svg#mark-cursor" /></svg>
-          <span>Cursor hunts for races.</span>
+          <span>Cursor catches races.</span>
         </p>
         <p class="roster-line roster-end" data-stretch>
           <svg aria-hidden="true"><use href="/icons.svg#mark-cerium" /></svg>
-          <span>You get one answer.</span>
+          <span>All in one thread.</span>
         </p>
         <p class="roster-note">
-          Helpers message the lead and each other, and say so before they touch a file someone else is
-          editing.
+          Subagents message each other over Cerium's built-in MCP bus, coordinating file edits so two agents
+          don't overwrite the same change.
         </p>
       </section>
 
       <!-- Three things a team does that one agent can't. -->
-      <section class="moves" aria-label="What the team does">
+      <section class="moves" aria-label="Key features">
         <article class="move move-review">
           <div class="move-copy">
-            <h2 class="display move-title">A second opinion from another lab.</h2>
+            <h2 class="display move-title">Cross-lab code review.</h2>
             <p class="lede">
-              Claude wrote it? Codex reviews the diff. The reviewer never shares the author's blind spots, and
-              its findings land on the lines they're about.
+              When Claude writes the patch, send the diff to Codex before you commit. Comments attach directly
+              to the changed lines, one click from handing them back to fix.
             </p>
           </div>
           <div class="review" aria-hidden="true">
@@ -181,17 +190,17 @@
                 <span><b>GPT-6 Luna</b> reviewing Opus 5.5</span>
               </div>
               <p>The listener stays attached after the job settles. Remove it in <code>finally</code>.</p>
-              <span class="review-send">Send to the agent</span>
+              <span class="review-send">Send to agent</span>
             </div>
           </div>
         </article>
 
         <article class="move move-ci">
           <div class="move-copy">
-            <h2 class="display move-title">Fixes CI while you're away.</h2>
+            <h2 class="display move-title">Fixes CI. Pings your phone.</h2>
             <p class="lede">
-              When a check fails on a commit an agent pushed, a thread starts with the logs and your standing
-              orders. Your phone hears when it's fixed.
+              When CI fails, an automation loads the logs, fixes the break, and pushes again. Get notified
+              when checks pass, or unblock agents from your phone.
             </p>
           </div>
           <figure class="phone">
@@ -245,10 +254,10 @@
 
         <article class="move move-play">
           <div class="move-copy">
-            <h2 class="display move-title">Answers you can play with.</h2>
+            <h2 class="display move-title">Interactive artifacts.</h2>
             <p class="lede">
-              Agents draw charts, timelines and what-ifs right in the thread. Drag a slider and the page
-              reruns.
+              Agents render live charts, timelines, and simulators right inside the thread. Drag controls to
+              test tradeoffs, then send your settings straight back.
             </p>
           </div>
           <figure class="window window-flat">
@@ -277,7 +286,7 @@
       <!-- The app's six kinds of glass. Picking one tints this page, its prism included. -->
       <section class="glass" aria-labelledby="glass-title">
         <div class="glass-head">
-          <h2 class="display glass-title" id="glass-title">Six kinds of glass.</h2>
+          <h2 class="display glass-title" id="glass-title">Pick your theme.</h2>
           <div class="glass-picker" role="radiogroup" aria-label="Theme" data-picker>
             <button role="radio" aria-checked="true" data-pick="cerium" style="--bead: oklch(0.95 0 0)">
               Cerium
@@ -398,8 +407,8 @@
       <!-- The close. -->
       <section class="close" aria-labelledby="close-title">
         <p class="close-plans">
-          Every agent is the real harness on your own plan. Cerium starts each one's sign-in and never reads
-          its keys.
+          Real local harnesses on the subscriptions you already pay for. Each CLI handles its own sign-in;
+          Cerium never reads your keys.
         </p>
         <h2 class="close-word" id="close-title" aria-label="Cerium" data-fit>
           <span aria-hidden="true"
@@ -411,16 +420,18 @@
             <svg aria-hidden="true" data-system-mark><use href="/icons.svg#mark-windows" /></svg>
             <span data-download-label>Download for Windows</span>
           </a>
-          <a class="button button-glass" href="/downloads/">Every platform</a>
+          <a class="button button-glass" href="/downloads/">All platforms</a>
         </div>
-        <p class="close-small">Free and open source, for Windows, macOS and Linux.</p>
+        <p class="close-small">
+          Free, local-first, and open source (Apache 2.0). For Windows, macOS, and Linux.
+        </p>
       </section>
     </main>
 
     <footer class="foot">
       <p>
         Cerium is an independent project, not affiliated with or endorsed by Anthropic, OpenAI, Meta,
-        Anysphere or Anomaly. Open source under the
+        Anysphere, Anomaly, Google, GitHub, or xAI. Open source under the
         <a href="https://github.com/CeriumHQ/cerium/blob/main/LICENSE">Apache 2.0 license</a>.
       </p>
       <nav aria-label="Footer">
