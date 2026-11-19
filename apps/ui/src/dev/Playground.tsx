@@ -2,6 +2,7 @@ import type { AgentEvent, EventId } from "@cerium/protocol";
 import { useEffect, useState } from "react";
 
 import { ThreadLog } from "../backend/threadLog.ts";
+import { Composer } from "../features/composer/Composer.tsx";
 import { useTheme } from "../features/settings/theme.ts";
 import { IncrementalTranscript } from "../features/transcript/model.ts";
 import { Transcript } from "../features/transcript/Transcript.tsx";
@@ -12,6 +13,7 @@ import { diagrams, explanation, leadFixture, transcriptFixture } from "./transcr
 // leaves it running; `&diagrams` swaps the explaining reply for one with a diagram and math; `&stream` replays the explaining reply as it would stream in, and `&at=<n>`
 // holds it at its nth character.
 // &history=5000 starts with a long settled log; &grow=300 appends completed turns to it.
+// &turn-end replays a turn completing and reporting its changed files.
 
 const last = transcriptFixture.at(-1)!;
 
@@ -79,6 +81,10 @@ export function Playground() {
   // The colour scheme the page sees, so `bun run ui --light` shows the light theme.
   useTheme("system");
   const search = new URLSearchParams(location.search);
+  return search.has("turn-end") ? <TurnEndFixture /> : <TranscriptFixture search={search} />;
+}
+
+function TranscriptFixture({ search }: { search: URLSearchParams }) {
   const size = Math.max(0, Math.min(5000, Number(search.get("history") ?? 0)));
   const growth = Math.max(0, Math.min(500, Number(search.get("grow") ?? 0)));
   // `&at=600` holds the stream at its 600th character, for a screenshot of a reply mid-write.
@@ -143,6 +149,101 @@ export function Playground() {
           onAnswerPermission={() => undefined}
         />
       </div>
+    </div>
+  );
+}
+
+const turnEndAt = Date.now();
+const turnEndInput = after(1, {
+  _tag: "TurnInput",
+  turnId: "fixture-turn-end",
+  items: [{ _tag: "FromUser", text: "Fix the login race and rerun the auth tests." }],
+});
+const turnEndEvents = [
+  after(20, { _tag: "UsageReported", inputTokens: 9870, outputTokens: 2204, costUsd: 0.091 }),
+  after(21, { _tag: "TurnCompleted", stopReason: "completed" }),
+  after(22, {
+    _tag: "TurnFilesChanged",
+    turnId: "fixture-turn-end",
+    before: "snap1",
+    after: "snap2",
+    files: [
+      { path: "src/auth/session.ts", change: "modified", added: 1, removed: 1, via: "edit" },
+      { path: "src/auth/auth.spec.ts", change: "modified", added: 0, removed: 1, via: "edit" },
+    ],
+  }),
+];
+
+function TurnEndFixture() {
+  const [log] = useState(() => {
+    const log = new ThreadLog();
+    for (let n = 0; n < 5; n++) log.add(syntheticTurn(n, n * 3, turnEndInput.at - (5 - n) * 3));
+    const calls = transcriptFixture.filter(
+      ({ payload }) =>
+        (payload._tag === "ToolCallStarted" || payload._tag === "ToolCallCompleted") &&
+        ["c6", "c7", "c8"].includes(payload.callId),
+    );
+    log.add(
+      [
+        turnEndInput,
+        ...calls.map(({ payload }, index) => after(index + 2, payload)),
+        after(10, {
+          _tag: "MessageCompleted",
+          messageId: "fixture-reply",
+          text: "Fixed the login race by waiting for the session cookie write. All auth tests passed across 20 reruns.",
+        }),
+      ].map((event) => ({
+        ...event,
+        at: turnEndAt - 4_000 + (event.sequence - turnEndInput.sequence) * 400,
+      })),
+    );
+    return log;
+  });
+  const [phase, setPhase] = useState(0);
+  const [height, setHeight] = useState(0);
+  const [projection] = useState(() => new IncrementalTranscript());
+  const agent = updateLog(
+    log,
+    turnEndEvents.slice(0, phase).map((event) => ({ ...event, at: turnEndAt })),
+  ).agents.get(last.agentId)!;
+  const transcript = projection.project(agent.events, agent.generation, sameModel);
+  useEffect(() => {
+    if (phase !== 2) return;
+    // Snapshots are reported separately, after the turn has already completed.
+    const timer = setTimeout(() => setPhase(3), 40);
+    return () => clearTimeout(timer);
+  }, [phase]);
+  return (
+    <div className="relative h-full bg-surface-pane">
+      <Transcript
+        blocks={transcript.blocks}
+        queued={transcript.queued}
+        live={agent.live}
+        agent={leadFixture}
+        activity={phase === 0 ? "running" : "idle"}
+        bottomInset={height}
+        childState={() => "idle"}
+        childAgent={() => undefined}
+        agentActions={{}}
+        turnFiles={{ open: () => undefined, revert: async () => false }}
+      />
+      <Composer
+        target={{ kind: "thread", ...leadFixture, modelId: leadFixture.model }}
+        draftKey="fixture-turn-end"
+        running={phase === 0}
+        onHeight={setHeight}
+        onSend={async () => false}
+        onStop={() => undefined}
+        takesFocus={false}
+      />
+      <button
+        type="button"
+        className="absolute top-4 right-4 rounded border border-line-subtle bg-surface-raised px-3 py-1 text-meta"
+        onClick={() => setPhase(2)}
+        disabled={phase !== 0}
+      >
+        Finish fixture turn
+      </button>
     </div>
   );
 }

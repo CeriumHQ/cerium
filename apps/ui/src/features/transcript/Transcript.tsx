@@ -12,7 +12,6 @@ import { useAtomValue } from "@effect/atom-react";
 import { ArrowDown, History } from "lucide-react";
 import {
   createContext,
-  Fragment,
   memo,
   use,
   useMemo,
@@ -26,6 +25,7 @@ import {
 
 import { ImageGallery } from "../../components/ImageViewer.tsx";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
+import { Reveal } from "../../components/Reveal.tsx";
 import { Disclosure } from "../../components/ui/Disclosure.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { useKeyboardOpen } from "../../web/viewport.ts";
@@ -145,10 +145,9 @@ const quietFooter = (item: Extract<Item, { kind: "turnEnd" }>, latest: string | 
     : "opacity-0 transition-opacity duration-150 hover:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100 [:focus-within+&]:opacity-100 [:hover+&]:opacity-100 [:hover+*+&]:opacity-100";
 
 /**
- * How an item comes in while the thread is open, by what it is: a line writes itself out in reading
- * order, a card or a whole message unrolls downward, and the footer trails in last. Decided by the
- * item's kind alone, which never changes for its id, so an item keeps its entrance as it updates and
- * plays it only as it first mounts.
+ * How an item comes in while the thread is open: a line writes itself out in reading order, and a
+ * card or a whole message unrolls downward. Its kind never changes for its id, so it keeps its
+ * entrance as it updates and plays it only as it first mounts.
  */
 const entrance = (item: Item): string => {
   switch (item.kind) {
@@ -158,13 +157,12 @@ const entrance = (item: Item): string => {
     case "run":
     case "work":
     case "replaced":
+    case "turnEnd":
       return "";
     case "tools":
       return "unroll";
     case "spawns":
       return "arrive-spawns";
-    case "turnEnd":
-      return "trail";
     case "switch":
     case "imported":
     case "spawnAsk":
@@ -293,38 +291,37 @@ export function Transcript({
           render={(each) => renderItem(each, true)}
         />
       </EarlierVersion>
+    ) : item.kind === "turnEnd" ? (
+      <TurnEndItem
+        key={item.id}
+        item={item}
+        animate={!replaced && arrived(item.id)}
+        replaced={replaced}
+        quiet={quietFooter(item, replaced ? undefined : latestFooter)}
+      />
     ) : (
-      <Fragment key={item.id}>
-        {/* The files the turn changed stay in view, above the footer that hides until hovered. */}
-        {item.kind === "turnEnd" && item.block.changes !== undefined ? (
-          <div className={!replaced && arrived(item.id) ? "unroll" : ""}>
-            <TurnChangesItem changes={item.block.changes} replaced={replaced} />
-          </div>
-        ) : null}
-        <div
-          // A message sent rises out of the message box, its text flying there from where it was written.
-          {...(item.kind === "input" ? { "data-from-box": "" } : {})}
-          // The prompt stepper finds a prompt to bring into view by it.
-          {...(item.kind === "input" && !replaced ? { "data-prompt": item.id } : {})}
-          className={`${item.kind === "turnEnd" ? quietFooter(item, replaced ? undefined : latestFooter) : ""} ${
-            !replaced && arrived(item.id) ? entrance(item) : ""
-          }`}
-        >
-          <TranscriptItem
-            item={item}
-            last={!replaced && item === last}
-            activity={replaced ? "ended" : activity}
-            provider={(item.kind === "switch" ? item.provider : undefined) ?? agent.provider}
-            model={item.kind === "switch" ? modelLabel(item.model, item.provider) : ""}
-            replaced={replaced}
-            fresh={
-              !replaced && (item.kind === "run" || item.kind === "work")
-                ? idsOf(item).filter(arrived).join(" ")
-                : ""
-            }
-          />
-        </div>
-      </Fragment>
+      <div
+        key={item.id}
+        // A message sent rises out of the message box, its text flying there from where it was written.
+        {...(item.kind === "input" ? { "data-from-box": "" } : {})}
+        // The prompt stepper finds a prompt to bring into view by it.
+        {...(item.kind === "input" && !replaced ? { "data-prompt": item.id } : {})}
+        className={!replaced && arrived(item.id) ? entrance(item) : ""}
+      >
+        <TranscriptItem
+          item={item}
+          last={!replaced && item === last}
+          activity={replaced ? "ended" : activity}
+          provider={(item.kind === "switch" ? item.provider : undefined) ?? agent.provider}
+          model={item.kind === "switch" ? modelLabel(item.model, item.provider) : ""}
+          replaced={replaced}
+          fresh={
+            !replaced && (item.kind === "run" || item.kind === "work")
+              ? idsOf(item).filter(arrived).join(" ")
+              : ""
+          }
+        />
+      </div>
     );
 
   return (
@@ -333,7 +330,10 @@ export function Transcript({
         <ThreadContext folder={folder} messageBox={messageBox} actions={actions}>
           {/* An image opened from the conversation steps through all of the thread's others. */}
           <ImageGallery images={() => threadImages(shown)}>
-            <div className="relative h-full" style={{ "--composer": `${bottomInset}px` } as CSSProperties}>
+            <div
+              className="transcript-motion relative h-full"
+              style={{ "--composer": `${bottomInset}px` } as CSSProperties}
+            >
               {/* Content fades out where the floating composer sits instead of showing through its glass. */}
               <ScrollArea
                 viewportRef={attachViewport}
@@ -527,6 +527,7 @@ const TranscriptItem = memo(
           return (
             <ToolRun
               key={each.id}
+              id={each.id}
               tools={each.steps.flatMap((step) => (step.kind === "tools" ? step.tools : []))}
               timings={runTimings(each.steps)}
               live={tail && activity === "running"}
@@ -571,9 +572,8 @@ const TranscriptItem = memo(
           return <PushItem key={each.id} call={each.call} />;
         case "block":
           return <ResponseBlock key={each.id} block={each.block} activity={activity} quiet={quiet} />;
-        case "turnEnd":
-          return <TurnFooter key={each.id} block={each.block} text={each.text} routed={each.routed} />;
         // Laid out by the transcript itself, around the items it holds.
+        case "turnEnd":
         case "replaced":
           return null;
       }
@@ -590,6 +590,57 @@ const TranscriptItem = memo(
     // Deep enough for the calls inside a work's runs.
     same(before.item, after.item, 9),
 );
+
+/** Keeps the files above their footer, even when the snapshot follows the turn in a later update. */
+const TurnEndItem = memo(
+  function TurnEndItem({
+    item,
+    animate,
+    replaced,
+    quiet,
+  }: {
+    item: Extract<Item, { kind: "turnEnd" }>;
+    animate: boolean;
+    replaced: boolean;
+    quiet: string;
+  }) {
+    const { changes } = item.block;
+    const [endedAt] = useState(() => performance.now());
+    return (
+      <div className="flex flex-col">
+        {changes === undefined ? null : animate ? (
+          <TurnFilesArrival endedAt={endedAt} changes={changes} />
+        ) : (
+          <div className="pb-3">
+            <TurnChangesItem changes={changes} replaced={replaced} />
+          </div>
+        )}
+        <div className={`${quiet} ${animate ? "turn-footer" : ""}`}>
+          <TurnFooter block={item.block} text={item.text} routed={item.routed} />
+        </div>
+      </div>
+    );
+  },
+  (before, after) =>
+    before.animate === after.animate &&
+    before.replaced === after.replaced &&
+    before.quiet === after.quiet &&
+    same(before.item, after.item, 9),
+);
+
+function TurnFilesArrival({ endedAt, changes }: { endedAt: number; changes: TurnChangesModel }) {
+  // Spend only the time left before the file card's beat. A late snapshot opens on arrival.
+  const [elapsed] = useState(() => performance.now() - endedAt);
+  return (
+    <div style={{ "--turn-elapsed": `${elapsed}ms` } as CSSProperties}>
+      <Reveal shift={0} className="turn-files">
+        <div className="pb-3">
+          <TurnChangesItem changes={changes} replaced={false} />
+        </div>
+      </Reveal>
+    </div>
+  );
+}
 
 /** The files a turn changed; renders again when they or what became of them changes. */
 const TurnChangesItem = memo(

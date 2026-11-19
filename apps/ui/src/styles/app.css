@@ -512,17 +512,75 @@ html:active-view-transition-type(launch)::view-transition-new(root) {
     animation-delay: 210ms;
   }
 
-  /* The end of a response trails in after it, part by part: copy, then what the turn used. */
-  .trail > * > * {
-    animation: write-in 360ms var(--ease-out-soft) 120ms backwards;
+  /* Work folds first, then room opens for the files and the footer fills in underneath. */
+  .transcript-motion {
+    --turn-fold: 180ms;
+    --turn-files-at: 110ms;
+    --turn-files-duration: 180ms;
+    --turn-footer-at: calc(var(--turn-files-at) + 130ms);
+    --turn-footer-step: 35ms;
+    --turn-footer-duration: 145ms;
+    /* The composer's follow-up can use this offset to arrive after the last footer part. */
+    --turn-end-duration: calc(
+      var(--turn-footer-at) + 2 * var(--turn-footer-step) + var(--turn-footer-duration)
+    );
   }
 
-  .trail > * > :nth-child(2) {
-    animation-delay: 190ms;
+  .work-fold {
+    transition: height var(--turn-fold) var(--ease-out-soft);
   }
 
-  .trail > * > :nth-child(n + 3) {
-    animation-delay: 260ms;
+  .work-label > span {
+    transition:
+      opacity var(--turn-fold) var(--ease-out-soft),
+      color 150ms;
+  }
+
+  .work-label > [aria-hidden="true"] {
+    opacity: 0;
+  }
+
+  /* Hold the shimmer's last frame while Worked fades over it. */
+  .work-label[data-working="false"] > .text-shimmer {
+    animation-play-state: paused;
+  }
+
+  .turn-files {
+    transition-duration: clamp(
+      0ms,
+      calc(var(--turn-end-duration) - var(--turn-elapsed)),
+      var(--turn-files-duration)
+    );
+    transition-delay: max(0ms, calc(var(--turn-files-at) - var(--turn-elapsed)));
+  }
+
+  /* Keyboard focus can reach a file before the entrance finishes. Show its control at once. */
+  .turn-files:focus-within {
+    transition: none;
+  }
+
+  /* Copy and the effort tooltip are ready immediately. Only the readouts trail in. */
+  .turn-footer > * > :not(button) {
+    animation: fade-in var(--turn-footer-duration) var(--ease-out-soft) var(--turn-footer-at) backwards;
+  }
+
+  .turn-footer > * > :nth-child(2):not(button) {
+    animation-delay: calc(var(--turn-footer-at) + var(--turn-footer-step));
+  }
+
+  .turn-footer > * > :nth-child(n + 3):not(button) {
+    animation-delay: calc(var(--turn-end-duration) - var(--turn-footer-duration));
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .transcript-motion {
+      --turn-fold: 0ms;
+      --turn-files-at: 0ms;
+      --turn-files-duration: 0ms;
+      --turn-footer-at: 0ms;
+      --turn-footer-step: 0ms;
+      --turn-footer-duration: 0ms;
+    }
   }
 
   /* A tile among others, which scales in and out where it stands. */
