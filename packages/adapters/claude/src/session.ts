@@ -1,12 +1,12 @@
-import {
-  query,
-  type CanUseTool,
-  type EffortLevel,
-  type McpServerConfig,
-  type Options,
-  type PermissionMode,
-  type PermissionResult,
-  type SDKUserMessage,
+import type {
+  Query,
+  CanUseTool,
+  EffortLevel,
+  McpServerConfig,
+  Options,
+  PermissionMode,
+  PermissionResult,
+  SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
 import {
   HarnessFailure,
@@ -138,6 +138,7 @@ const toPermissionResult = (
 export const startClaudeSession = Effect.fn("ClaudeAdapter.startSession")(function* (
   executablePath: string,
   options: SessionOptions,
+  liveSessions?: Set<Query>,
 ) {
   const context = yield* Effect.context<never>();
   const run = Effect.runPromiseWith(context);
@@ -200,12 +201,15 @@ export const startClaudeSession = Effect.fn("ClaudeAdapter.startSession")(functi
       }),
     );
 
+  const { query } = yield* Effect.promise(() => import("@anthropic-ai/claude-agent-sdk"));
   const session = query({
     prompt: Stream.toAsyncIterable(Stream.fromQueue(input)),
     options: toSdkOptions(executablePath, options, canUseTool),
   });
+  liveSessions?.add(session);
   yield* Effect.addFinalizer(() =>
     Effect.gen(function* () {
+      liveSessions?.delete(session);
       yield* Queue.end(input);
       yield* Effect.sync(() => session.close());
     }),

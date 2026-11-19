@@ -1,4 +1,9 @@
-import { Effect, Layer } from "effect";
+import { Account, openTunnel } from "@cerium/account";
+import { DeviceId } from "@cerium/protocol";
+import { MachineRpcs, TUNNEL_HELLO, MEDIA_RANGE_RPC_VERSION } from "@cerium/rpc";
+import { RpcClient, RpcSerialization } from "effect/rpc";
+import { Socket } from "effect/socket";
+import { Effect, Layer, Option, Schema, Stream } from "effect";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 
 import { Files } from "./files.ts";
@@ -42,6 +47,56 @@ const serve = Effect.gen(function* () {
   const root = query.get("root");
   const path = query.get("path");
   if (root === null || path === null) return HttpServerResponse.empty({ status: 400 });
+  const remote = query.get("machine");
+  if (remote !== null) {
+    const id = Schema.decodeUnknownOption(DeviceId)(remote);
+    if (Option.isNone(id)) return HttpServerResponse.empty({ status: 400 });
+    const account = yield* Account;
+    const state = Option.getOrUndefined(yield* Stream.runHead(account.changes));
+    if (
+      state?._tag !== "SignedIn" ||
+      !state.devices.some(
+        (d) => d.id === id.value && d.online && (d.rpcVersion ?? 0) >= MEDIA_RANGE_RPC_VERSION,
+      )
+    )
+      return HttpServerResponse.empty({ status: 503 });
+    // Bind the RPC client and its tunnel to the HTTP request (including its streaming body).
+    const transport = RpcClient.layerProtocolSocket().pipe(
+      Layer.provide(
+        Layer.effect(
+          Socket.Socket,
+          Socket.fromWebSocket(openTunnel(account, id.value, { hello: TUNNEL_HELLO })),
+        ),
+      ),
+      Layer.provide(RpcSerialization.layerJson),
+    );
+    const protocol = yield* Layer.build(transport);
+    const client = yield* RpcClient.make(MachineRpcs).pipe(Effect.provide(protocol));
+    const file = yield* client.ReadFile({ root, path }).pipe(Effect.option);
+    if (Option.isNone(file) || file.value._tag !== "Media") return HttpServerResponse.empty({ status: 404 });
+    const { size, mediaType } = file.value;
+    const range = byteRange(request.headers["range"], size);
+    const headers = { "accept-ranges": "bytes", "cache-control": "no-store" };
+    if (range._tag === "Unsatisfiable")
+      return HttpServerResponse.empty({
+        status: 416,
+        headers: { ...headers, "content-range": `bytes */${size}` },
+      });
+    const part =
+      range._tag === "Part" ? { offset: range.start, length: range.end - range.start + 1 } : undefined;
+    const body = client
+      .ReadFileBytes({ root, path, ...(part ? { range: part } : {}) })
+      .pipe(Stream.map(({ data }) => Buffer.from(data, "base64")));
+    return HttpServerResponse.stream(body, {
+      status: part ? 206 : 200,
+      contentType: mediaType,
+      contentLength: part?.length ?? size,
+      headers: {
+        ...headers,
+        ...(range._tag === "Part" ? { "content-range": `bytes ${range.start}-${range.end}/${size}` } : {}),
+      },
+    });
+  }
   const files = yield* Files;
   const found = yield* files.media(root, path).pipe(Effect.result);
   if (found._tag === "Failure") return HttpServerResponse.text(found.failure.message, { status: 404 });

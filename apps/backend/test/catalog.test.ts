@@ -102,6 +102,7 @@ describe("CatalogLive", () => {
     );
     return Effect.gen(function* () {
       const offered = yield* OfferedModels;
+      yield* Effect.forkChild(offered.all);
       yield* Deferred.await(started);
       const [first, second] = yield* Effect.all([
         Effect.forkChild(offered.list("codex"), { startImmediately: true }),
@@ -196,6 +197,7 @@ describe("CatalogLive", () => {
     );
     return Effect.gen(function* () {
       const offered = yield* OfferedModels;
+      yield* Effect.forkChild(offered.all);
       yield* Deferred.await(started);
       const viewer = yield* Effect.forkChild(offered.list("codex"), { startImmediately: true });
       yield* offered.invalidate("codex");

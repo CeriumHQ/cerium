@@ -1,4 +1,4 @@
-import { Cursor, type ModelListItem, type ModelParameterDefinition, type ModelSelection } from "@cursor/sdk";
+import type { ModelListItem, ModelParameterDefinition, ModelSelection } from "@cursor/sdk";
 import { HarnessFailure } from "@cerium/harness";
 import type { ModelInfo, ModelSpeed, ReasoningEffort } from "@cerium/protocol";
 import { Effect } from "effect";
@@ -7,7 +7,7 @@ const EFFORTS: ReadonlyArray<ReasoningEffort> = ["minimal", "low", "medium", "hi
 
 /** The models the user's account offers. The SDK resolves its own credentials for the request. */
 export const fetchModelCatalog = Effect.tryPromise({
-  try: () => Cursor.models.list(),
+  try: async () => (await import("@cursor/sdk")).Cursor.models.list(),
   catch: (cause) =>
     new HarnessFailure({ provider: "cursor", message: "Could not list Cursor models", cause }),
 });

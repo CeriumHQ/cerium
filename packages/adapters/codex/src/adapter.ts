@@ -11,7 +11,8 @@ import { probeCodex } from "./probe.ts";
 import { startCodexSession } from "./session.ts";
 import { listCodexSessions, readCodexSession } from "./sessions.ts";
 import { askCodexSideQuestion } from "./sideQuestion.ts";
-import { readCodexUsage } from "./usage.ts";
+import type { AppServer } from "./rpc.ts";
+import { readCodexUsage, serverUsage } from "./usage.ts";
 
 const SIGNED_OUT = `Codex is not logged in. Run \`${LOGIN_COMMAND}\`.`;
 
@@ -51,8 +52,11 @@ export class CodexAdapter extends Context.Service<CodexAdapter, HarnessAdapter>(
         return status.executablePath;
       });
 
+      const liveServers = new Set<AppServer>();
       const startSession = Effect.fn("CodexAdapter.startSession")(function* (options: SessionOptions) {
-        const session = yield* startCodexSession(yield* ready, options).pipe(Effect.provide(platform));
+        const session = yield* startCodexSession(yield* ready, options, liveServers).pipe(
+          Effect.provide(platform),
+        );
         return probes.watchSignIn(session, SIGNED_OUT);
       });
 
@@ -66,7 +70,10 @@ export class CodexAdapter extends Context.Service<CodexAdapter, HarnessAdapter>(
             Effect.flatMap((executablePath) => listCodexSkills(executablePath, cwd)),
             Effect.provide(platform),
           ),
-        usage: ready.pipe(Effect.flatMap(readCodexUsage), Effect.provide(platform)),
+        usage: Effect.suspend(() => {
+          const server = liveServers.values().next().value;
+          return server ? serverUsage(server).pipe(Effect.catch(() => readCodexUsage)) : readCodexUsage;
+        }).pipe(Effect.provide(platform)),
         complete: (request) =>
           ready.pipe(
             Effect.flatMap((executablePath) => completeWithCodex(executablePath, request)),

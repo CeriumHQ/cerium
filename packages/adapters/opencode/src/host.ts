@@ -1,5 +1,5 @@
 import { HarnessFailure } from "@cerium/harness";
-import { OpenCode } from "@opencode/client";
+import type { OpenCode } from "@opencode/client";
 import { Deferred, Duration, Effect, Option, Queue, Schema, Stream, type Cause } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { randomBytes } from "node:crypto";
@@ -150,7 +150,7 @@ export const openHost = Effect.fn("OpenCodeAdapter.openHost")(function* (
     }),
   );
   const host: OpenCodeHost = {
-    client: OpenCode.make({
+    client: (yield* Effect.promise(() => import("@opencode/client"))).OpenCode.make({
       baseUrl,
       headers: { authorization: `Basic ${Buffer.from(`opencode:${password}`).toString("base64")}` },
     }),

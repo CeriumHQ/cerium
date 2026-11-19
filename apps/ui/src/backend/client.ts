@@ -95,19 +95,27 @@ const openTunnelSocket = Effect.gen(function* () {
  * `<video>` asks for, so it plays while it loads. None in the web client, while the window drives
  * another machine or when the backend can't be reached: those read the file over RPC.
  */
-export const localMediaUrl = (root: string, path: string, version: number) =>
-  WEB || drivenMachine() !== undefined
+export const localMediaUrl = (root: string, path: string, version: number, rangeSupported = false) => {
+  const machine = drivenMachine();
+  return WEB || (machine !== undefined && !rangeSupported)
     ? Effect.succeed(undefined)
     : connection.pipe(
         Effect.map(({ url, token }) => {
           const media = new URL(url.replace(/\/rpc$/, "/media"));
           media.protocol = media.protocol === "wss:" ? "https:" : "http:";
           // The version makes a changed file load again.
-          media.search = new URLSearchParams({ token, root, path, v: String(version) }).toString();
+          media.search = new URLSearchParams({
+            token,
+            root,
+            path,
+            ...(machine ? { machine: machine.id } : {}),
+            v: String(version),
+          }).toString();
           return media.href;
         }),
         Effect.orElseSucceed(() => undefined),
       );
+};
 
 /** Closed to switch machines; the client then reopens on the new one. */
 const SWITCHING = 4000;

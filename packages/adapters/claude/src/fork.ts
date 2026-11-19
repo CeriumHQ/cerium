@@ -1,4 +1,4 @@
-import { forkSession, getSessionMessages, type SessionMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { SessionMessage } from "@anthropic-ai/claude-agent-sdk";
 import { HarnessFailure, type ForkRequest, type TurnRef } from "@cerium/harness";
 import { Effect } from "effect";
 
@@ -35,6 +35,9 @@ export const lastKept = (messages: ReadonlyArray<SessionMessage>, turn: TurnRef)
 export const forkClaudeSession = Effect.fn("ClaudeAdapter.fork")(function* (request: ForkRequest) {
   const failure = (message: string) => (cause: unknown) =>
     new HarnessFailure({ provider: "claude", message, cause });
+  const { forkSession, getSessionMessages } = yield* Effect.promise(
+    () => import("@anthropic-ai/claude-agent-sdk"),
+  );
   const messages = yield* Effect.tryPromise({
     try: () => getSessionMessages(request.sessionId, { dir: request.cwd, includeSystemMessages: true }),
     catch: failure("Could not read the Claude session"),

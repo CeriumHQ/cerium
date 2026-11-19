@@ -255,7 +255,11 @@ export const Handlers = MachineRpcs.toLayer(
           }),
         ),
       WatchEvents: () => orchestrator.events.pipe(Stream.map(withoutImages)),
-      WatchActivity: () => orchestrator.watchActivity.pipe(Stream.map(leanDelivery)),
+      WatchActivity: (_, { headers }) =>
+        (headers["cerium-activity"] === "without-tools"
+          ? orchestrator.watchActivityWithoutTools
+          : orchestrator.watchActivity
+        ).pipe(Stream.map(leanDelivery)),
       WatchThreadEvents: ({ threadId }) =>
         orchestrator.watchThreadEvents(threadId).pipe(Stream.map(leanDelivery)),
       ListPastSessions: () => imports.list.pipe(Effect.mapError(refuse)),
@@ -518,7 +522,8 @@ export const Handlers = MachineRpcs.toLayer(
       ListFiles: ({ root, dir }) => files.list(root, dir).pipe(Effect.mapError(refuse)),
       FileStatuses: ({ root }) => files.statuses(root).pipe(Effect.mapError(refuse)),
       ReadFile: ({ root, path }) => files.read(root, path).pipe(Effect.mapError(refuse)),
-      ReadFileBytes: ({ root, path }) => files.readBytes(root, path).pipe(Stream.mapError(refuse)),
+      ReadFileBytes: ({ root, path, range }) =>
+        files.readBytes(root, path, range).pipe(Stream.mapError(refuse)),
       DiffFile: ({ root, path, from, context }) =>
         files.diff(root, path, from, context).pipe(Effect.mapError(refuse)),
       CommitHistory: ({ root, query, offset, limit }) =>

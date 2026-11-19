@@ -10,6 +10,7 @@ import {
   useEffect,
   useEffectEvent,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type KeyboardEvent,
@@ -107,22 +108,25 @@ export function TranscriptFind({
     pending !== undefined ||
     (jump !== undefined && jump.threadId === threadId) ||
     artifact !== undefined;
-  const messages = new Map((active ? index : []).map((message) => [message.id, message]));
-  for (const message of active ? searchMessages(blocks) : []) {
-    const previous = messages.get(message.id);
-    messages.set(
-      message.id,
-      previous?.text === message.text
-        ? previous
-        : { ...message, ...(previous?.cursor ? { cursor: previous.cursor } : {}) },
-    );
-  }
-  for (const [id, text] of overlay) {
-    const previous = messages.get(id);
-    if (previous) messages.set(id, { ...previous, text });
-  }
-  const all = [...messages.values()];
-  const matches = modelMatches(all, query);
+  // Rebuilt only when the thread's messages, the index or a streamed reply change, never per keystroke.
+  const { messages, all } = useMemo(() => {
+    const merged = new Map((active ? index : []).map((message) => [message.id, message]));
+    for (const message of active ? searchMessages(blocks) : []) {
+      const previous = merged.get(message.id);
+      merged.set(
+        message.id,
+        previous?.text === message.text
+          ? previous
+          : { ...message, ...(previous?.cursor ? { cursor: previous.cursor } : {}) },
+      );
+    }
+    for (const [id, text] of overlay) {
+      const previous = merged.get(id);
+      if (previous) merged.set(id, { ...previous, text });
+    }
+    return { messages: merged, all: [...merged.values()] };
+  }, [active, index, blocks, overlay]);
+  const matches = useMemo(() => modelMatches(all, query), [all, query]);
   const at = Math.max(0, Math.min(current, matches.length - 1));
 
   const ensureIndex = useEffectEvent((retry = false) => {

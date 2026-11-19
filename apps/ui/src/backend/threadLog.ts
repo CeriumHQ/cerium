@@ -26,6 +26,9 @@ export interface ThreadHistory {
   readonly loadThrough?: (cursor: HistoryCursor) => void;
   readonly pageRevision?: number;
   readonly loadError?: string | undefined;
+  /** A deep jump left out the tool calls of part of the loaded history; `fillGaps` reads them. */
+  readonly skipped?: boolean;
+  readonly fillGaps?: () => void;
 }
 interface AgentLog {
   events: Array<AgentEvent>;

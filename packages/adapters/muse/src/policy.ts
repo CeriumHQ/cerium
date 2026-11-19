@@ -1,6 +1,5 @@
-import { compareVersions, type McpServerSpec, type PermissionDecision } from "@cerium/harness";
+import { type McpServerSpec, type PermissionDecision } from "@cerium/harness";
 import type { AccessMode, HarnessLimit, HarnessSetup, ReasoningEffort } from "@cerium/protocol";
-import { EXPECTED_SCHEMA_FINGERPRINT } from "@muse-code/sdk";
 import type {
   ApprovalChoice,
   ApprovalMode,
@@ -8,8 +7,6 @@ import type {
   ReasoningEffort as MuseEffort,
   SessionMcpServerConfig,
 } from "@muse-code/sdk/dist/src/msp.js";
-
-import { SDK_RELEASE } from "./manifest.ts";
 
 // How Cerium's session options map onto `muse serve` flags and MSP params. Pure, so every mapping is unit
 // tested without a host.
@@ -289,20 +286,4 @@ export const isTrustedTool = (request: ApprovalRequestParams, trustedServers: Re
   if (request.subject.kind !== "tool") return false;
   const name = request.subject.toolName ?? request.toolName;
   return trustedServers.some((server) => name.startsWith(`mcp__${server}__`));
-};
-
-export type FingerprintVerdict = "exact" | "additive" | "incompatible";
-
-/**
- * Compares the host's stable MSP schema with the one the SDK was built for. The SDK documents stable
- * evolution as additive, so a newer host is accepted; a host at or below the SDK's release that serves a
- * different schema is one the SDK cannot rely on.
- */
-export const fingerprintVerdict = (
-  served: string,
-  hostVersion: string,
-  pinned: string = EXPECTED_SCHEMA_FINGERPRINT,
-): FingerprintVerdict => {
-  if (served === pinned) return "exact";
-  return compareVersions(hostVersion, SDK_RELEASE) > 0 ? "additive" : "incompatible";
 };

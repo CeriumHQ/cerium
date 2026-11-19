@@ -31,6 +31,7 @@ import { AsyncResult, Atom } from "effect/reactivity";
 import { remember, stored } from "../lib/storage.ts";
 import { Backend, BackendUnreachable, connectionAtom, connectionEpochAtom, LocalBackend } from "./client.ts";
 import { machineAtom, machineKey, type DrivenMachine } from "./machine.ts";
+import { fillGap, jumpThrough, type Gap } from "./deepJump.ts";
 import { byTime, inHistoryWindow, ThreadLog } from "./threadLog.ts";
 
 /** Live feeds end when the connection drops; this picks them back up once it returns. */
@@ -64,6 +65,7 @@ const liveFeedAtom = Backend.runtime
         const client = yield* Backend;
         if (scoped) {
           const events = yield* client("WatchActivity", undefined, {
+            headers: { "cerium-activity": "without-tools" },
             asQueue: true,
             streamBufferSize: LIVE_BUFFER,
           });
@@ -123,7 +125,7 @@ const sameRead =
 const LIST_SPACING = 250;
 
 /** Local UI and backend ship together. Remote capabilities come from the account's device roster. */
-const drivenRpcVersionAtom = Atom.make((get) => {
+export const drivenRpcVersionAtom = Atom.make((get) => {
   const machine = get(machineAtom);
   if (machine === undefined) return Infinity;
   const state = AsyncResult.getOrElse(get(accountAtom), () => undefined);
@@ -558,9 +560,17 @@ const threadHistoryCache = Atom.family((_key: string) =>
     before: undefined as HistoryCursor | undefined,
     more: true,
     loaded: false,
+    /** Stretches a deep jump skipped the tool calls of, until they're asked for. */
+    gaps: [] as Array<Gap>,
+    /** Pages an unfinished jump has read the ordinary way, before it turns to the quick one. */
+    hops: 0,
   })).pipe(Atom.setIdleTTL(CLOSED_THREAD_TTL)),
 );
 const olderThreadAtom = Atom.family((_id: ThreadId) => Atom.make(0));
+const fillThreadAtom = Atom.family((_id: ThreadId) => Atom.make(0));
+/** A jump this many full pages deep reads only state events for the rest of the way. Since RPC_VERSION 47. */
+const DEEP_JUMP_PAGES = 2;
+const STATE_HISTORY_RPC_VERSION = 47;
 const historyTargetAtom = Atom.family((_id: ThreadId) => Atom.make<HistoryCursor | undefined>(undefined));
 
 const threadLive = (get: Atom.AtomContext, threadId: ThreadId, scoped: boolean) =>
@@ -600,6 +610,7 @@ export const threadEventsAtom = Atom.family((threadId: ThreadId) =>
     const loadOlder = () =>
       get.set(olderThreadAtom(threadId), get.registry.get(olderThreadAtom(threadId)) + 1);
     const loadThrough = (cursor: HistoryCursor) => get.set(historyTargetAtom(threadId), { ...cursor });
+    const fillGaps = () => get.set(fillThreadAtom(threadId), get.registry.get(fillThreadAtom(threadId)) + 1);
     const state = () => ({
       ...log.state(),
       more: cache.more,
@@ -607,6 +618,11 @@ export const threadEventsAtom = Atom.family((threadId: ThreadId) =>
       loadThrough,
       pageRevision,
       loadError,
+      ...(cache.gaps.length > 0 ? { skipped: true, fillGaps } : {}),
+    });
+    const pageRequest = (request: { readonly before: HistoryCursor; readonly state?: boolean }) => ({
+      threadId,
+      page: { before: request.before, ...(request.state === true ? { state: true } : {}) },
     });
     const history = (older: boolean) =>
       Backend.use((client) =>
@@ -649,6 +665,11 @@ export const threadEventsAtom = Atom.family((threadId: ThreadId) =>
             .pipe(Stream.map(() => ({ _tag: "Older" as const }))),
         ),
         Stream.merge(
+          get
+            .stream(fillThreadAtom(threadId), { withoutInitialValue: true })
+            .pipe(Stream.map(() => ({ _tag: "Fill" as const }))),
+        ),
+        Stream.merge(
           get.stream(historyTargetAtom(threadId), { withoutInitialValue: true }).pipe(
             Stream.filter((cursor) => cursor !== undefined),
             Stream.map((cursor) => ({ _tag: "Through" as const, cursor })),
@@ -671,6 +692,50 @@ export const threadEventsAtom = Atom.family((threadId: ThreadId) =>
               cache.more &&
               cache.before !== undefined &&
               byTime(target.cursor, cache.before) < 0;
+            if (batch.some((each) => each._tag === "Fill") && cache.gaps.length > 0) {
+              const read = yield* Backend.use((client) =>
+                Effect.forEach(
+                  [...cache.gaps],
+                  (gap) =>
+                    fillGap((request) => client("ThreadHistory", pageRequest(request)), log, gap).pipe(
+                      Effect.as(gap),
+                    ),
+                  { concurrency: 1 },
+                ),
+              ).pipe(Effect.option);
+              if (Option.isSome(read)) cache.gaps = cache.gaps.filter((gap) => !read.value.includes(gap));
+              pageRevision++;
+              loadError = Option.isNone(read) ? "Tool activity couldn’t load. Try again." : undefined;
+              changed = true;
+            }
+            const newestLoaded = cache.before;
+            if (
+              target?._tag === "Through" &&
+              needsTarget() &&
+              newestLoaded !== undefined &&
+              cache.hops >= DEEP_JUMP_PAGES &&
+              get.registry.get(drivenRpcVersionAtom) >= STATE_HISTORY_RPC_VERSION
+            ) {
+              // A deep jump: the stretch up to the target is read as state events, never as tool payloads.
+              const jumped = yield* Backend.use((client) =>
+                jumpThrough(
+                  (request) => client("ThreadHistory", pageRequest(request)),
+                  log,
+                  target.cursor,
+                  newestLoaded,
+                ),
+              ).pipe(Effect.option);
+              pageRevision++;
+              cache.hops = 0;
+              if (Option.isSome(jumped)) {
+                cache.before = jumped.value.before;
+                cache.more = jumped.value.more;
+                if (byTime(jumped.value.gap.older, jumped.value.gap.newer) < 0)
+                  cache.gaps.push(jumped.value.gap);
+                loadError = undefined;
+                changed = true;
+              }
+            }
             if (batch.some((each) => each._tag === "Older") || needsTarget()) {
               const read = yield* history(true).pipe(
                 Effect.retry({ schedule: Schedule.spaced("1 second"), times: 5 }),
@@ -679,11 +744,13 @@ export const threadEventsAtom = Atom.family((threadId: ThreadId) =>
               pageRevision++;
               loadError = Option.isNone(read) ? "Earlier messages couldn't load. Try again." : undefined;
               changed = true;
+              if (Option.isSome(read)) cache.hops++;
               // Keep the loaded suffix contiguous: each request is bounded and lets queued live
               // events through before the next page. Never fold disconnected navigation pages.
               if (Option.isSome(read) && needsTarget() && target?._tag === "Through")
                 loadThrough(target.cursor);
             }
+            if (target?._tag === "Through" && !needsTarget()) cache.hops = 0;
             changed =
               log.add(
                 batch.flatMap((each) =>

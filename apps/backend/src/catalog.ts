@@ -7,7 +7,7 @@ import {
   type ProviderId,
   type RosterMember,
 } from "@cerium/protocol";
-import { Clock, Context, Deferred, Duration, Effect, Exit, Fiber, Layer, Scope } from "effect";
+import { Clock, Context, Deferred, Duration, Effect, Exit, Layer, Scope } from "effect";
 
 /** How long each harness may take to list its models. */
 const LIST_TIMEOUT = "20 seconds";
@@ -133,14 +133,16 @@ export class OfferedModels extends Context.Service<
           yield* ensureListing(harness);
         }).pipe(Effect.uninterruptible);
 
-      const startup = yield* Effect.forEach(ordered, (harness) => Effect.ignore(read(harness)), {
-        concurrency: "unbounded",
-        discard: true,
-      }).pipe(Effect.forkIn(scope));
+      const initialDiscovery = yield* Effect.cached(
+        Effect.forEach(ordered, (harness) => Effect.ignore(read(harness)), {
+          concurrency: "unbounded",
+          discard: true,
+        }),
+      );
 
       return OfferedModels.of({
         all: Effect.gen(function* () {
-          yield* Fiber.join(startup);
+          yield* initialDiscovery;
           yield* Effect.forEach(ordered, ensureListing, { discard: true });
           return ordered.flatMap((harness) => harness.models);
         }),

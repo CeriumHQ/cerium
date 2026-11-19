@@ -31,6 +31,16 @@ const words = (node: TextNode): string => {
 };
 export const searchableText = (markdown: string): string => words(parser.parse(markdown));
 
+// Keep parsed text only while the find index owns its message. A streamed edit replaces the key.
+const folded = new WeakMap<SearchMessage, string>();
+const foldedText = (message: SearchMessage) => {
+  const known = folded.get(message);
+  if (known !== undefined) return known;
+  const text = searchableText(message.text).toLocaleLowerCase();
+  folded.set(message, text);
+  return text;
+};
+
 export const searchMessages = (blocks: ReadonlyArray<TranscriptBlock>): ReadonlyArray<SearchMessage> =>
   blocks.flatMap((block) => {
     if (block.kind === "replaced") return searchMessages(block.blocks);
@@ -60,7 +70,7 @@ export const modelMatches = (
   if (query === "") return [];
   const needle = query.toLocaleLowerCase();
   return messages.flatMap((message) => {
-    const text = searchableText(message.text).toLocaleLowerCase();
+    const text = foldedText(message);
     const found: Array<ModelMatch> = [];
     for (let at = text.indexOf(needle); at >= 0; at = text.indexOf(needle, at + needle.length))
       found.push({ message, ordinal: found.length });

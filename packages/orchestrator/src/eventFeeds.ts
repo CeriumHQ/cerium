@@ -11,16 +11,21 @@ const deliveries = (events: Stream.Stream<AgentEvent>) =>
 export const makeEventFeeds = Effect.gen(function* () {
   const legacy = yield* PubSub.unbounded<AgentEvent>();
   const activity = yield* PubSub.unbounded<AgentEvent>();
+  const activityWithoutTools = yield* PubSub.unbounded<AgentEvent>();
   const threads = new Map<ThreadId, Set<Queue.Queue<AgentEvent>>>();
+
+  const watch = (source: PubSub.PubSub<AgentEvent>) =>
+    Stream.unwrap(
+      PubSub.subscribe(source).pipe(
+        Effect.map((subscription) => deliveries(Stream.fromSubscription(subscription))),
+      ),
+    );
 
   return {
     events: Stream.fromPubSub(legacy),
     activity: Stream.fromPubSub(activity),
-    watchActivity: Stream.unwrap(
-      PubSub.subscribe(activity).pipe(
-        Effect.map((subscription) => deliveries(Stream.fromSubscription(subscription))),
-      ),
-    ),
+    watchActivity: watch(activity),
+    watchActivityWithoutTools: watch(activityWithoutTools),
     watchThread: (threadId: ThreadId) =>
       Stream.unwrap(
         Effect.gen(function* () {
@@ -44,7 +49,12 @@ export const makeEventFeeds = Effect.gen(function* () {
     publish: (event: AgentEvent) =>
       Effect.sync(() => {
         PubSub.publishUnsafe(legacy, event);
-        if (!isStreamDelta(event.payload._tag)) PubSub.publishUnsafe(activity, event);
+        const tag = event.payload._tag;
+        if (!isStreamDelta(tag)) {
+          PubSub.publishUnsafe(activity, event);
+          if (tag !== "ToolCallStarted" && tag !== "ToolCallCompleted")
+            PubSub.publishUnsafe(activityWithoutTools, event);
+        }
         const readers = threads.get(event.threadId);
         if (readers !== undefined) {
           for (const reader of readers) Queue.offerUnsafe(reader, event);

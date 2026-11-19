@@ -1,3 +1,4 @@
+import type { Query } from "@anthropic-ai/claude-agent-sdk";
 import { HarnessFailure, type SubscriptionReport } from "@cerium/harness";
 import { LenientArray, type MeterLevel, type UsageMeter } from "@cerium/protocol";
 import { Effect, Option, Schema } from "effect";
@@ -166,11 +167,15 @@ const failure = (message: string) => (cause: unknown) =>
   new HarnessFailure({ provider: "claude", message, cause });
 
 /** Asks the user's `claude` how much of its plan's limits are used. */
-export const readClaudeUsage = Effect.fn("ClaudeAdapter.usage")(function* (executablePath: string) {
-  const answer = yield* inspectClaude(executablePath, undefined, "Could not read Claude's usage", (session) =>
+export const readClaudeUsage = Effect.fn("ClaudeAdapter.usage")(function* (
+  executablePath: string,
+  live?: Query,
+) {
+  const ask = (session: Query) =>
     // Claude Code marks the call experimental; a version without it fails here, and says so.
-    session.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true }),
-  );
+    session.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true });
+  const inspect = inspectClaude(executablePath, undefined, "Could not read Claude's usage", ask);
+  const answer = yield* live ? Effect.tryPromise(() => ask(live)).pipe(Effect.catch(() => inspect)) : inspect;
   const usage = yield* decodeClaudeUsage(answer).pipe(Effect.mapError(failure("Unexpected usage answer")));
   const report = toClaudeReport(usage);
   if (report === "unfetched") {

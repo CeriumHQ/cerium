@@ -2,7 +2,8 @@ import { HarnessFailure, type SubscriptionReport } from "@cerium/harness";
 import type { UsageMeter } from "@cerium/protocol";
 import { Effect, Option, Schema } from "effect";
 
-import { connect } from "./rpc.ts";
+import { readAuth, findCodexExecutable } from "./probe.ts";
+import { connect, type AppServer } from "./rpc.ts";
 
 // The ChatGPT plan's Codex limits, from `account/rateLimits/read`. No thread is started.
 
@@ -94,8 +95,7 @@ const failure = (message: string) => (cause: unknown) =>
   new HarnessFailure({ provider: "codex", message, cause });
 
 /** Asks the user's `codex` how much of its plan's limits are used. */
-export const readCodexUsage = Effect.fn("CodexAdapter.usage")(function* (executablePath: string) {
-  const server = yield* connect(executablePath);
+export const serverUsage = Effect.fn("CodexAdapter.serverUsage")(function* (server: AppServer) {
   const response = yield* server
     .request("account/rateLimits/read", { excludeResetCreditDetails: true })
     .pipe(Effect.mapError(failure("Could not read Codex's usage")));
@@ -103,4 +103,11 @@ export const readCodexUsage = Effect.fn("CodexAdapter.usage")(function* (executa
     Effect.mapError(failure("Unexpected `account/rateLimits/read` response")),
   );
   return toCodexReport(limits);
-}, Effect.scoped);
+});
+export const readCodexUsage = Effect.gen(function* () {
+  const executable = yield* findCodexExecutable;
+  if (Option.isNone(executable)) return Option.none();
+  const server = yield* connect(executable.value);
+  if ((yield* readAuth(server))._tag === "LoggedOut") return Option.none();
+  return yield* serverUsage(server);
+}).pipe(Effect.scoped);

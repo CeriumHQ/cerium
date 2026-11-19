@@ -2,7 +2,7 @@ import { makeFakeAdapter } from "@cerium/harness/testing";
 import type { AgentEvent, AgentId, EventPayload } from "@cerium/protocol";
 import { Store } from "@cerium/store";
 import { assert, describe, it } from "@effect/vitest";
-import { Effect } from "effect";
+import { Effect, Deferred, Fiber } from "effect";
 
 import { handoffBrief, pendingHandoff, splitConversation, exchanges } from "../src/handoff.ts";
 import { Orchestrator } from "../src/index.ts";
@@ -162,6 +162,52 @@ const turnsCompleted = (count: number, agentId: AgentId) => (events: ReadonlyArr
 };
 
 describe("Orchestrator handoff", () => {
+  it.live("accepts another lead's message while a handoff is waiting for its harness", () => {
+    const claude = makeFakeAdapter("claude", { turnDuration: "30 seconds" });
+    const codex = makeFakeAdapter("codex");
+    const entered = Deferred.makeUnsafe<void>();
+    const release = Deferred.makeUnsafe<void>();
+    const adapter = {
+      ...claude.adapter,
+      startSession: (options: Parameters<typeof claude.adapter.startSession>[0]) =>
+        claude.adapter.startSession(options).pipe(
+          Effect.map((session) => ({
+            ...session,
+            interrupt: Deferred.succeed(entered, undefined).pipe(
+              Effect.andThen(Deferred.await(release)),
+              Effect.andThen(session.interrupt),
+            ),
+          })),
+        ),
+    };
+    return Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator;
+      const { waitFor } = yield* recordEvents;
+      const thread = (provider: "claude" | "codex") =>
+        orchestrator.createThread({
+          title: provider,
+          mode: "work",
+          cwd: ".",
+          lead: { provider, model: "test", access: "readOnly" },
+        });
+      const a = yield* thread("claude");
+      const b = yield* thread("codex");
+      yield* orchestrator.sendUserMessage(a.lead.id, "start");
+      yield* waitFor((events) =>
+        events.find((e) => e.agentId === a.lead.id && e.payload._tag === "TurnInput"),
+      );
+      const moving = yield* Effect.forkScoped(
+        orchestrator.handOffLead(a.lead.id, { provider: "codex", model: "test" }),
+      );
+      yield* Deferred.await(entered);
+      yield* orchestrator
+        .sendUserMessage(b.lead.id, "independent")
+        .pipe(Effect.ensuring(Deferred.succeed(release, undefined)));
+      yield* Fiber.join(moving);
+      yield* waitFor(turnsCompleted(1, b.lead.id));
+    }).pipe(Effect.provide(testLayer([adapter, codex.adapter])), Effect.scoped);
+  });
+
   it.live("goes on in a new session on the other harness, told the conversation so far", () => {
     const claude = makeFakeAdapter("claude");
     const codex = makeFakeAdapter("codex");

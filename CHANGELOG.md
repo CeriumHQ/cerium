@@ -8,6 +8,10 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Changed
 
+- Handing off or restoring one conversation leaves other threads responsive. Find reuses searchable message text and skips intervening tool output on deep jumps.
+- Desktop windows receive tool output for the threads they display. Cloud uploads use stored screenshot references, and desktop audio and video previews can request byte ranges from another updated computer.
+- Provider SDKs load when needed, and subscription checks reuse open harness sessions. Folded code highlights its visible prefix and the highlighting worker shuts down when idle.
+
 - A turn's start and end play in order. "Working…" fades into the first activity's header, and that activity's first step follows just after. Streamed replies write in place word by word. When a turn ends, its work folds first, then the changed files and the response details come in, and a follow-up suggestion fades into the message box once that has settled.
 - The message box's trays open and close in one motion that carries their first items. Adding or removing an attachment while the box rests on one line is a single morph. When Send appears during a turn, the controls next to it glide aside. The mention menu, slash menu and thread find bar fade in and out briefly.
 - The approval tray rises with its first request and crossfades between requests in place. Its keyboard shortcuts follow the request in view.

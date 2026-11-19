@@ -34,7 +34,6 @@ import {
   approvalSummary,
   choiceOutcome,
   decisionOutcome,
-  fingerprintVerdict,
   isTrustedTool,
   pickApprovalChoice,
   serveArgs,
@@ -493,3 +492,5 @@ export const startMuseSession = Effect.fn("MuseAdapter.startSession")(function* 
     }),
   } satisfies AgentSession;
 });
+
+import { fingerprintVerdict } from "./fingerprint.ts";

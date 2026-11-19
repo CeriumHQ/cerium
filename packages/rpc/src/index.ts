@@ -108,7 +108,8 @@ export * from "./terminal.ts";
  * offers.
  */
 export const FORK_THREAD_RPC_VERSION = 53;
-export const RPC_VERSION = FORK_THREAD_RPC_VERSION;
+export const MEDIA_RANGE_RPC_VERSION = 54;
+export const RPC_VERSION = MEDIA_RANGE_RPC_VERSION;
 export const SCOPED_EVENTS_RPC_VERSION = 50;
 
 /** Status readers send the provider ids their schema can decode. */
@@ -704,7 +705,16 @@ export const MachineRpcs = RpcGroup.make(
    * a `Media` file. Refused past a size the viewer can hold.
    */
   Rpc.make("ReadFileBytes", {
-    payload: { root: Schema.NonEmptyString, path: Schema.NonEmptyString },
+    payload: {
+      root: Schema.NonEmptyString,
+      path: Schema.NonEmptyString,
+      range: Schema.optionalKey(
+        Schema.Struct({
+          offset: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+          length: Schema.Int.check(Schema.isGreaterThan(0)),
+        }),
+      ),
+    },
     success: FileBytes,
     stream: true,
     error: CeriumError,

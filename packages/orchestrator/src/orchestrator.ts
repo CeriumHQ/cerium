@@ -67,6 +67,7 @@ import {
   Option,
   Path,
   Queue,
+  RcMap,
   Result,
   Schema,
   Scope,
@@ -91,6 +92,7 @@ import {
 } from "./effort.ts";
 import { makeSuggestFollowup } from "./followup.ts";
 import { HelperUsage } from "./helperUsage.ts";
+import { checkoutOperations } from "./checkoutOperations.ts";
 import { MessageDelivery, type MessageOptions } from "./delivery.ts";
 import { notAllowed, notFound, OrchestratorError } from "./errors.ts";
 import { makeEventFeeds } from "./eventFeeds.ts";
@@ -731,6 +733,7 @@ export class Orchestrator extends Context.Service<
     /** Live events from every agent, without streamed text. */
     readonly activity: Stream.Stream<AgentEvent>;
     readonly watchActivity: Stream.Stream<LiveEventDelivery>;
+    readonly watchActivityWithoutTools: Stream.Stream<LiveEventDelivery>;
     watchThreadEvents(threadId: ThreadId): Stream.Stream<LiveEventDelivery>;
 
     // Bus-facing operations: `callerId` is the agent invoking the tool.
@@ -978,7 +981,40 @@ export class Orchestrator extends Context.Service<
        * One user message accepted at a time, so messages sent together keep their order and don't
        * start two sessions for one lead.
        */
-      const acceptPermit = yield* Semaphore.make(1);
+      const threadLocks = yield* RcMap.make({ lookup: (_id: ThreadId) => Semaphore.make(1) });
+      const checkout = checkoutOperations();
+      const inThread =
+        (id: ThreadId, writes = false, destination?: string) =>
+        <A, E, R>(operation: Effect.Effect<A, E, R>) =>
+          Effect.scoped(
+            Effect.gen(function* () {
+              const lock = yield* RcMap.get(threadLocks, id);
+              return yield* lock.withPermits(1)(
+                Effect.gen(function* () {
+                  const directory = threadDirectories.get(id) ?? threadDirectory(yield* threadInfo(id));
+                  const folders = yield* Effect.forEach(
+                    destination ? [directory, destination] : [directory],
+                    (folder) =>
+                      fs.realPath(folder).pipe(
+                        Effect.orElseSucceed(() => path.resolve(folder)),
+                        Effect.map((name) => (process.platform === "win32" ? name.toLowerCase() : name)),
+                      ),
+                  );
+                  return yield* checkout(folders, writes, operation);
+                }),
+              );
+            }),
+          );
+      const forAgent =
+        (id: AgentId, writes = false) =>
+        <A, E, R>(operation: Effect.Effect<A, E, R>) =>
+          Effect.gen(function* () {
+            const info =
+              runtimes.get(id)?.info ??
+              Option.getOrUndefined(yield* store.getAgent(id).pipe(Effect.mapError(unavailable)));
+            if (!info) return yield* notFound(`Agent ${id} does not exist.`);
+            return yield* inThread(info.threadId, writes)(operation);
+          });
 
       // A script's run ending reaches its thread's lead as any notice does, so it knows when the
       // setup is through: without one, its work would race the install. The run's own news, where it
@@ -1431,6 +1467,9 @@ export class Orchestrator extends Context.Service<
                 closeLeadRequest(rt.info.id, payload.requestId);
                 return;
               }
+              // A reader can act on SessionStarted as soon as it is published.
+              if (payload._tag === "SessionStarted")
+                rt.info = { ...rt.info, providerSessionId: payload.providerSessionId };
               yield* emit(rt, payload, event.raw);
               if (
                 payload._tag === "AgentError" ||
@@ -1446,7 +1485,7 @@ export class Orchestrator extends Context.Service<
               switch (payload._tag) {
                 case "SessionStarted": {
                   const updatedAt = yield* Clock.currentTimeMillis;
-                  rt.info = { ...rt.info, providerSessionId: payload.providerSessionId, updatedAt };
+                  rt.info = { ...rt.info, updatedAt };
                   yield* store
                     .updateAgent(rt.info.id, { providerSessionId: payload.providerSessionId, updatedAt })
                     .pipe(Effect.mapError(unavailable));
@@ -2051,38 +2090,36 @@ export class Orchestrator extends Context.Service<
        * the timer, a message or a restart gets here first. The lead goes on in its own session.
        */
       const resumeFromPause = (agentId: AgentId): Effect.Effect<void> =>
-        acceptPermit
-          .withPermits(1)(
-            Effect.gen(function* () {
-              // Not interrupted by what ends the pause from here on.
-              pauseTimers.delete(agentId);
-              const paused = yield* pauseOf(agentId);
-              if (paused === undefined) return;
-              if (paused.resumeAt > (yield* Clock.currentTimeMillis) + 1_000) {
-                return yield* schedulePause(agentId, paused.resumeAt);
-              }
-              const agent = yield* store.getAgent(agentId).pipe(Effect.mapError(unavailable));
-              if (Option.isNone(agent)) return;
-              // An archived thread stays as it is until the user brings it back.
-              if ((yield* threadInfo(agent.value.threadId)).archivedAt !== undefined) return;
-              const { rt, undelivered, notices } = yield* liveLead(agentId);
-              const gate = rt.pause;
-              rt.pause = undefined;
-              yield* emit(rt, { _tag: "LimitResumed", by: "reset" });
-              rt.userWaiting = undelivered.length > 0;
-              yield* Queue.offerAll(rt.inbox, [
-                ...undelivered,
-                { _tag: "SystemNotice", text: resumeNotice() },
-                ...notices,
-              ]);
-              if (gate !== undefined) yield* Deferred.succeed(gate, undefined);
-            }),
-          )
-          .pipe(
-            Effect.catchCause((cause) =>
-              Effect.logWarning(`Couldn't resume ${agentId} after its harness's limit reset`, cause),
-            ),
-          );
+        forAgent(agentId)(
+          Effect.gen(function* () {
+            // Not interrupted by what ends the pause from here on.
+            pauseTimers.delete(agentId);
+            const paused = yield* pauseOf(agentId);
+            if (paused === undefined) return;
+            if (paused.resumeAt > (yield* Clock.currentTimeMillis) + 1_000) {
+              return yield* schedulePause(agentId, paused.resumeAt);
+            }
+            const agent = yield* store.getAgent(agentId).pipe(Effect.mapError(unavailable));
+            if (Option.isNone(agent)) return;
+            // An archived thread stays as it is until the user brings it back.
+            if ((yield* threadInfo(agent.value.threadId)).archivedAt !== undefined) return;
+            const { rt, undelivered, notices } = yield* liveLead(agentId);
+            const gate = rt.pause;
+            rt.pause = undefined;
+            yield* emit(rt, { _tag: "LimitResumed", by: "reset" });
+            rt.userWaiting = undelivered.length > 0;
+            yield* Queue.offerAll(rt.inbox, [
+              ...undelivered,
+              { _tag: "SystemNotice", text: resumeNotice() },
+              ...notices,
+            ]);
+            if (gate !== undefined) yield* Deferred.succeed(gate, undefined);
+          }),
+        ).pipe(
+          Effect.catchCause((cause) =>
+            Effect.logWarning(`Couldn't resume ${agentId} after its harness's limit reset`, cause),
+          ),
+        );
 
       /**
        * Ends a pause the user ended: they sent a message, or stopped the agent. Nothing happens for a
@@ -3998,7 +4035,7 @@ export class Orchestrator extends Context.Service<
       });
 
       const forkThread = Effect.fn("Orchestrator.forkThread")(function* (input: ForkThreadInput) {
-        const { source, original, point, cwd } = yield* acceptPermit.withPermits(1)(findForkPoint(input));
+        const { source, original, point, cwd } = yield* inThread(input.threadId)(findForkPoint(input));
         const provider = input.harness ?? original.provider;
         const adapter = adapters.get(provider);
         if (adapter === undefined) {
@@ -4197,7 +4234,7 @@ export class Orchestrator extends Context.Service<
         if (text.trim() === "" && attachments.length === 0) {
           return Effect.fail(new OrchestratorError({ reason: "invalid", message: "The message is empty." }));
         }
-        return acceptPermit.withPermits(1)(
+        return forAgent(agentId)(
           Effect.gen(function* () {
             if (options.rewindBefore !== undefined) yield* rewind(agentId, options.rewindBefore);
             const { rt, undelivered, notices } = yield* liveLead(agentId);
@@ -4276,22 +4313,22 @@ export class Orchestrator extends Context.Service<
             { rewindBefore: messageId },
           ),
 
-        rewindLead: (agentId, messageId) => acceptPermit.withPermits(1)(rewind(agentId, messageId)),
+        rewindLead: (agentId, messageId) => forAgent(agentId)(rewind(agentId, messageId)),
 
         previewRestore,
 
-        restoreBefore: (agentId, messageId) => acceptPermit.withPermits(1)(restoreBefore(agentId, messageId)),
+        restoreBefore: (agentId, messageId) => forAgent(agentId, true)(restoreBefore(agentId, messageId)),
         // One at a time, and never beside a restore: each reads the files the other puts back.
         revertTurn: (agentId, turnId, direction) =>
-          acceptPermit.withPermits(1)(revertTurn(agentId, turnId, direction)),
+          forAgent(agentId, true)(revertTurn(agentId, turnId, direction)),
 
         // Ordered with the user's messages: one sent before the switch may still run on it, and a
         // lead being picked back up has its runtime before the switch is recorded.
         // Ordered with the user's messages, like a switch within the harness.
-        handOffLead: (agentId, target) => acceptPermit.withPermits(1)(handOff(agentId, target)),
+        handOffLead: (agentId, target) => forAgent(agentId)(handOff(agentId, target)),
 
         switchModel: (agentId, picked) =>
-          acceptPermit.withPermits(1)(
+          forAgent(agentId)(
             Effect.gen(function* () {
               const rt = runtimes.get(agentId);
               const info =
@@ -4640,7 +4677,7 @@ export class Orchestrator extends Context.Service<
         // Under the accept permit, so a message being accepted can't slip between taking the inbox
         // and putting the rest back.
         withdrawMessage: (agentId: AgentId, messageId: string) =>
-          acceptPermit.withPermits(1)(
+          forAgent(agentId)(
             Effect.gen(function* () {
               const isIt = (item: InputItem) => item._tag === "FromUser" && item.id === messageId;
               const live = runtimes.get(agentId);
@@ -4768,7 +4805,11 @@ export class Orchestrator extends Context.Service<
             .plan(thread.worktree?.project ?? thread.cwd, thread.title, choice)
             .pipe(Effect.mapError(refusedWorktree));
           yield* worktrees.checkOut(planned.worktree).pipe(Effect.mapError(refusedWorktree));
-          return yield* acceptPermit.withPermits(1)(
+          return yield* inThread(
+            threadId,
+            false,
+            planned.cwd,
+          )(
             Effect.gen(function* () {
               if (
                 working(threadId) ||
@@ -4971,6 +5012,7 @@ export class Orchestrator extends Context.Service<
         events: feeds.events,
         activity: feeds.activity,
         watchActivity: feeds.watchActivity,
+        watchActivityWithoutTools: feeds.watchActivityWithoutTools,
         watchThreadEvents: feeds.watchThread,
 
         catalog: catalog.entries,
@@ -5391,24 +5433,22 @@ export class Orchestrator extends Context.Service<
           }),
 
         wake: (agentId, text) =>
-          acceptPermit
-            .withPermits(1)(
-              Effect.gen(function* () {
-                const notice: InputItem = { _tag: "SystemNotice", text };
-                const live = runtimes.get(agentId);
-                if (live !== undefined && !live.ended) return yield* Queue.offer(live.inbox, notice);
-                const stored = Option.getOrUndefined(
-                  yield* store.getAgent(agentId).pipe(Effect.mapError(unavailable)),
-                );
-                if (stored === undefined) return yield* notFound(`Agent ${agentId} does not exist.`);
-                if (stored.parentId !== undefined) {
-                  return yield* notAllowed("That agent has ended: tell the thread's lead instead.");
-                }
-                const { rt, undelivered, notices } = yield* liveLead(agentId);
-                yield* Queue.offerAll(rt.inbox, [...undelivered, notice, ...notices]);
-              }),
-            )
-            .pipe(Effect.asVoid),
+          forAgent(agentId)(
+            Effect.gen(function* () {
+              const notice: InputItem = { _tag: "SystemNotice", text };
+              const live = runtimes.get(agentId);
+              if (live !== undefined && !live.ended) return yield* Queue.offer(live.inbox, notice);
+              const stored = Option.getOrUndefined(
+                yield* store.getAgent(agentId).pipe(Effect.mapError(unavailable)),
+              );
+              if (stored === undefined) return yield* notFound(`Agent ${agentId} does not exist.`);
+              if (stored.parentId !== undefined) {
+                return yield* notAllowed("That agent has ended: tell the thread's lead instead.");
+              }
+              const { rt, undelivered, notices } = yield* liveLead(agentId);
+              yield* Queue.offerAll(rt.inbox, [...undelivered, notice, ...notices]);
+            }),
+          ).pipe(Effect.asVoid),
 
         requestApproval: Effect.fn("Orchestrator.requestApproval")(function* (callerId, request) {
           const rt = yield* runtime(callerId);

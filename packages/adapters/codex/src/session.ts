@@ -54,8 +54,15 @@ const readUserConfig = (server: AppServer, cwd: string) =>
 export const startCodexSession = Effect.fn("CodexAdapter.startSession")(function* (
   executablePath: string,
   options: SessionOptions,
+  liveServers?: Set<AppServer>,
 ) {
   const server = yield* connect(executablePath, options.cwd);
+  liveServers?.add(server);
+  yield* Effect.addFinalizer(() =>
+    Effect.sync(() => {
+      liveServers?.delete(server);
+    }),
+  );
   const events = yield* Queue.unbounded<AdapterEvent, Cause.Done>();
   const emit = (payload: AdapterEvent["payload"], raw?: unknown) =>
     Queue.offer(events, raw === undefined ? { payload } : { payload, raw });

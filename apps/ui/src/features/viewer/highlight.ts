@@ -31,7 +31,12 @@ type Listener = (lines: HighlightedLines | undefined) => void;
 type Pending = { readonly id: number; readonly key: string; readonly listeners: Set<Listener> };
 type Session = { readonly id: number; subscribers: number; opened?: Worker };
 
+/** An idle worker holds grammars, parsed sources and checkpoints; drop it once nothing has used it for a while. */
+export const WORKER_IDLE_MS = 30_000;
+
 let worker: Worker | undefined;
+let subscribers = 0;
+let idleTimer: ReturnType<typeof setTimeout> | undefined;
 let nextId = 0;
 const sessions = new WeakMap<HighlightSource, Session>();
 const waiting = new Map<number, Pending>();
@@ -72,6 +77,23 @@ function lose(lost: Worker) {
   for (const { listeners } of pending) for (const listen of listeners) listen(undefined);
 }
 
+function retire() {
+  if (idleTimer !== undefined) clearTimeout(idleTimer);
+  idleTimer = undefined;
+  if (subscribers > 0 || waiting.size > 0 || worker === undefined) return;
+  const idle = worker;
+  worker = undefined;
+  idle.terminate();
+}
+
+/** Called whenever the last subscriber leaves or the last pending range answers. */
+function settle() {
+  if (idleTimer !== undefined) clearTimeout(idleTimer);
+  idleTimer = undefined;
+  if (worker === undefined || subscribers > 0 || waiting.size > 0) return;
+  idleTimer = setTimeout(retire, WORKER_IDLE_MS);
+}
+
 function getWorker() {
   if (worker === undefined && typeof Worker !== "undefined") {
     try {
@@ -89,6 +111,7 @@ function getWorker() {
       ranges.delete(pending.key);
       remember(pending.key, lines);
       for (const listen of pending.listeners) listen(lines);
+      settle();
     });
     created.addEventListener("error", () => lose(created));
     created.addEventListener("messageerror", () => lose(created));
@@ -96,7 +119,7 @@ function getWorker() {
   return worker;
 }
 
-function subscribe(source: HighlightSource, first: number, end: number, onResult: Listener) {
+export function subscribeHighlight(source: HighlightSource, first: number, end: number, onResult: Listener) {
   let session = sessions.get(source);
   if (session === undefined) {
     session = { id: nextId++, subscribers: 0 };
@@ -104,6 +127,9 @@ function subscribe(source: HighlightSource, first: number, end: number, onResult
   }
   const key = rangeKey(session, first, end);
   session.subscribers++;
+  subscribers++;
+  if (idleTimer !== undefined) clearTimeout(idleTimer);
+  idleTimer = undefined;
   const cached = kept.get(key);
   let pending: Pending | undefined;
   let current = true;
@@ -151,6 +177,8 @@ function subscribe(source: HighlightSource, first: number, end: number, onResult
       worker?.postMessage({ type: "cancel", id: pending.id } satisfies HighlightRequest);
     }
     activeSession.subscribers--;
+    subscribers--;
+    settle();
     // Adjacent ranges can mount and unmount in the same render. Keep their shared source open.
     if (activeSession.subscribers === 0) {
       queueMicrotask(() => {
@@ -183,7 +211,7 @@ export function useHighlightRange(
   }>();
   useEffect(() => {
     if (visible && source !== undefined && first < end) {
-      return subscribe(source, first, end, (lines) => setDone({ source, first, end, lines }));
+      return subscribeHighlight(source, first, end, (lines) => setDone({ source, first, end, lines }));
     }
   }, [source, first, end, visible]);
   if (done !== undefined && done.source === source && done.first === first && done.end === end) {
@@ -191,9 +219,4 @@ export function useHighlightRange(
   }
   const session = source === undefined ? undefined : sessions.get(source);
   return session === undefined ? undefined : kept.get(rangeKey(session, first, end))?.lines;
-}
-
-/** Highlights code snippets that are rendered all at once. */
-export function useHighlight(text: string | undefined, path: string): HighlightedLines | undefined {
-  return useHighlightRange(useHighlightSource(text, path), 0, Number.POSITIVE_INFINITY);
 }

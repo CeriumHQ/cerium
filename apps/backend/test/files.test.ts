@@ -497,6 +497,13 @@ describe("Files", () => {
       const joined = Buffer.concat(pieces.map((piece) => Buffer.from(piece.data, "base64")));
       assert.isTrue(joined.equals(Buffer.from(bytes)));
 
+      const offset = BYTES_CHUNK - 1;
+      const range = yield* files.readBytes(root, "song.mp3", { offset, length: 7 }).pipe(Stream.runCollect);
+      assert.deepStrictEqual(
+        Buffer.concat(range.map((piece) => Buffer.from(piece.data, "base64"))),
+        Buffer.from(bytes.subarray(offset, offset + 7)),
+      );
+
       for (const bad of ["../outside.mp3", "missing.mp3", "src"]) {
         const exit = yield* Effect.exit(files.readBytes(root, bad).pipe(Stream.runDrain));
         assert.isTrue(Exit.isFailure(exit), bad);
