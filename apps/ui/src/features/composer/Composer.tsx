@@ -737,7 +737,13 @@ export function Composer({
     };
   }, []);
 
+  // An attachment control can take focus on click. Keep writing at the editor's caret.
+  const restoreEditorFocus = () => {
+    if (focused) input.current?.focus({ preventScroll: true });
+  };
+
   const removeAttachment = (id: string) => {
+    restoreEditorFocus();
     const removed = draft.attachments.find((attachment) => attachment.id === id);
     if (removed?.preview) URL.revokeObjectURL(removed.preview);
     updateDraft(draftKey, (current) => ({
@@ -782,10 +788,12 @@ export function Composer({
     !needsFolder &&
     !projectsOpen;
   const inline = oneLine || compact || rests;
-  // The glass morphs between its one line and its open shape: it grows up from its foot as the message
-  // lifts onto a line of its own, and the controls stay on the bottom line.
+  // The glass carries the message, controls and trays between the one-line and open shapes.
   const glass = useRef<HTMLDivElement>(null);
-  useMorph(glass, inline ? "line" : "open");
+  const failedFiles = draft.attachments.filter((attachment) => attachment.state._tag === "Failed").length;
+  const morphing = useMorph(glass, inline ? "line" : "open", {
+    layout: `${comments.length}:${draft.attachments.length}:${failedFiles}`,
+  });
   const unfolded = useChanged(inline);
 
   // Speech becomes text at the caret, transcribed on this computer (features/dictation). The web
@@ -1028,7 +1036,10 @@ export function Composer({
     <IconButton
       icon={Paperclip}
       label="Attach files"
-      onClick={() => filePicker.current?.click()}
+      onClick={() => {
+        restoreEditorFocus();
+        filePicker.current?.click();
+      }}
       className={
         oneLine
           ? "size-10"
@@ -1423,7 +1434,11 @@ export function Composer({
           ref={glass}
           className={`pointer-events-auto relative border bg-surface-film shadow-film backdrop-blur-2xl transition-colors ${
             dragging ? "border-accent" : "border-line-strong"
-          } ${inline ? "flex flex-wrap items-end rounded-[24px] p-1" : "rounded-[18px]"}`}
+          } ${inline ? "flex flex-wrap content-start items-end rounded-[24px] p-1" : "rounded-[18px]"} ${
+            morphing
+              ? "[&_:is(.reveal,.pop)]:transition-none! [&_:is(.reveal,.pop)[data-phase=leaving]]:hidden"
+              : ""
+          }`}
         >
           {dragging ? (
             <div className="pointer-events-none absolute inset-1.5 z-10 grid place-items-center rounded-[13px] border-[1.5px] border-dashed border-line-strong bg-surface-panel text-body text-fg-secondary backdrop-blur-xl">
@@ -1436,8 +1451,8 @@ export function Composer({
           {/* The editor keeps its place in the tree as the layout changes: remounting it would drop
               focus, and the keyboard with it. */}
           {dictates ? <DictationNotice dictation={dictation} /> : null}
-          {/* Each tray grows the box as it comes and folds away as it goes. min-w-0: a tray's
-              truncated lines would otherwise widen it past the one-line box. */}
+          {/* The glass carries the trays during a morph. On a settled box they fold as usual.
+              min-w-0 keeps a tray's truncated lines inside the one-line box. */}
           {computer ? <div className={inline ? "min-w-0 basis-full" : ""}>{computer}</div> : null}
           {background ? (
             <div className={inline ? "min-w-0 basis-full" : ""}>
