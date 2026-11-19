@@ -8,15 +8,17 @@ import { machineAtom } from "../../backend/machine.ts";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { keyCaps } from "../../lib/keys.ts";
 
-/** The sidebar heading the open page sits under, which its header names over the title. */
-export const SettingsPlace = createContext<string | undefined>(undefined);
+/** The sidebar heading over the page's title and whether the page settles in on its own. */
+export const SettingsPageContext = createContext<{ group?: string | undefined; enter: boolean }>({
+  enter: false,
+});
 
 /** The folder of the thread Settings was opened from, for the pages that open on its project. */
 export const SettingsProject = createContext<string | undefined>(undefined);
 
 /**
  * A settings page: its title, a line on what it covers when the title doesn't say, and an action
- * for the whole page, over its sections. Settles in when opened. `perMachine` pages show the driven
+ * for the whole page, over its sections. `perMachine` pages show the driven
  * machine's settings, and say which while it isn't this one.
  */
 export function SettingsPage({
@@ -34,7 +36,7 @@ export function SettingsPage({
   children: ReactNode;
 }) {
   const driven = useAtomValue(machineAtom);
-  const group = use(SettingsPlace);
+  const { group, enter } = use(SettingsPageContext);
   const badge =
     perMachine && driven ? (
       <span className="flex h-6 min-w-0 items-center gap-1.5 rounded-md bg-accent-soft px-2 text-meta font-medium text-fg-primary">
@@ -44,7 +46,13 @@ export function SettingsPage({
     ) : null;
   return (
     <ScrollArea className="h-full">
-      <div className="mx-auto flex max-w-[42rem] flex-col gap-7 px-4 pt-3 pb-[max(env(safe-area-inset-bottom),2rem)] transition-[opacity,translate] md:gap-8 md:px-10 md:pt-10 md:pb-20 duration-300 ease-out-soft starting:translate-y-1 starting:opacity-0 motion-reduce:transition-none">
+      <div
+        className={`mx-auto flex max-w-[42rem] flex-col gap-7 px-4 pt-3 pb-[max(env(safe-area-inset-bottom),2rem)] md:gap-8 md:px-10 md:pt-10 md:pb-20 ${
+          enter
+            ? "transition-[opacity,translate] duration-200 ease-out-soft starting:translate-y-1 starting:opacity-0 motion-reduce:transition-none"
+            : ""
+        }`}
+      >
         {/* The narrow window's top bar already names the page, so there the header may be empty. */}
         <header className={`flex flex-col gap-1 ${description || badge || action ? "" : "max-md:hidden"}`}>
           {group ? <span className="text-meta text-fg-tertiary max-md:hidden">{group}</span> : null}

@@ -5,8 +5,10 @@ import {
   useEffect,
   useEffectEvent,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type DOMAttributes,
   type DragEvent,
   type KeyboardEvent,
@@ -16,6 +18,7 @@ import {
 
 import { ContextMenuArea, MenuItem, MenuSeparator } from "../../components/ui/Menu.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
+import { useLingering, usePresence, useRetained } from "../../lib/motion.ts";
 import { useShortcut } from "../../lib/shortcuts.ts";
 import { newThreadDraftTitleAtom } from "../composer/drafts.ts";
 import { paneDrag, THREAD_DRAG_TYPE, usePaneDrag, type DragSource, type PaneDrag } from "./drag.ts";
@@ -40,6 +43,31 @@ export const MIN_PANE = { width: 340, height: 220 } as const;
 /** How far a pane's header travels under the pointer before pressing it becomes dragging the pane. */
 const DRAG_THRESHOLD = 4;
 const EPSILON = 0.0001;
+
+type PlacedPane = ReturnType<typeof layoutOf>["panes"][number];
+const paneId = ({ leaf }: PlacedPane) => leaf.id;
+
+/** Where the moving seam starts, at the outside edge of the pane being split. */
+const revealFrom = (box: Box, before: ReadonlyArray<PlacedPane>): Side | undefined => {
+  const source = before.find(
+    ({ box: old }) =>
+      old.x <= box.x + EPSILON &&
+      old.y <= box.y + EPSILON &&
+      old.x + old.width >= box.x + box.width - EPSILON &&
+      old.y + old.height >= box.y + box.height - EPSILON,
+  )?.box;
+  if (source === undefined) return undefined;
+  if (source.width > box.width + EPSILON) return box.x > source.x + EPSILON ? "right" : "left";
+  if (source.height > box.height + EPSILON) return box.y > source.y + EPSILON ? "bottom" : "top";
+};
+
+/** The seam clips the card as it moves, with room for its shadow on the other sides. */
+const revealClip = {
+  right: ["inset(-24px 0 -24px 100%)", "inset(-24px -24px -24px 0)"],
+  left: ["inset(-24px 100% -24px 0)", "inset(-24px 0 -24px -24px)"],
+  bottom: ["inset(100% -24px 0 -24px)", "inset(0 -24px -24px -24px)"],
+  top: ["inset(0 -24px 100% -24px)", "inset(-24px -24px 0 -24px)"],
+} as const;
 
 /** What a pane's header says of what it shows. */
 export interface PaneLabel {
@@ -136,10 +164,40 @@ export function SplitView({
    * window out again, and saving it, for every move of the pointer made the drag stutter.
    */
   const [resizing, setResizing] = useState<Resizing>();
-  const root = resizing ? resizeSplit(panes, resizing.path, resizing.sizes).root : panes.root;
-  const { panes: placedPanes, edges } = layoutOf(root);
+  const root = useMemo(
+    () => (resizing ? resizeSplit(panes, resizing.path, resizing.sizes).root : panes.root),
+    [panes, resizing],
+  );
+  const { panes: placedPanes, edges } = useMemo(() => layoutOf(root), [root]);
   const split = placedPanes.length > 1;
   const drag = usePaneDrag();
+  const still = resizing !== undefined || drag !== undefined;
+  const [layout, setLayout] = useState({ current: placedPanes, before: placedPanes });
+  if (layout.current !== placedPanes) setLayout({ current: placedPanes, before: layout.current });
+  const { before } = layout;
+  const [shown, release] = useLingering(
+    placedPanes,
+    paneId,
+    (previous, next) =>
+      !still &&
+      next.length < previous.length &&
+      next.some((pane) => previous.some((old) => paneId(old) === paneId(pane))),
+  );
+
+  // The leaving card is inert as soon as the survivor takes focus.
+  const lastFocused = useRef(panes.focused);
+  useLayoutEffect(() => {
+    const previous = lastFocused.current;
+    lastFocused.current = panes.focused;
+    if (previous === panes.focused || placedPanes.some(({ leaf }) => leaf.id === previous)) return;
+    if (!before.some(({ leaf }) => leaf.id === panes.focused)) return;
+    const survivor = area.current?.querySelector<HTMLElement>(":scope > [data-pane-focused]");
+    if (!survivor || survivor.contains(document.activeElement)) return;
+    const editor = survivor.querySelector<HTMLElement>(
+      '[role="textbox"][contenteditable="true"]:not([inert] *)',
+    );
+    (editor ?? survivor).focus({ preventScroll: true });
+  }, [before, panes.focused, placedPanes]);
 
   /** Where the area is in the window, measured afresh as a drag starts and as the area resizes. */
   const [rect, setRect] = useState<DOMRect>();
@@ -201,15 +259,25 @@ export function SplitView({
   return (
     // oxlint-disable-next-line jsx-a11y/no-static-element-interactions
     <div ref={area} onDragOver={onDragOver} onDrop={onNativeDrop} className="relative h-full w-full">
-      {placedPanes.map(({ leaf, box }) => (
+      {shown.map(({ item: { leaf, box }, present }) => (
         <Pane
           key={leaf.id}
           leaf={leaf}
           box={box}
           focused={leaf.id === panes.focused}
-          split={split}
+          split={split || !present}
           label={label(leaf)}
-          still={resizing !== undefined || drag !== undefined}
+          still={still}
+          present={present}
+          enterFrom={
+            present &&
+            !still &&
+            placedPanes.length > before.length &&
+            !before.some((pane) => paneId(pane) === leaf.id)
+              ? revealFrom(box, before)
+              : undefined
+          }
+          onGone={() => release(leaf.id)}
           renderPane={renderPane}
           onFocus={onFocus}
           onClose={onClose}
@@ -273,6 +341,9 @@ function Pane({
   split,
   label: given,
   still,
+  present,
+  enterFrom,
+  onGone,
   renderPane,
   onFocus,
   onClose,
@@ -286,11 +357,24 @@ function Pane({
   label: PaneLabel;
   /** Something is being dragged: the pane follows at once rather than easing after it. */
   still: boolean;
+  present: boolean;
+  enterFrom: Side | undefined;
+  onGone: () => void;
   renderPane: (leaf: PaneLeaf, focused: boolean, chrome: PaneChrome | undefined) => ReactNode;
   onFocus: (id: string) => void;
   onClose: (id: string) => void;
   onSplit: (id: string, side: Side) => void;
 }) {
+  const card = useRef<HTMLElement>(null);
+  const [reveal] = useState(enterFrom === undefined ? undefined : revealClip[enterFrom]);
+  const phase = usePresence(present, card, { appear: reveal !== undefined, onGone });
+  const lastLivePhase = useRetained(phase, present);
+  const style: CSSProperties & { "--pane-start-clip"?: string; "--pane-clip"?: string } = placed(box);
+  // If closed mid-reveal, the clip reverses from where it reached while the card fades.
+  if (!still && reveal !== undefined && lastLivePhase === "entering") {
+    style["--pane-start-clip"] = reveal[0];
+    style["--pane-clip"] = present ? reveal[1] : reveal[0];
+  }
   // A thread not started yet is called what its draft says, read here so typing renders only this.
   const draftTitle = useAtomValue(newThreadDraftTitleAtom(leaf.key));
   const splitRightKeys = useShortcut("split-right");
@@ -317,12 +401,20 @@ function Pane({
   const chrome = split ? { grip: gripOf(leaf.id), menu } : undefined;
   return (
     <section
+      ref={card}
       aria-label={split ? label.title : undefined}
+      tabIndex={-1}
+      inert={!present}
+      data-pane-focused={focused || undefined}
       onPointerDownCapture={focus}
       onFocusCapture={focus}
-      style={placed(box)}
+      style={style}
       className={`absolute flex flex-col overflow-hidden rounded-xl border bg-surface-pane shadow-raised ${
-        still ? "" : "transition-[left,top,width,height] duration-200 ease-out-soft"
+        still ? "" : "transition-[left,top,width,height,clip-path,opacity] duration-200 ease-out-soft"
+      } ${present ? "" : "z-10 opacity-0"} ${
+        style["--pane-clip"] === undefined
+          ? ""
+          : "motion-safe:[clip-path:var(--pane-clip)] motion-safe:starting:[clip-path:var(--pane-start-clip)]"
       } motion-reduce:transition-none ${split && focused ? "border-line-strong" : "border-line-subtle"}`}
     >
       {chrome && !label.ownHeader ? (

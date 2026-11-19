@@ -19,7 +19,7 @@ import { McpSettings, SkillsSettings } from "./Hub.tsx";
 import { KeyboardSettings } from "./Keyboard.tsx";
 import { LimitsSettings } from "./Limits.tsx";
 import { NotificationSettings } from "./Notifications.tsx";
-import { SettingsPlace, SettingsProject } from "./parts.tsx";
+import { SettingsPageContext, SettingsProject } from "./parts.tsx";
 import { PromptSettings } from "./Prompts.tsx";
 import { settingsGlyphs, type GlyphProps } from "./glyphs.tsx";
 import { SourceControlSettings } from "./SourceControl.tsx";
@@ -387,11 +387,14 @@ export function SettingsNav({ category, onSelect, active, compact = false }: Set
 /** The open page, filling the main panel. */
 export function SettingsView({
   category,
+  active,
   harnesses,
   onOpen,
   project,
 }: {
   category: SettingsCategory;
+  /** The page is visible in the frame, including on a phone where it has its own pane. */
+  active: boolean;
   /** Which harnesses can run, for the choices that depend on them. */
   harnesses: ReadonlyArray<HarnessIndicator>;
   /** Opens another page, for a page that points the way to one. */
@@ -399,8 +402,13 @@ export function SettingsView({
   /** The folder of the thread Settings was opened from, which the pages about a project open on. */
   project?: string | undefined;
 }) {
+  const [page, setPage] = useState({ category, active, enter: false });
+  // The frame carries the page when its pane opens. Only changes within a visible pane settle in.
+  if (page.category !== category || page.active !== active) {
+    setPage({ category, active, enter: page.active && active && page.category !== category });
+  }
   return (
-    <SettingsPlace value={groupOf(category)?.label}>
+    <SettingsPageContext value={{ group: groupOf(category)?.label, enter: page.enter }}>
       <SettingsProject value={project}>
         <SettingsContent
           key={category}
@@ -409,7 +417,7 @@ export function SettingsView({
           {...(onOpen ? { onOpen } : {})}
         />
       </SettingsProject>
-    </SettingsPlace>
+    </SettingsPageContext>
   );
 }
 

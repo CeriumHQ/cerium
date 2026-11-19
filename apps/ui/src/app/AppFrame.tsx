@@ -13,7 +13,7 @@ import {
 import { onMac } from "../backend/shell.ts";
 import { CeriumBrand } from "../components/CeriumBrand.tsx";
 import { ViewStack } from "../components/ViewStack.tsx";
-import { usePresence, useRetained } from "../lib/motion.ts";
+import { settled, usePresence, useRetained } from "../lib/motion.ts";
 import { useKeyboardOpen } from "../web/viewport.ts";
 import { useBackNavigation } from "./backNavigation.ts";
 import { CompactBar } from "./CompactBar.tsx";
@@ -138,11 +138,51 @@ function useWidthOf(ref: RefObject<HTMLElement | null>) {
   return width;
 }
 
-/** A side panel's content, which fades in when another panel takes the place. */
-function SideContent({ panel, children }: { panel: SidePanelId | undefined; children: ReactNode }) {
+type SideView = NonNullable<AppFrameProps["side"]>;
+
+/** Panels crossfade in place while the inspector is shown. The frame carries them on open and close. */
+function SideContent({ side, canSwap }: { side: SideView; canSwap: boolean }) {
+  const [previous, setPrevious] = useState(side);
+  const [outgoing, setOutgoing] = useState<SideView>();
+  const exit = useRef<HTMLDivElement>(null);
+  if (previous !== side) {
+    setPrevious(side);
+    if (previous.panel !== side.panel) setOutgoing(canSwap ? previous : undefined);
+  }
+  if (!canSwap && outgoing !== undefined) setOutgoing(undefined);
+
+  useEffect(() => {
+    const element = exit.current;
+    if (outgoing === undefined || element === null) return;
+    let live = true;
+    void settled(element).then(() => {
+      if (live) setOutgoing((current) => (current === outgoing ? undefined : current));
+    });
+    return () => {
+      live = false;
+    };
+  }, [outgoing]);
+
+  // Keep the panel keys on both sides of the fade so a quick switch back reverses it in place.
   return (
-    <div key={panel} className="h-full transition-opacity duration-200 ease-out-soft starting:opacity-0">
-      {children}
+    <div className="grid h-full grid-cols-1 grid-rows-1">
+      {(outgoing === undefined ? [side] : [outgoing, side]).map(({ panel, content }) => {
+        const leaving = panel !== side.panel;
+        return (
+          <div
+            key={panel}
+            ref={leaving ? exit : undefined}
+            inert={leaving}
+            className={`col-start-1 row-start-1 min-h-0 min-w-0 ${
+              canSwap
+                ? "transition-opacity duration-200 ease-out-soft motion-reduce:transition-none"
+                : "transition-none"
+            } ${leaving ? "opacity-0" : outgoing !== undefined ? "starting:opacity-0" : ""}`}
+          >
+            {content}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -198,6 +238,8 @@ function DesktopFrame({
   // the panel is there (until it has slid out), rather than let the panel cover the transcript and its
   // message box. The panel's own button brings the sidebar back by closing the panel.
   const sidebarYields = withSidebar.foldsSidebar && inspectorPhase !== "gone";
+  // The sidebar yields at the same pace as the inspector takes its place.
+  const inspectorEnter = "duration-300 ease-out-soft";
   const showSidebar = wantSidebar && !sidebarYields;
   const { sidebarWidth, sidebarMax, sidebarSpace, floating, inspectorWidth, inspectorMax } = sidebarYields
     ? panelLayout(bodyWidth, saved, false, sideSpec, sidebarMin)
@@ -254,7 +296,9 @@ function DesktopFrame({
             inert={!showSidebar}
             style={{ width: sidebarSpace }}
             className={`shrink-0 overflow-hidden ${
-              dragging === "sidebar" ? "" : "transition-[width,opacity] duration-200 ease-out-soft"
+              dragging === "sidebar"
+                ? ""
+                : `transition-[width,opacity] ${sidebarYields ? inspectorEnter : "duration-200 ease-out-soft"}`
             } ${showSidebar ? "opacity-100" : "opacity-0"}`}
           >
             <div className="h-full" style={{ width: sidebarWidth - GUTTER }}>
@@ -347,7 +391,9 @@ function DesktopFrame({
                     className="h-full overflow-hidden rounded-xl border border-line-strong bg-surface-overlay shadow-overlay backdrop-blur-2xl transition-opacity duration-300 ease-out-soft group-data-[phase=entering]/side:starting:opacity-0 group-data-[phase=leaving]/side:opacity-0 group-data-[phase=leaving]/side:duration-200 group-data-[phase=leaving]/side:ease-in-soft"
                   >
                     <SidePanelContext value={{ floating: true, close: onCloseSide }}>
-                      <SideContent panel={shownSide?.panel}>{shownSide?.content}</SideContent>
+                      {shownSide ? (
+                        <SideContent side={shownSide} canSwap={inspectorPhase === "shown"} />
+                      ) : null}
                     </SidePanelContext>
                   </aside>
                 </div>
@@ -355,25 +401,27 @@ function DesktopFrame({
             ) : (
               <>
                 {showInspector ? <div className="relative w-0 shrink-0">{inspectorHandle}</div> : null}
-                {/* Slides out from under the window's edge as the transcript gives way, and back
-                    under it; the panel keeps its width meanwhile, so its rows don't reflow. */}
+                {/* The panel keeps its width and gutter inside the fold, so its rows don't reflow
+                    and the transcript resizes all the way to the edge. */}
                 <div
                   ref={inspector}
                   data-phase={inspectorPhase}
                   inert={!showInspector}
                   style={{ "--side": `${inspectorWidth + GUTTER}px` } as CSSProperties}
-                  className={`flex w-(--side) shrink-0 overflow-clip pl-1.5 data-[phase=shown]:overflow-visible data-[phase=entering]:starting:w-0 data-[phase=entering]:starting:opacity-0 data-[phase=leaving]:w-0 data-[phase=leaving]:opacity-0 ${
+                  className={`flex w-(--side) shrink-0 overflow-clip data-[phase=shown]:overflow-visible data-[phase=entering]:starting:w-0 data-[phase=entering]:starting:opacity-0 data-[phase=leaving]:w-0 data-[phase=leaving]:opacity-0 ${
                     dragging === "inspector"
                       ? ""
-                      : "transition-[width,opacity] duration-300 ease-out-soft data-[phase=leaving]:duration-200 data-[phase=leaving]:ease-in-soft"
+                      : `transition-[width,opacity] ${inspectorEnter} data-[phase=leaving]:duration-200 data-[phase=leaving]:ease-in-soft`
                   }`}
                 >
                   <aside
                     style={{ width: inspectorWidth }}
-                    className="shrink-0 overflow-hidden rounded-xl border border-line-subtle bg-surface-pane shadow-raised"
+                    className="ml-1.5 shrink-0 overflow-hidden rounded-xl border border-line-subtle bg-surface-pane shadow-raised"
                   >
                     <SidePanelContext value={{ floating: false, close: onCloseSide }}>
-                      <SideContent panel={shownSide?.panel}>{shownSide?.content}</SideContent>
+                      {shownSide ? (
+                        <SideContent side={shownSide} canSwap={inspectorPhase === "shown"} />
+                      ) : null}
                     </SidePanelContext>
                   </aside>
                 </div>

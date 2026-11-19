@@ -1,10 +1,20 @@
 import { Button } from "@base-ui/react/button";
 import type { QuestionResponse } from "@cerium/protocol";
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import {
+  useEffect,
+  useEffectEvent,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
 
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { Reveal } from "../../components/Reveal.tsx";
 import { Disclosure } from "../../components/ui/Disclosure.tsx";
+import { settled, useArrivals, useChanged, useGlide, useLingering, usePresence } from "../../lib/motion.ts";
 import { QuestionCard } from "../questions/QuestionCard.tsx";
 import { PermissionCard } from "../transcript/Blocks.tsx";
 import { effortLabel } from "../composer/models.ts";
@@ -239,6 +249,8 @@ const askedOf = (item: QueuedRequest) =>
 
 const whoOf = (item: QueuedRequest) => (item.agent.parentId === undefined ? "Lead" : item.agent.role);
 
+const keyOf = (item: QueuedRequest) => `${item.agent.id}:${item.key}`;
+
 /**
  * A chord answers the request at the front only once it has been in front for this long, so one
  * pressed as the queue moves on can't answer the next request unseen.
@@ -275,16 +287,18 @@ export function ApprovalTray({
   onAnswer,
   onAnswerSpawn,
   onAnswerQuestion,
+  onFocusComposer,
 }: {
   agents: ReadonlyArray<AgentSummary>;
   onAnswer: AnswerApproval;
   onAnswerSpawn: AnswerSpawn;
   onAnswerQuestion: AnswerQuestion;
+  onFocusComposer: () => void;
 }) {
-  const queue = requestQueue(agents);
+  const queue = useMemo(() => requestQueue(agents), [agents]);
   const [picked, setPicked] = useState<string>();
-  const front = queue.find((item) => item.key === picked) ?? queue[0];
-  const others = queue.filter((item) => item !== front);
+  const front = queue.find((item) => keyOf(item) === picked) ?? queue[0];
+  const frontKey = front && keyOf(front);
 
   const answer = (item: QueuedRequest, decision: "allow" | "deny", scope: "once" | "session") => {
     if (item.kind === "permission") onAnswer(item.agent.id, item.request.requestId, decision, scope);
@@ -293,9 +307,12 @@ export function ApprovalTray({
 
   const tray = useRef<HTMLElement>(null);
   const frontSince = useRef(0);
-  useEffect(() => {
+  useLayoutEffect(() => {
     frontSince.current = performance.now();
-  }, [front?.key]);
+  }, [frontKey]);
+  useLayoutEffect(() => {
+    if (frontKey === undefined && tray.current?.contains(document.activeElement)) onFocusComposer();
+  }, [frontKey, onFocusComposer]);
   const onKey = useEffectEvent((event: KeyboardEvent) => {
     // A question is answered by what the user picks and writes, not by a chord.
     if (front === undefined || front.kind === "question" || event.repeat) return;
@@ -309,7 +326,8 @@ export function ApprovalTray({
     )
       return;
     // Only a request in view is answered: settings or another pane may cover the tray.
-    if (tray.current === null || tray.current.closest("[inert]") !== null) return;
+    const card = tray.current?.querySelector("[data-approval-front]");
+    if (card === undefined || card === null || card.closest("[inert]") !== null) return;
     // A dialog over the window has the keys.
     if (event.target instanceof Element && event.target.closest('[role="alertdialog"], [role="dialog"]'))
       return;
@@ -325,73 +343,206 @@ export function ApprovalTray({
 
   // The tray rises out of the message box as the first request comes, and sinks back into it once
   // the last is answered.
-  if (front === undefined) return <Reveal shift={10}>{null}</Reveal>;
-  const position = { index: queue.indexOf(front) + 1, total: queue.length };
   return (
-    <Reveal shift={10}>
-      <section
-        ref={tray}
-        aria-label="Waiting for you"
-        className="pointer-events-auto mx-auto flex max-h-[60vh] max-w-[46.2rem] flex-col gap-1.5 overflow-y-auto pb-2"
-      >
-        <output className="sr-only">
-          {whoOf(front)} asks: {askedOf(front)}
-        </output>
-        {/* The next request takes the front by rising into it. */}
-        <div
-          key={front.key}
-          className="transition-[opacity,translate] duration-200 ease-out-soft starting:translate-y-1.5 starting:opacity-0"
-        >
-          {front.kind === "permission" ? (
-            <PermissionRequest
-              agent={front.agent}
-              request={front.request}
-              named
-              keys
-              position={position}
-              onAnswer={onAnswer}
-            />
-          ) : front.kind === "question" ? (
-            <QuestionRequest
-              agent={front.agent}
-              request={front.request}
-              named
-              position={position}
-              onAnswer={onAnswerQuestion}
-            />
-          ) : (
-            <SpawnRequestCard
-              lead={front.agent}
-              request={front.request}
-              keys
-              position={position}
-              onAnswer={onAnswerSpawn}
-            />
-          )}
-        </div>
-        {others.length > 0 ? (
-          <ul className="flex flex-col divide-y divide-line-subtle rounded-lg border border-line-subtle bg-surface-raised">
-            {others.map((item) => (
-              <li key={item.key} className="transition-opacity duration-200 ease-out-soft starting:opacity-0">
-                <Button
-                  onClick={() => setPicked(item.key)}
-                  aria-label={`Answer ${whoOf(item)}'s request next: ${askedOf(item)}`}
-                  className="flex h-8 w-full items-center gap-2 px-3 text-left text-meta transition-colors hover:bg-surface-hover max-md:h-11 max-md:text-[13px]"
-                >
-                  <ProviderLogo
-                    provider={item.agent.provider}
-                    size={12}
-                    className="shrink-0 text-fg-primary"
-                  />
-                  <span className="shrink-0 font-medium text-fg-primary">{whoOf(item)}</span>
-                  <span className="min-w-0 flex-1 truncate text-fg-tertiary">{askedOf(item)}</span>
-                  <span className="shrink-0 text-caption text-fg-tertiary">Review</span>
-                </Button>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-      </section>
+    <Reveal shift={10} inertWhileEntering>
+      {front === undefined ? null : (
+        <ApprovalTrayContents
+          tray={tray}
+          queue={queue}
+          front={front}
+          onPick={setPicked}
+          onAnswer={onAnswer}
+          onAnswerSpawn={onAnswerSpawn}
+          onAnswerQuestion={onAnswerQuestion}
+        />
+      )}
     </Reveal>
+  );
+}
+
+/** The front and the rows trade places while the tray holds its foot above the composer. */
+function ApprovalTrayContents({
+  tray,
+  queue,
+  front,
+  onPick,
+  onAnswer,
+  onAnswerSpawn,
+  onAnswerQuestion,
+}: {
+  tray: RefObject<HTMLElement | null>;
+  queue: ReadonlyArray<QueuedRequest>;
+  front: QueuedRequest;
+  onPick: (key: string) => void;
+  onAnswer: AnswerApproval;
+  onAnswerSpawn: AnswerSpawn;
+  onAnswerQuestion: AnswerQuestion;
+}) {
+  const frontKey = keyOf(front);
+  const changed = useChanged(frontKey);
+  const active = useMemo(
+    () => [{ item: front, position: { index: queue.indexOf(front) + 1, total: queue.length } }],
+    [front, queue],
+  );
+  const others = useMemo(() => queue.filter((item) => item !== front), [queue, front]);
+  const [cards, releaseCard] = useLingering(active, ({ item }) => keyOf(item));
+  const [rows, releaseRow] = useLingering(others, keyOf, (_, next) => next.length > 0);
+  const arrived = useArrivals(others.map(keyOf), { replacements: false });
+  const glide = useGlide();
+  const slot = useRef<HTMLDivElement>(null);
+
+  // Only the live card sizes the slot. Changing the target height retargets a resize in progress.
+  useLayoutEffect(() => {
+    const box = slot.current;
+    const card = box?.querySelector("[data-approval-front]");
+    if (!box || !card) return;
+    const measure = () => {
+      box.style.height = `${card.getBoundingClientRect().height}px`;
+    };
+    measure();
+    // The composer also observes its size. Write outside the observer's delivery to let it reflow.
+    let frame = 0;
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(measure);
+    });
+    observer.observe(card);
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(frame);
+    };
+  }, [frontKey]);
+
+  // A focused card or row becoming inert hands focus to the slot, where Tab can enter the next card.
+  useLayoutEffect(() => {
+    const focused = document.activeElement;
+    if (tray.current?.contains(focused) && focused?.closest("[inert]"))
+      slot.current?.focus({ preventScroll: true });
+  });
+
+  return (
+    <section
+      ref={tray}
+      aria-label="Waiting for you"
+      className="pointer-events-auto mx-auto max-h-[60vh] max-w-[46.2rem] overflow-y-auto pb-2"
+    >
+      <output className="sr-only">
+        {whoOf(front)} asks: {askedOf(front)}
+      </output>
+      <div
+        ref={slot}
+        tabIndex={-1}
+        className={`relative outline-none ${cards.length > 1 ? "overflow-clip transition-[height] duration-200 ease-out-soft" : ""}`}
+      >
+        {cards.map(({ item: { item, position }, key, present }) => (
+          <ApprovalFront key={key} present={present} appear={changed} onGone={() => releaseCard(key)}>
+            {item.kind === "permission" ? (
+              <PermissionRequest
+                agent={item.agent}
+                request={item.request}
+                named
+                keys
+                position={position}
+                onAnswer={onAnswer}
+              />
+            ) : item.kind === "question" ? (
+              <QuestionRequest
+                agent={item.agent}
+                request={item.request}
+                named
+                position={position}
+                onAnswer={onAnswerQuestion}
+              />
+            ) : (
+              <SpawnRequestCard
+                lead={item.agent}
+                request={item.request}
+                keys
+                position={position}
+                onAnswer={onAnswerSpawn}
+              />
+            )}
+          </ApprovalFront>
+        ))}
+      </div>
+      <Reveal appear={false} shift={0}>
+        {others.length === 0 ? null : (
+          <ul className="relative mt-1.5 flex flex-col divide-y divide-line-subtle rounded-lg border border-line-subtle bg-surface-raised">
+            {rows.map(({ key, item, present }) => {
+              // When a front card returns to the list, its row opens without fading in again.
+              const returning = cards.some((card) => card.key === key && !card.present);
+              return (
+                <li key={key} ref={glide(key)}>
+                  <Reveal
+                    appear={returning || arrived(key)}
+                    shift={0}
+                    onGone={() => releaseRow(key)}
+                    className={`duration-200 ease-out-soft ${returning ? "starting:opacity-100" : ""}`}
+                  >
+                    {present ? (
+                      <Button
+                        onClick={() => onPick(key)}
+                        aria-label={`Answer ${whoOf(item)}'s request next: ${askedOf(item)}`}
+                        className="flex h-8 w-full items-center gap-2 px-3 text-left text-meta transition-colors hover:bg-surface-hover max-md:h-11 max-md:text-[13px]"
+                      >
+                        <ProviderLogo
+                          provider={item.agent.provider}
+                          size={12}
+                          className="shrink-0 text-fg-primary"
+                        />
+                        <span className="shrink-0 font-medium text-fg-primary">{whoOf(item)}</span>
+                        <span className="min-w-0 flex-1 truncate text-fg-tertiary">{askedOf(item)}</span>
+                        <span className="shrink-0 text-caption text-fg-tertiary">Review</span>
+                      </Button>
+                    ) : null}
+                  </Reveal>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </Reveal>
+    </section>
+  );
+}
+
+/** Outgoing requests fade over the live card without holding any space or taking input. */
+function ApprovalFront({
+  present,
+  appear,
+  onGone,
+  children,
+}: {
+  present: boolean;
+  appear: boolean;
+  onGone: () => void;
+  children: ReactNode;
+}) {
+  const element = useRef<HTMLDivElement>(null);
+  const phase = usePresence(present, element, { appear, onGone });
+  const [ready, setReady] = useState(false);
+  if (!present && ready) setReady(false);
+  useEffect(() => {
+    const card = element.current;
+    if (!present || !card?.parentElement) return;
+    let current = true;
+    void Promise.all([settled(card), settled(card.parentElement)]).then(() => {
+      if (current) setReady(true);
+    });
+    return () => {
+      current = false;
+    };
+  }, [present]);
+
+  if (phase === "gone") return null;
+  return (
+    <div
+      ref={element}
+      data-approval-front={present ? "" : undefined}
+      inert={!present || !ready}
+      className={`transition-opacity duration-200 ease-out-soft ${present ? (appear ? "starting:opacity-0" : "") : "absolute inset-x-0 top-0 opacity-0"}`}
+    >
+      {children}
+    </div>
   );
 }

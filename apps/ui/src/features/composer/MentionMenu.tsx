@@ -150,7 +150,7 @@ export function MentionMenu({
               : `No skill matches “${trigger.query}”.`;
 
   return (
-    <div className="pointer-events-auto absolute inset-x-0 bottom-full z-10 mb-2 overflow-hidden rounded-xl border border-line-subtle bg-surface-overlay shadow-overlay backdrop-blur-2xl">
+    <>
       <div className="flex items-center gap-1.5 px-3 pt-2 pb-1 text-caption font-medium text-fg-tertiary">
         {files ? "Files and folders" : `${harness} skills`}
         {results.state === "loading" ? <LoaderCircle size={11} className="animate-spin" /> : null}
@@ -192,6 +192,6 @@ export function MentionMenu({
           <p className="px-2 py-1.5 text-meta text-fg-tertiary">{empty}</p>
         ) : null}
       </div>
-    </div>
+    </>
   );
 }

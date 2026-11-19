@@ -1,7 +1,11 @@
 import type { AgentEvent, EventId } from "@cerium/protocol";
-import { useEffect, useState } from "react";
+import { RegistryContext, RegistryProvider } from "@effect/atom-react";
+import { AsyncResult } from "effect/reactivity";
+import { useContext, useEffect, useState } from "react";
 
+import { followupEventAtom } from "../backend/atoms.ts";
 import { ThreadLog } from "../backend/threadLog.ts";
+import { Composer } from "../features/composer/Composer.tsx";
 import { useTheme } from "../features/settings/theme.ts";
 import { IncrementalTranscript } from "../features/transcript/model.ts";
 import { Transcript } from "../features/transcript/Transcript.tsx";
@@ -12,6 +16,8 @@ import { diagrams, explanation, leadFixture, transcriptFixture } from "./transcr
 // leaves it running; `&diagrams` swaps the explaining reply for one with a diagram and math; `&stream` replays the explaining reply as it would stream in, and `&at=<n>`
 // holds it at its nth character.
 // &history=5000 starts with a long settled log; &grow=300 appends completed turns to it.
+// &turn-end replays a turn completing and reporting its changed files. &followup=<ms> adds a stub reply.
+// &turn-start runs a scripted response when the composer sends. &fast skips the visible wait.
 
 const last = transcriptFixture.at(-1)!;
 
@@ -79,6 +85,90 @@ export function Playground() {
   // The colour scheme the page sees, so `bun run ui --light` shows the light theme.
   useTheme("system");
   const search = new URLSearchParams(location.search);
+  if (search.has("turn-start")) return <TurnStartFixture wait={search.has("fast") ? 100 : 950} />;
+  if (search.has("turn-end")) {
+    const followup = search.get("followup");
+    return followup === null ? <TurnEndFixture /> : <FollowupFixture delay={Number(followup)} />;
+  }
+  return <TranscriptFixture search={search} />;
+}
+
+const appendStartEvent = (payload: AgentEvent["payload"]) => (events: ReadonlyArray<AgentEvent>) => [
+  ...events,
+  { ...after(events.length + 1, payload), at: Date.now() },
+];
+
+function TurnStartFixture({ wait }: { wait: number }) {
+  const [events, setEvents] = useState<ReadonlyArray<AgentEvent>>([]);
+  const [phase, setPhase] = useState<"idle" | "waiting" | "tool" | "thought">("idle");
+  const [height, setHeight] = useState(0);
+  const [log] = useState(() => new ThreadLog());
+  const [projection] = useState(() => new IncrementalTranscript());
+  const agent = updateLog(log, events).agents.get(last.agentId);
+  const transcript = projection.project(agent?.events ?? [], agent?.generation ?? 0, sameModel);
+  const running = phase !== "idle";
+  useEffect(() => {
+    if (phase !== "waiting" && phase !== "tool") return;
+    const timer = setTimeout(
+      () => {
+        if (phase === "waiting") {
+          setEvents(
+            appendStartEvent({
+              _tag: "ToolCallStarted",
+              callId: `fixture-read:${events.length}`,
+              toolName: "Read",
+              input: { file_path: "src/auth/session.ts" },
+            }),
+          );
+          setPhase("tool");
+        } else {
+          setEvents(
+            appendStartEvent({
+              _tag: "ReasoningDelta",
+              messageId: `fixture-thought:${events.length}`,
+              text: "I’m tracing where the session cookie is written.",
+            }),
+          );
+          setPhase("thought");
+        }
+      },
+      phase === "waiting" ? wait : 900,
+    );
+    return () => clearTimeout(timer);
+  }, [events.length, phase, wait]);
+  return (
+    <div className="relative h-full bg-surface-pane">
+      <Transcript
+        blocks={transcript.blocks}
+        queued={transcript.queued}
+        live={agent?.live ?? new Map()}
+        agent={leadFixture}
+        activity={running ? "running" : "idle"}
+        bottomInset={height}
+        childState={() => "idle"}
+        childAgent={() => undefined}
+        agentActions={{}}
+      />
+      <Composer
+        target={{ kind: "thread", ...leadFixture, modelId: leadFixture.model }}
+        draftKey="fixture-turn-start"
+        running={running}
+        onHeight={setHeight}
+        onSend={async ({ text }) => {
+          setEvents(appendStartEvent({ _tag: "TurnInput", items: [{ _tag: "FromUser", text }] }));
+          setPhase("waiting");
+          return true;
+        }}
+        onStop={() => {
+          setEvents(appendStartEvent({ _tag: "TurnCompleted", stopReason: "interrupted" }));
+          setPhase("idle");
+        }}
+      />
+    </div>
+  );
+}
+
+function TranscriptFixture({ search }: { search: URLSearchParams }) {
   const size = Math.max(0, Math.min(5000, Number(search.get("history") ?? 0)));
   const growth = Math.max(0, Math.min(500, Number(search.get("grow") ?? 0)));
   // `&at=600` holds the stream at its 600th character, for a screenshot of a reply mid-write.
@@ -143,6 +233,143 @@ export function Playground() {
           onAnswerPermission={() => undefined}
         />
       </div>
+    </div>
+  );
+}
+
+const turnEndAt = Date.now();
+const turnEndInput = after(1, {
+  _tag: "TurnInput",
+  turnId: "fixture-turn-end",
+  items: [{ _tag: "FromUser", text: "Fix the login race and rerun the auth tests." }],
+});
+const turnEndEvents = [
+  after(20, { _tag: "UsageReported", inputTokens: 9870, outputTokens: 2204, costUsd: 0.091 }),
+  after(21, { _tag: "TurnCompleted", stopReason: "completed" }),
+  after(22, {
+    _tag: "TurnFilesChanged",
+    turnId: "fixture-turn-end",
+    before: "snap1",
+    after: "snap2",
+    files: [
+      { path: "src/auth/session.ts", change: "modified", added: 1, removed: 1, via: "edit" },
+      { path: "src/auth/auth.spec.ts", change: "modified", added: 0, removed: 1, via: "edit" },
+    ],
+  }),
+];
+
+const fixtureFollowupEvent = followupEventAtom(last.agentId);
+
+function FollowupFixture({ delay }: { delay: number }) {
+  const [run, setRun] = useState(0);
+  return (
+    <RegistryProvider key={run} initialValues={[[fixtureFollowupEvent, AsyncResult.success(null)]]}>
+      <TurnEndFixture followupDelay={delay} replay={() => setRun((run) => run + 1)} />
+    </RegistryProvider>
+  );
+}
+
+function TurnEndFixture({ followupDelay, replay }: { followupDelay?: number; replay?: () => void }) {
+  const registry = useContext(RegistryContext);
+  const [draftKey] = useState(() =>
+    followupDelay === undefined ? "fixture-turn-end" : `fixture-followup:${crypto.randomUUID()}`,
+  );
+  const [log] = useState(() => {
+    const log = new ThreadLog();
+    for (let n = 0; n < 5; n++) log.add(syntheticTurn(n, n * 3, turnEndInput.at - (5 - n) * 3));
+    const calls = transcriptFixture.filter(
+      ({ payload }) =>
+        (payload._tag === "ToolCallStarted" || payload._tag === "ToolCallCompleted") &&
+        ["c6", "c7", "c8"].includes(payload.callId),
+    );
+    log.add(
+      [
+        turnEndInput,
+        ...calls.map(({ payload }, index) => after(index + 2, payload)),
+        after(10, {
+          _tag: "MessageCompleted",
+          messageId: "fixture-reply",
+          text: "Fixed the login race by waiting for the session cookie write. All auth tests passed across 20 reruns.",
+        }),
+      ].map((event) => ({
+        ...event,
+        at: turnEndAt - 4_000 + (event.sequence - turnEndInput.sequence) * 400,
+      })),
+    );
+    return log;
+  });
+  const [phase, setPhase] = useState(0);
+  const [height, setHeight] = useState(0);
+  const [projection] = useState(() => new IncrementalTranscript());
+  const agent = updateLog(
+    log,
+    turnEndEvents.slice(0, phase).map((event) => ({ ...event, at: turnEndAt })),
+  ).agents.get(last.agentId)!;
+  const transcript = projection.project(agent.events, agent.generation, sameModel);
+  useEffect(() => {
+    if (phase !== 2) return;
+    // Snapshots are reported separately, after the turn has already completed.
+    const timer = setTimeout(() => setPhase(3), 40);
+    return () => clearTimeout(timer);
+  }, [phase]);
+  return (
+    <div className="relative h-full bg-surface-pane">
+      <Transcript
+        blocks={transcript.blocks}
+        queued={transcript.queued}
+        live={agent.live}
+        agent={leadFixture}
+        activity={phase === 0 ? "running" : "idle"}
+        bottomInset={height}
+        childState={() => "idle"}
+        childAgent={() => undefined}
+        agentActions={{}}
+        turnFiles={{ open: () => undefined, revert: async () => false }}
+      />
+      <Composer
+        target={{
+          kind: "thread",
+          ...leadFixture,
+          modelId: leadFixture.model,
+          ...(followupDelay === undefined
+            ? {}
+            : {
+                followup: {
+                  agentId: last.agentId,
+                  ready: true,
+                  suggest: async () => {
+                    await new Promise((resolve) => setTimeout(resolve, followupDelay));
+                    return "Check whether the logout flow has the same race.";
+                  },
+                },
+              }),
+        }}
+        draftKey={draftKey}
+        running={phase === 0}
+        onHeight={setHeight}
+        onSend={async () => false}
+        onStop={() => undefined}
+        takesFocus={false}
+      />
+      <button
+        type="button"
+        className="absolute top-4 right-4 rounded border border-line-subtle bg-surface-raised px-3 py-1 text-meta"
+        onClick={() => {
+          if (phase !== 0) {
+            replay?.();
+            return;
+          }
+          setPhase(2);
+          if (followupDelay !== undefined) {
+            registry
+              .ensureNode(fixtureFollowupEvent)
+              .setInitialValue(AsyncResult.success(turnEndEvents[1]!.sequence));
+          }
+        }}
+        disabled={phase !== 0 && replay === undefined}
+      >
+        {phase !== 0 && replay ? "Replay fixture turn" : "Finish fixture turn"}
+      </button>
     </div>
   );
 }

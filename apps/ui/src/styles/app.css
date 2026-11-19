@@ -13,6 +13,13 @@
 
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
+/* The backdrop and controls fade around the moving image. */
+@property --image-viewer-opacity {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 1;
+}
+
 html,
 body,
 #root {
@@ -243,6 +250,20 @@ html[data-target="web"] :is(button, [role="button"], [role="treeitem"], a) {
   to {
     clip-path: inset(-4px -4px -4px -4px);
   }
+}
+
+/* A step's delay belongs to its wrapper, not to rows that may arrive inside it later. */
+@property --write-delay {
+  syntax: "<time>";
+  inherits: false;
+  initial-value: 0ms;
+}
+
+/* The composer reads the resolved time to wait out the last beat of the footer. */
+@property --turn-end-duration {
+  syntax: "<time>";
+  inherits: true;
+  initial-value: 0ms;
 }
 
 @keyframes unroll {
@@ -485,6 +506,10 @@ html:active-view-transition-type(launch)::view-transition-new(root) {
     animation: unroll 460ms var(--ease-out-soft) backwards;
   }
 
+  .unroll.step-entrance {
+    animation-delay: var(--write-delay, 0ms);
+  }
+
   /* A card that waits on the user rings once as it settles, so the eye goes to it. */
   .unroll.asks > * {
     animation: asks 1.4s ease-out 380ms backwards;
@@ -493,6 +518,34 @@ html:active-view-transition-type(launch)::view-transition-new(root) {
   /* Shown only once the wait outlasts a moment, so a quick response doesn't flash it. */
   .arrive-late {
     animation: fade-in 320ms ease-out 260ms backwards;
+  }
+
+  /* The waiting line leaves the flow so the header can take its row as it fades. */
+  .turn-start-wait {
+    transition: opacity var(--turn-start-fade) var(--ease-in-soft);
+  }
+
+  [data-history-id]:has(> .turn-start-wait) {
+    position: relative;
+  }
+
+  .turn-start-wait[data-phase="leaving"] {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  /* If the line was still fading in, leave from the opacity it reached. */
+  .turn-start-wait[data-phase="leaving"] > .arrive-late {
+    animation-play-state: paused;
+  }
+
+  [data-history-id] > .turn-start-wait[data-phase="leaving"] {
+    inset-block-start: calc(100% + var(--spacing) * 3);
+  }
+
+  .turn-start-header {
+    animation: fade-in 100ms var(--ease-out-soft) var(--write-delay, 0ms) backwards;
   }
 
   /* Agents started together join one after another, each popping into its place. */
@@ -512,17 +565,93 @@ html:active-view-transition-type(launch)::view-transition-new(root) {
     animation-delay: 210ms;
   }
 
-  /* The end of a response trails in after it, part by part: copy, then what the turn used. */
-  .trail > * > * {
-    animation: write-in 360ms var(--ease-out-soft) 120ms backwards;
+  /* The waiting line fades out before the header takes its place. */
+  .transcript-motion {
+    --turn-start-fade: 65ms;
   }
 
-  .trail > * > :nth-child(2) {
-    animation-delay: 190ms;
+  /* Work folds first, then room opens for the files and the footer fills in underneath. */
+  :root {
+    --turn-fold: 180ms;
+    --turn-files-at: 110ms;
+    --turn-files-duration: 180ms;
+    --turn-footer-at: calc(var(--turn-files-at) + 130ms);
+    --turn-footer-step: 35ms;
+    --turn-footer-duration: 145ms;
+    --turn-end-duration: calc(
+      var(--turn-footer-at) + 2 * var(--turn-footer-step) + var(--turn-footer-duration)
+    );
   }
 
-  .trail > * > :nth-child(n + 3) {
-    animation-delay: 260ms;
+  .work-fold {
+    transition: height var(--turn-fold) var(--ease-out-soft);
+  }
+
+  .work-label > span {
+    transition:
+      opacity var(--turn-fold) var(--ease-out-soft),
+      color 150ms;
+  }
+
+  .work-label > [aria-hidden="true"] {
+    opacity: 0;
+  }
+
+  /* Hold the shimmer's last frame while Worked fades over it. */
+  .work-label[data-working="false"] > .text-shimmer {
+    animation-play-state: paused;
+  }
+
+  .turn-files {
+    transition-duration: clamp(
+      0ms,
+      calc(var(--turn-end-duration) - var(--turn-elapsed)),
+      var(--turn-files-duration)
+    );
+    transition-delay: max(0ms, calc(var(--turn-files-at) - var(--turn-elapsed)));
+  }
+
+  /* Keyboard focus can reach a file before the entrance finishes. Show its control at once. */
+  .turn-files:focus-within {
+    transition: none;
+  }
+
+  /* Copy and the effort tooltip are ready immediately. Only the readouts trail in. */
+  .turn-footer > * > :not(button) {
+    animation: fade-in var(--turn-footer-duration) var(--ease-out-soft) var(--turn-footer-at) backwards;
+  }
+
+  .turn-footer > * > :nth-child(2):not(button) {
+    animation-delay: calc(var(--turn-footer-at) + var(--turn-footer-step));
+  }
+
+  .turn-footer > * > :nth-child(n + 3):not(button) {
+    animation-delay: calc(var(--turn-end-duration) - var(--turn-footer-duration));
+  }
+
+  .prompt-editor {
+    --followup-fade: 140ms;
+  }
+
+  /* The ghost and Tab hint replace the empty line together. Only the entrance moves. */
+  [data-followup] {
+    animation: fade-in var(--followup-fade) var(--ease-out-soft) backwards;
+  }
+
+  [data-followup] ~ [data-editor-placeholder] {
+    opacity: 0;
+    transition: opacity var(--followup-fade) var(--ease-out-soft);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :root {
+      --turn-fold: 0ms;
+      --turn-files-at: 0ms;
+      --turn-files-duration: 0ms;
+      --turn-footer-at: 0ms;
+      --turn-footer-step: 0ms;
+      --turn-footer-duration: 0ms;
+    }
   }
 
   /* A tile among others, which scales in and out where it stands. */
@@ -545,6 +674,27 @@ html:active-view-transition-type(launch)::view-transition-new(root) {
       scale: 0.85;
     }
   }
+
+  /* The composer menus and find bar fade in close to the edge they open from. */
+  .input-popup {
+    transition:
+      opacity 110ms var(--ease-out-soft),
+      translate 110ms var(--ease-out-soft);
+  }
+
+  .input-popup[data-phase="leaving"] {
+    opacity: 0;
+    translate: 0 var(--input-popup-shift, 3px);
+    transition-duration: 70ms;
+    transition-timing-function: var(--ease-in-soft);
+  }
+
+  @starting-style {
+    .input-popup[data-phase="entering"] {
+      opacity: 0;
+      translate: 0 var(--input-popup-shift, 3px);
+    }
+  }
 }
 
 /*
@@ -559,6 +709,24 @@ html:active-view-transition-type(launch)::view-transition-new(root) {
     transition-duration: 0s !important;
     animation-duration: 0s !important;
     animation-iteration-count: 1 !important;
+  }
+
+  /* The working indicator still waits a moment, so quick responses don't flash it. */
+  :not(.arrive-late),
+  ::before,
+  ::after {
+    animation-delay: 0s !important;
+  }
+
+  /* Resize handles keep their hover-intent delay. */
+  :not(.delay-150),
+  ::before,
+  ::after {
+    transition-delay: 0s !important;
+  }
+
+  .unroll.asks > * {
+    animation-name: none;
   }
 }
 

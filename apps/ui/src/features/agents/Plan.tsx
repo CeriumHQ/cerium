@@ -1,9 +1,11 @@
 import type { TodoItem } from "@cerium/protocol";
 import { Check, Circle, X } from "lucide-react";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import { useChanged } from "../../lib/motion.ts";
 import { planProgress } from "./planProgress.ts";
+
+const handoffDelay = "150ms";
 
 /**
  * An agent's todo list or plan as a timeline, following the harness live as items move from waiting
@@ -24,6 +26,27 @@ export function Plan({
   /** The agent's latest words, placed under the step they belong to. */
   readonly children?: ReactNode;
 }) {
+  // Keep a delay with the running mark that received it, even if the plan updates again mid-pop.
+  const [lastUpdate, setLastUpdate] = useState({ items, delayed: new Set<string | number>() });
+  if (lastUpdate.items !== items) {
+    const before = new Map(lastUpdate.items.map((item, index) => [item.id ?? index, item.status]));
+    const delayed = new Set<string | number>();
+    for (const [index, item] of items.entries()) {
+      if (item.status !== "inProgress") continue;
+      const key = item.id ?? index;
+      const was = before.get(key);
+      if (was === "inProgress") {
+        if (lastUpdate.delayed.has(key)) delayed.add(key);
+      } else if (was !== undefined) {
+        const preceding = items[index - 1];
+        if (preceding?.status !== "completed") continue;
+        const precedingWas = before.get(preceding.id ?? index - 1);
+        if (precedingWas !== undefined && precedingWas !== "completed") delayed.add(key);
+      }
+    }
+    setLastUpdate({ items, delayed });
+  }
+
   if (items.length === 0) return null;
   const progress = planProgress(items);
   const anchor = progress.current ?? items.at(-1);
@@ -39,7 +62,13 @@ export function Plan({
       {explanation ? <p className="text-meta text-fg-tertiary max-md:text-[13px]">{explanation}</p> : null}
       <ol aria-label="Plan items" className="flex flex-col">
         {items.map((item, index) => (
-          <Step key={item.id ?? index} item={item} working={working} last={index === items.length - 1}>
+          <Step
+            key={item.id ?? index}
+            item={item}
+            working={working}
+            last={index === items.length - 1}
+            handoff={lastUpdate.delayed.has(item.id ?? index)}
+          >
             {item === anchor ? children : null}
           </Step>
         ))}
@@ -52,17 +81,20 @@ function Step({
   item,
   working,
   last,
+  handoff,
   children,
 }: {
   item: TodoItem;
   working: boolean;
   last: boolean;
+  handoff: boolean;
   children: ReactNode;
 }) {
   const active = item.status === "inProgress";
   // A step that moves on marks it: a check draws itself in as it's done, and any other mark pops in.
   // The steps a plan shows when it opens are just there.
   const changed = useChanged(item.status);
+  const transition = handoff ? { transitionDelay: handoffDelay } : undefined;
   return (
     <li className={`relative grid grid-cols-[14px_minmax(0,1fr)] gap-x-2.5 ${last ? "" : "pb-2.5"}`}>
       {/* The rail runs from under this step's mark to the top of the next one's. */}
@@ -74,6 +106,7 @@ function Step({
       )}
       <span
         key={item.status}
+        style={transition}
         className={`mt-[3px] grid size-3.5 place-items-center max-md:mt-1 ${
           changed && item.status !== "completed" ? "swap-in" : ""
         }`}
@@ -85,7 +118,10 @@ function Step({
         ) : active ? (
           <span className="relative grid size-2 place-items-center">
             {working ? (
-              <span className="absolute size-2 animate-ping rounded-full bg-running/45 motion-reduce:animate-none" />
+              <span
+                className="absolute size-2 animate-ping rounded-full bg-running/45 motion-reduce:animate-none"
+                style={handoff ? { animationDelay: handoffDelay } : undefined}
+              />
             ) : null}
             <span className="size-1.5 rounded-full bg-running" />
           </span>
@@ -95,6 +131,7 @@ function Step({
       </span>
       <div className="min-w-0">
         <p
+          style={transition}
           className={`text-meta leading-[1.45] break-words transition-colors duration-300 select-text max-md:text-[14px] ${
             active
               ? "font-medium text-fg-primary"

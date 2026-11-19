@@ -312,7 +312,7 @@ import type { AppMode } from "./mode.ts";
 import { BackendFailureNotice, useBackendFailure } from "../features/crash/BackendFailureNotice.tsx";
 import { CrashGuard } from "../features/crash/CrashGuard.tsx";
 import { PaneCrash } from "../features/crash/CrashViews.tsx";
-import { Notice } from "./Notice.tsx";
+import { Notice, NoticeSwap } from "./Notice.tsx";
 import type { SidePanelId } from "./panelLayout.ts";
 import { Rail } from "./Rail.tsx";
 import { freshBlank, rememberSession, restoredSession } from "./session.ts";
@@ -1475,9 +1475,9 @@ function Workspace() {
       return;
     }
     const showing = paneShowing(panes.root, source.key);
-    if (zone !== "center") applyPanes(splitPane(panes, target, zone, source.key, newPaneId()));
-    // Dropped on a pane, a tab shown elsewhere trades places with what it showed.
-    else if (showing !== undefined) applyPanes(movePane(panes, showing.id, target, "center"));
+    // A tab shown elsewhere carries its pane with it, or trades places on a center drop.
+    if (showing !== undefined) applyPanes(movePane(panes, showing.id, target, zone));
+    else if (zone !== "center") applyPanes(splitPane(panes, target, zone, source.key, newPaneId()));
     else applyPanes(showInPane(panes, target, source.key));
   };
 
@@ -2220,29 +2220,37 @@ function Workspace() {
   /** The notices over the open thread's conversation, each dropping in and folding back up. */
   const notices = (
     <>
-      <Reveal shift={-6} className="shrink-0">
+      <Reveal shift={-6} className="shrink-0" carry inertWhileEntering>
         {connection === "unreachable" && driven !== undefined ? (
-          <UnreachableNotice
-            machine={driven.name}
-            presence={drivenDevice && !drivenDevice.online ? presenceLabel(drivenDevice) : undefined}
-            onBack={WEB ? undefined : () => driveMachine(registry, undefined)}
-          />
+          <NoticeSwap kind="remote">
+            <UnreachableNotice
+              machine={driven.name}
+              presence={drivenDevice && !drivenDevice.online ? presenceLabel(drivenDevice) : undefined}
+              onBack={WEB ? undefined : () => driveMachine(registry, undefined)}
+            />
+          </NoticeSwap>
         ) : backendFailure !== undefined && driven === undefined ? (
-          <BackendFailureNotice failure={backendFailure} />
+          <NoticeSwap kind="crash">
+            <BackendFailureNotice failure={backendFailure} />
+          </NoticeSwap>
         ) : connection === "unreachable" && !WEB ? (
-          <Notice tone="attention">
-            Reconnecting to Cerium's backend…
-            {import.meta.env.DEV ? (
-              <>
-                {" "}
-                Start it with <code>bun run dev</code>.
-              </>
-            ) : null}
-          </Notice>
+          <NoticeSwap kind="reconnecting">
+            <Notice tone="attention">
+              Reconnecting to Cerium's backend…
+              {import.meta.env.DEV ? (
+                <>
+                  {" "}
+                  Start it with <code>bun run dev</code>.
+                </>
+              ) : null}
+            </Notice>
+          </NoticeSwap>
         ) : AsyncResult.isFailure(threadsResult) ? (
-          <Notice tone="error" clamp>
-            {messageOf(Cause.squash(threadsResult.cause))}
-          </Notice>
+          <NoticeSwap kind="threads">
+            <Notice tone="error" clamp>
+              {messageOf(Cause.squash(threadsResult.cause))}
+            </Notice>
+          </NoticeSwap>
         ) : null}
       </Reveal>
       {/* The main window has the app's own news; a thread's own window, its thread's. */}
@@ -2719,14 +2727,26 @@ function Workspace() {
               },
             );
           }}
-          onRestore={(threadId): Promise<boolean> =>
-            attempt(setArchived({ payload: { threadId: threadId as ThreadId, archived: false } })).then(
-              (restored) => {
-                if (restored) refreshThreads();
-                return restored;
-              },
-            )
-          }
+          onRestore={(threadId): Promise<boolean> => {
+            const away = puttingAway.get(threadId);
+            return attempt(
+              setArchived({ payload: { threadId: threadId as ThreadId, archived: false } }),
+            ).then((restored) => {
+              if (restored) {
+                // Undo can restore the thread before the list ever sees it archived.
+                if (away !== undefined) {
+                  setPuttingAway((all) => {
+                    if (all.get(threadId) !== away) return all;
+                    const next = new Map(all);
+                    next.delete(threadId);
+                    return next;
+                  });
+                }
+                refreshThreads();
+              }
+              return restored;
+            });
+          }}
           // Deleting a thread closes its tab.
           // Its dialog said a worktree goes with it.
           onDelete={(threadId): Promise<boolean> => {
@@ -2802,6 +2822,7 @@ function Workspace() {
         page: (
           <SettingsView
             category={settingsCategory}
+            active={settingsOpen && (!compact || settingsPane === "page")}
             harnesses={indicators}
             onOpen={setSettingsCategory}
             project={scriptsProject ?? newProject}

@@ -19,16 +19,7 @@ import {
   Undo2,
 } from "lucide-react";
 import { useAtomValue, useAtomSet } from "@effect/atom-react";
-import {
-  memo,
-  useEffect,
-  useEffectEvent,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { memo, useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import {
   MenuGroupLabel,
@@ -44,7 +35,7 @@ import { Reveal } from "../../components/Reveal.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { BulkBar, BulkNote, useBulkSelection, type SelectMode } from "./BulkBar.tsx";
-import { useArrivals, useGlide, useLingering } from "../../lib/motion.ts";
+import { useArrivals, useGlide, useLingering, usePresence, useRetained } from "../../lib/motion.ts";
 import { usePaging } from "../../lib/paging.ts";
 import { remember, stored } from "../../lib/storage.ts";
 import type { NewThreadDraft } from "../composer/drafts.ts";
@@ -55,6 +46,7 @@ import { DraftRow, type DraftActions } from "./DraftRow.tsx";
 import { EmptyList } from "./EmptyList.tsx";
 import { InboxCard, type CardAction } from "./InboxCard.tsx";
 import {
+  archivedWork,
   backLabel,
   canArchive,
   canDelete,
@@ -82,8 +74,36 @@ const BOX_KEY = "cerium:inboxBox";
 
 /** A thread this new set the inbox's cap working, the first time this window sees it. */
 const FRESH = 2 * 60_000;
-/** How long the note about threads the cap archived stays, with its Undo. */
+/** How long an action note stays at the foot of the list. */
 const NOTE_FOR = 6_000;
+const NO_PICKS: ReadonlyArray<string> = [];
+
+interface BulkMove {
+  readonly box: InboxBox;
+  readonly threads: ReadonlyArray<ThreadSummary>;
+  readonly taken?: ReadonlyArray<string>;
+}
+
+/** Keeps moving rows in their source list until the bulk action has a result to show. */
+function withMovingRows(
+  threads: ReadonlyArray<ThreadSummary>,
+  box: InboxBox,
+  moves: ReadonlyArray<BulkMove>,
+) {
+  const here = moves.filter((move) => move.box === box);
+  if (here.length === 0) return threads;
+  const byId = new Map(threads.map((thread) => [thread.id, thread]));
+  for (const move of here) {
+    if (move.taken) {
+      for (const id of move.taken) byId.delete(id);
+    } else {
+      for (const thread of move.threads) {
+        if (!byId.has(thread.id)) byId.set(thread.id, thread);
+      }
+    }
+  }
+  return [...byId.values()];
+}
 
 interface InboxProps {
   /** Work threads in the inbox or put off for later. */
@@ -176,10 +196,24 @@ export function Inbox({
     setScope(folder);
   };
 
+  const [movingRows, setMovingRows] = useState<ReadonlyArray<BulkMove>>([]);
+  const holdMovingRows = (box: InboxBox, threads: ReadonlyArray<ThreadSummary>) => {
+    const move: BulkMove = { box, threads };
+    setMovingRows((current) => [...current, move]);
+    return (taken: ReadonlyArray<string>) =>
+      setMovingRows((current) => current.map((each) => (each === move ? { ...move, taken } : each)));
+  };
   const inbox = threads.filter((thread) => !isPutOff(thread, now));
-  const later = laterWork(threads, now).filter(inScope);
-  const archive = archived.filter(inScope);
-  const sections = inboxSections(inbox.filter(inScope), now);
+  const deferred = laterWork(threads, now);
+  // Keep successful rows out until the refreshed list agrees, so late updates can't bring them back mid-fold.
+  const moves = movingRows.filter(({ box, taken }) => {
+    const source = box === "inbox" ? inbox : box === "later" ? deferred : archived;
+    return taken === undefined || source.some((thread) => taken.includes(thread.id));
+  });
+  if (moves.length !== movingRows.length) setMovingRows(moves);
+  const later = laterWork(withMovingRows(deferred, "later", moves), now).filter(inScope);
+  const archive = archivedWork(withMovingRows(archived, "archive", moves)).filter(inScope);
+  const sections = inboxSections(withMovingRows(inbox, "inbox", moves).filter(inScope), now);
   // What needs the user leads, then pinned threads, then the rest.
   const listed = [
     ...sections.filter((section) => section.key === "needsYou"),
@@ -194,11 +228,14 @@ export function Inbox({
   );
   const unread = listed.filter((thread) => thread.unread);
 
-  const note = useCap(inbox, (thread) => pins.includes(thread.id) || open.includes(thread.id), {
-    selectedId,
-    onArchive,
-    onRestore,
-  });
+  const { note, archiveRow, clearNote } = useArchiveNote(
+    inbox,
+    (thread) => pins.includes(thread.id) || open.includes(thread.id),
+    {
+      selectedId,
+      onArchive,
+    },
+  );
 
   const actions = useSteadyActions({
     onSelect,
@@ -206,7 +243,7 @@ export function Inbox({
     onMarkUnread,
     onNewThreadIn,
     onRename,
-    onArchive,
+    onArchive: archiveRow,
     onRestore,
     onLater,
     onContinue,
@@ -225,43 +262,28 @@ export function Inbox({
 
   // Bulk picking, in the showing list's order so Shift click ticks a run of it. The pick drops
   // when the list changes; what an action moves away drops out of the list by itself.
-  const ordered = useMemo<ReadonlyArray<string>>(() => {
-    if (box === "later") return later.map((thread) => thread.id);
-    if (box === "archive") return archive.map((thread) => thread.id);
-    return groupRuns(listed).flatMap((entry) =>
-      entry.kind === "thread" ? [entry.thread.id] : entry.threads.map((thread) => thread.id),
-    );
-  }, [box, listed, later, archive]);
-  const {
-    selected: picked,
-    toggle: togglePicked,
-    setAll: setPicked,
-    clear: clearPicked,
-  } = useBulkSelection(ordered);
+  const orderedThreads =
+    box === "later"
+      ? later
+      : box === "archive"
+        ? archive
+        : groupRuns(listed).flatMap((entry) => (entry.kind === "thread" ? [entry.thread] : entry.threads));
+  const ordered = orderedThreads.map((thread) => thread.id);
+  const { selected, toggle: togglePicked, setAll: setPicked, clear: clearPicked } = useBulkSelection(ordered);
   useEffect(() => clearPicked(), [box, scope, clearPicked]);
-  const byId = useMemo(() => {
-    const known = new Map<string, ThreadSummary>();
-    for (const thread of [...threads, ...archived]) known.set(thread.id, thread);
-    return known;
-  }, [threads, archived]);
-  const pickedHere = useMemo(() => {
-    const ticked = new Set(picked);
-    return ordered.flatMap((id) => {
-      const thread = byId.get(id);
-      return thread !== undefined && ticked.has(id) ? [thread] : [];
-    });
-  }, [ordered, picked, byId]);
+  const ticked = new Set(selected);
+  const pickedHere = orderedThreads.filter((thread) => ticked.has(thread.id));
+  const picked = pickedHere.map((thread) => thread.id);
   /** What a bulk action says it did, and which threads it skipped with why; shown for a moment. */
-  const [bulkNote, setBulkNote] = useState<string>();
+  const [bulkNote, setBulkNote] = useState<{ box: InboxBox; text: string }>();
   useEffect(() => {
     if (bulkNote === undefined) return;
     const timer = setTimeout(() => setBulkNote(undefined), NOTE_FOR);
     return () => clearTimeout(timer);
   }, [bulkNote]);
-  const bulkBar = (forBox: InboxBox) =>
-    forBox !== box ? null : pickedHere.length === 0 ? (
-      <BulkNote note={bulkNote} />
-    ) : (
+  const bulkBar = (forBox: InboxBox) => {
+    if (forBox !== box) return null;
+    const bar = picked.length ? (
       <BulkBar
         box={forBox}
         threads={pickedHere}
@@ -272,13 +294,17 @@ export function Inbox({
         onLater={forBox === "inbox" ? actions.onLater : undefined}
         onMarkRead={actions.onMarkRead}
         onDelete={actions.onDelete}
+        onMoving={(moving) => holdMovingRows(forBox, moving)}
         onSettled={(taken) => setPicked(taken, false)}
-        onNote={setBulkNote}
+        onNote={(text) => setBulkNote({ box: forBox, text })}
       />
-    );
+    ) : null;
+    const note = !bar && bulkNote?.box === forBox ? <BulkNote note={bulkNote.text} /> : null;
+    return <BulkFooter bar={bar} note={note} />;
+  };
   // Esc clears the pick, unless it belongs to a field, a menu or a dialog.
   const clearOnEscape = useEffectEvent((event: KeyboardEvent) => {
-    if (event.key !== "Escape" || picked.length === 0) return;
+    if (event.key !== "Escape" || selected.length === 0) return;
     if (
       event.target instanceof HTMLElement &&
       event.target.closest("input, textarea, [role='dialog'], [role='alertdialog'], [role='menu']")
@@ -375,30 +401,29 @@ export function Inbox({
             />
           )
         }
-        bar={bulkBar("inbox")}
+        bar={
+          <>
+            {bulkBar("inbox")}
+            <ArchiveUndo
+              note={box === "inbox" ? note : undefined}
+              onUndo={(ids) => {
+                for (const id of ids) void onRestore(id);
+                clearNote();
+              }}
+            />
+          </>
+        }
       >
         <Entries
           threads={listed}
           box="inbox"
           now={now}
-          picked={picked}
+          picked={box === "inbox" ? picked : NO_PICKS}
           onToggle={togglePicked}
           setAll={setPicked}
           {...rowProps}
         />
       </BoxPanel>
-      {box === "inbox" && note ? (
-        <div className="flex items-baseline gap-2 border-t border-line-subtle px-4 pt-2 pb-1 text-meta text-fg-tertiary max-md:text-[13px]">
-          <output className="min-w-0 flex-1 truncate">{note.label}</output>
-          <Button
-            onClick={note.undo}
-            className="font-medium text-fg-secondary transition-colors hover:text-fg-primary"
-          >
-            Undo
-          </Button>
-        </div>
-      ) : null}
-
       <BoxPanel value="drafts" label="Drafts" empty={scopedDrafts.length === 0 ? "No drafts." : undefined}>
         {scopedDrafts.map((draft) => (
           <li key={draft.key}>
@@ -417,7 +442,7 @@ export function Inbox({
           threads={later}
           box="later"
           now={now}
-          picked={picked}
+          picked={box === "later" ? picked : NO_PICKS}
           onToggle={togglePicked}
           setAll={setPicked}
           {...rowProps}
@@ -434,7 +459,7 @@ export function Inbox({
           threads={archive}
           box="archive"
           now={now}
-          picked={picked}
+          picked={box === "archive" ? picked : NO_PICKS}
           onToggle={togglePicked}
           setAll={setPicked}
           {...rowProps}
@@ -472,7 +497,10 @@ function BoxPanel({
   children: ReactNode;
 }) {
   return (
-    <Tabs.Panel value={value} className="flex min-h-0 flex-1 flex-col pt-0 outline-none">
+    <Tabs.Panel
+      value={value}
+      className="flex min-h-0 flex-1 flex-col pt-0 outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus-ring"
+    >
       <ScrollArea className="flex-1">
         <nav aria-label={label} className="px-2 pb-3">
           <ul className="flex flex-col gap-0.5">{children}</ul>
@@ -485,6 +513,115 @@ function BoxPanel({
       </ScrollArea>
       {bar}
     </Tabs.Panel>
+  );
+}
+
+function restorePanelFocus(element: HTMLElement | null, afterRemoval = false) {
+  const active = document.activeElement;
+  if (element && (element.contains(active) || (afterRemoval && active === document.body))) {
+    element.closest<HTMLElement>('[role="tabpanel"]')?.focus({ preventScroll: true });
+  }
+}
+
+/** Both layers share the foot of the list while the footer sizes to the one taking over. */
+function BulkFooter({ bar, note }: { bar: ReactNode; note: ReactNode }) {
+  const footer = useRef<HTMLDivElement>(null);
+  const barLayer = useRef<HTMLDivElement>(null);
+  const noteLayer = useRef<HTMLDivElement>(null);
+  const barFocused = useRef(false);
+  const hasBar = bar !== null;
+  const hasNote = note !== null;
+  const barPhase = usePresence(hasBar, barLayer);
+  const notePhase = usePresence(hasNote, noteLayer);
+  const lastBar = useRetained(bar, hasBar);
+  const lastNote = useRetained(note, hasNote);
+  useLayoutEffect(() => {
+    if (hasBar || !barFocused.current) return;
+    // An action can remove its own focused button or close a dialog as the bar leaves.
+    restorePanelFocus(footer.current, true);
+    if (barPhase === "gone") barFocused.current = false;
+  }, [hasBar, barPhase]);
+  useLayoutEffect(() => {
+    const element = footer.current;
+    if (element === null) return;
+    const active = hasBar ? barLayer.current : hasNote ? noteLayer.current : null;
+    const resize = () => {
+      element.style.height = `${active?.offsetHeight ?? 0}px`;
+    };
+    resize();
+    if (active === null) return;
+    const observer = new ResizeObserver(resize);
+    observer.observe(active);
+    return () => observer.disconnect();
+  }, [hasBar, hasNote]);
+
+  return (
+    <div ref={footer} className="relative h-0 shrink-0 transition-[height] duration-180 ease-out-soft">
+      {barPhase === "gone" ? null : (
+        <div
+          ref={barLayer}
+          data-phase={barPhase}
+          inert={barPhase === "leaving"}
+          onFocusCapture={() => {
+            barFocused.current = true;
+          }}
+          onBlurCapture={(event) => {
+            const next = event.relatedTarget;
+            if (next && next !== document.body && !event.currentTarget.contains(next))
+              barFocused.current = false;
+          }}
+          className="absolute inset-x-0 bottom-0 transition-[opacity,translate] duration-180 ease-out-soft starting:translate-y-1.5 starting:opacity-0 data-[phase=leaving]:translate-y-1.5 data-[phase=leaving]:opacity-0"
+        >
+          {lastBar}
+        </div>
+      )}
+      {notePhase === "gone" ? null : (
+        <div
+          ref={noteLayer}
+          data-phase={notePhase}
+          inert={notePhase === "leaving"}
+          className="absolute inset-x-0 bottom-0 transition-opacity duration-180 ease-out-soft starting:opacity-0 data-[phase=leaving]:opacity-0"
+        >
+          {lastNote}
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface UndoNote {
+  readonly label: string;
+  readonly ids: ReadonlyArray<string>;
+}
+
+function ArchiveUndo({
+  note,
+  onUndo,
+}: {
+  note: UndoNote | undefined;
+  onUndo: (ids: ReadonlyArray<string>) => void;
+}) {
+  const content = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (!note) restorePanelFocus(content.current);
+  }, [note]);
+  return (
+    <Reveal>
+      {note ? (
+        <div
+          ref={content}
+          className="flex items-baseline gap-2 border-t border-line-subtle px-4 pt-2 pb-1 text-meta text-fg-tertiary max-md:text-[13px]"
+        >
+          <output className="min-w-0 flex-1 truncate">{note.label}</output>
+          <Button
+            onClick={() => onUndo(note.ids)}
+            className="font-medium text-fg-secondary transition-colors hover:text-fg-primary"
+          >
+            Undo
+          </Button>
+        </div>
+      ) : null}
+    </Reveal>
   );
 }
 
@@ -503,14 +640,28 @@ function useNowPast(times: ReadonlyArray<number | undefined>): number {
 
 /**
  * Keeps the inbox to `INBOX_CAP` threads: as a new thread arrives, the oldest quiet ones beyond it are
- * archived, and a note offers to bring them back.
+ * archived, and a note offers to bring them back. The same note follows a single row archive.
  */
-function useCap(
+function useArchiveNote(
   inbox: ReadonlyArray<ThreadSummary>,
   keep: (thread: ThreadSummary) => boolean,
-  { selectedId, onArchive, onRestore }: Pick<InboxProps, "selectedId" | "onArchive" | "onRestore">,
+  { selectedId, onArchive }: Pick<InboxProps, "selectedId" | "onArchive">,
 ) {
-  const [note, setNote] = useState<{ label: string; undo: () => void }>();
+  const [note, setNote] = useState<UndoNote>();
+  const offerUndo = (archived: ReadonlyArray<Pick<ThreadSummary, "id" | "title">>) => {
+    setNote({
+      label:
+        archived.length === 1
+          ? `Archived “${archived[0]!.title}”`
+          : `Archived ${archived.length} older threads`,
+      ids: archived.map((thread) => thread.id),
+    });
+  };
+  const archiveRow = async (id: string, title?: string) => {
+    const archived = await onArchive(id);
+    if (archived && title !== undefined) offerUndo([{ id, title }]);
+    return archived;
+  };
   /** Threads already looked at, so only a new one sets the cap working, and only once. */
   const seen = useRef(new Set<string>());
   const settle = useEffectEvent(() => {
@@ -525,15 +676,7 @@ function useCap(
     if (gone.length === 0) return;
     for (const thread of gone) void onArchive(thread.id);
     // The note shows once this effect is done, rather than rendering again inside it.
-    queueMicrotask(() =>
-      setNote({
-        label: gone.length === 1 ? `Archived “${gone[0]!.title}”` : `Archived ${gone.length} older threads`,
-        undo: () => {
-          for (const thread of gone) void onRestore(thread.id);
-          setNote(undefined);
-        },
-      }),
-    );
+    queueMicrotask(() => offerUndo(gone));
   });
   const ids = inbox.map((thread) => thread.id).join(" ");
   useEffect(() => settle(), [ids]);
@@ -542,10 +685,14 @@ function useCap(
     const timer = setTimeout(() => setNote(undefined), NOTE_FOR);
     return () => clearTimeout(timer);
   }, [note]);
-  return note;
+  return { note, archiveRow, clearNote: () => setNote(undefined) };
 }
 
-type RowProps = Omit<InboxProps, "threads" | "drafts" | "draftActions" | "archived" | "open"> & {
+type RowProps = Omit<
+  InboxProps,
+  "threads" | "drafts" | "draftActions" | "archived" | "open" | "onArchive"
+> & {
+  readonly onArchive: (threadId: string, undoTitle?: string) => Promise<boolean>;
   /** The folder the lists are scoped to, if any. */
   readonly scope: string | undefined;
   readonly onScope: (folder: string) => void;
@@ -553,7 +700,7 @@ type RowProps = Omit<InboxProps, "threads" | "drafts" | "draftActions" | "archiv
 
 /** What a row does to its threads. */
 type RowActions = Pick<
-  InboxProps,
+  RowProps,
   | "onSelect"
   | "onMarkRead"
   | "onMarkUnread"
@@ -583,7 +730,7 @@ function useSteadyActions(actions: RowActions): RowActions {
     onMarkUnread: (threadId) => latest.current.onMarkUnread(threadId),
     onNewThreadIn: (folder) => latest.current.onNewThreadIn(folder),
     onRename: (threadId, title) => latest.current.onRename(threadId, title),
-    onArchive: (threadId) => latest.current.onArchive(threadId),
+    onArchive: (threadId, undoTitle) => latest.current.onArchive(threadId, undoTitle),
     onRestore: (threadId) => latest.current.onRestore(threadId),
     onLater: (threadId, until) => latest.current.onLater?.(threadId, until) ?? Promise.resolve(false),
     onContinue: (threadId) => latest.current.onContinue?.(threadId) ?? Promise.resolve(false),
@@ -907,11 +1054,12 @@ function InboxRowCard({
       : box === "archive"
         ? () => onRestore(thread.id)
         : undefined;
+  const archive = () => onArchive(thread.id, box === "inbox" ? thread.title : undefined);
 
   const quick: Array<CardAction> = [];
   if (box === "inbox" && here && canArchive(thread)) {
     if (putOff) quick.push({ icon: Clock, label: "Later", key: "h", run: putOff });
-    quick.push({ icon: Archive, label: "Archive", key: "e", run: () => onArchive(thread.id) });
+    quick.push({ icon: Archive, label: "Archive", key: "e", run: archive });
   }
   if (back && here) quick.push({ icon: Undo2, label: "Back to Inbox", key: "u", run: back });
 
@@ -982,7 +1130,7 @@ function InboxRowCard({
             </MenuItem>
           ) : null}
           {box === "archive" ? null : (
-            <MenuItem icon={Archive} disabled={!canArchive(thread)} onClick={() => onArchive(thread.id)}>
+            <MenuItem icon={Archive} disabled={!canArchive(thread)} onClick={archive}>
               Archive
             </MenuItem>
           )}

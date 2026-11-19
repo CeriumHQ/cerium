@@ -9,7 +9,7 @@ import {
   SquareArrowOutUpRight,
   type LucideIcon,
 } from "lucide-react";
-import { memo, useContext, useState, type ReactNode } from "react";
+import { memo, useContext, useState, type CSSProperties, type ReactNode } from "react";
 
 import { revealPlace, shellBridge } from "../../backend/shell.ts";
 import {
@@ -27,6 +27,7 @@ import { WorkspaceFolder } from "./FileChip.tsx";
 import type { AgentActivity } from "./model.ts";
 import { resolvePath } from "./paths.ts";
 import { STEP_HEADER, StepChevron, Took, TraceNode } from "./Trace.tsx";
+import { useWorkFocus, WorkToggles } from "./Work.tsx";
 import {
   describeTool,
   exitCodeOf,
@@ -114,26 +115,35 @@ export interface Timing {
  * steps show as a trace (Trace.tsx).
  */
 export function ToolRun({
+  id,
   tools,
   timings,
   live,
   activity,
-  arrived = false,
+  headerClass = "",
+  headerStyle,
   children,
 }: {
+  id: string;
   tools: ReadonlyArray<ToolBlock>;
   /** Each step's, its thoughts' as well as its calls'. */
   timings: ReadonlyArray<Timing>;
   live: boolean;
   activity: AgentActivity;
-  /** The run came in while the thread was open, so its line writes itself in. */
-  arrived?: boolean;
+  headerClass?: string;
+  headerStyle?: CSSProperties | undefined;
   children: ReactNode;
 }) {
-  const [toggled, setToggled] = useState<boolean>();
+  const remembered = useContext(WorkToggles);
+  const [toggled, setOpen] = useState(() => remembered.get(id));
+  const setToggled = (value: boolean) => {
+    remembered.set(id, value);
+    setOpen(value);
+  };
   const interrupted = tools.filter((tool) => tool.status === "running" && activity !== "running").length;
   const images = tools.flatMap(shownImages);
   const open = toggled ?? live;
+  const { trigger, panel } = useWorkFocus(open);
   const previewed = images.length <= PREVIEWED ? images : images.slice(0, PREVIEWED - 1);
   const starts = timings.flatMap((step) => (step.startedAt === undefined ? [] : [step.startedAt]));
   const ends = timings.flatMap((step) => (step.endedAt === undefined ? [] : [step.endedAt]));
@@ -142,7 +152,9 @@ export function ToolRun({
   return (
     <Collapsible.Root open={open} onOpenChange={setToggled}>
       <Collapsible.Trigger
-        className={`group flex max-w-full min-w-0 items-center gap-2 text-left text-meta text-fg-tertiary transition-colors hover:text-fg-secondary max-md:py-1 ${arrived ? "write-in" : ""}`}
+        ref={trigger}
+        className={`group flex max-w-full min-w-0 items-center gap-2 text-left text-meta text-fg-tertiary transition-colors hover:text-fg-secondary max-md:py-1 ${headerClass}`}
+        style={headerStyle}
       >
         <Strip tools={tools} activity={activity} />
         <span className="flex min-w-0">
@@ -181,7 +193,10 @@ export function ToolRun({
           ) : null}
         </div>
       ) : null}
-      <Collapsible.Panel className="h-(--collapsible-panel-height) overflow-hidden transition-[height] duration-200 ease-out-soft data-ending-style:h-0 data-starting-style:h-0">
+      <Collapsible.Panel
+        ref={panel}
+        className="work-fold h-(--collapsible-panel-height) overflow-hidden data-ending-style:h-0 data-starting-style:h-0"
+      >
         <div data-trace className="flex flex-col pt-1.5">
           {children}
         </div>

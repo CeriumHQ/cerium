@@ -5,7 +5,7 @@ import type { ToolImageRef } from "@cerium/protocol";
 import { useState, type ReactNode } from "react";
 
 import { imageAtom, toolImageAtom } from "../backend/files.ts";
-import { ImageViewer, useGallery, WithImageMenu } from "./ImageViewer.tsx";
+import { ImageViewer, thumbnailOrigin, useGallery, WithImageMenu } from "./ImageViewer.tsx";
 
 interface ThumbProps {
   /** What the image is, for its alt text and the enlarged view's caption. */
@@ -36,7 +36,7 @@ export function ImageThumb({
   galleryKey,
 }: ThumbProps & { url: string; path?: string; menu?: boolean }) {
   const gallery = useGallery();
-  const [open, setOpen] = useState<boolean>();
+  const [shown, setShown] = useState<{ open: boolean; origin: ReturnType<typeof thumbnailOrigin> }>();
   const image = { key: galleryKey ?? "image", name, url, ...(path === undefined ? {} : { path }) };
   return (
     <>
@@ -44,7 +44,11 @@ export function ImageThumb({
         <button
           type="button"
           aria-label={`Enlarge ${name}`}
-          onClick={() => (gallery && galleryKey !== undefined ? gallery.show(image) : setOpen(true))}
+          onClick={(event) => {
+            const origin = thumbnailOrigin(image.key, event.currentTarget.querySelector("img"));
+            if (gallery && galleryKey !== undefined) gallery.show(image, origin);
+            else setShown({ open: true, origin });
+          }}
           className={`group/thumb relative shrink-0 cursor-zoom-in overflow-hidden rounded-lg border border-line-subtle bg-surface-hover outline-none focus-visible:ring-2 focus-visible:ring-accent ${className}`}
         >
           {/* A screenshot is decoded whole for its thumbnail: off the main thread, and only once a
@@ -62,15 +66,16 @@ export function ImageThumb({
         </button>
       </WithImageMenu>
       {/* Mounted from the first click until it has closed, rather than a dialog per thumbnail. */}
-      {open === undefined ? null : (
+      {shown === undefined ? null : (
         <ImageViewer
           images={[image]}
           current={image.key}
-          open={open}
+          open={shown.open}
+          origin={shown.origin}
           menu={menu}
           onCurrentChange={() => undefined}
-          onOpenChange={setOpen}
-          onClosed={() => setOpen(undefined)}
+          onOpenChange={(open) => setShown((now) => now && { ...now, open })}
+          onClosed={() => setShown((now) => (now?.open ? now : undefined))}
         />
       )}
     </>

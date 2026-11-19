@@ -18,6 +18,8 @@ export interface Queue {
   readonly onWithdraw?: ((messageId: string) => Promise<boolean>) | undefined;
 }
 
+const emptyQueue: Queue = { messages: [], ended: false };
+
 const iconButton =
   "grid size-6 shrink-0 place-items-center rounded-md text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-primary";
 
@@ -26,21 +28,29 @@ const iconButton =
  * taken back into the draft to rewrite, or dropped. They leave as the agent takes them.
  */
 export function QueueTray({
-  queue,
+  queue = emptyQueue,
   onEdit,
+  className,
 }: {
-  readonly queue: Queue;
+  readonly queue?: Queue | undefined;
   /** Puts a message taken back into the draft. */
   readonly onEdit: (message: UserBlock) => void;
+  readonly className: string;
 }) {
   const { messages, ended, onSteer, onWithdraw } = queue;
   /** Messages being taken back: hidden at once, and back if the agent took them first. */
   const [leaving, setLeaving] = useState<ReadonlySet<string>>(new Set());
   /** Pressed once per wait: the messages it hands over leave with it. */
   const [steeredFor, setSteeredFor] = useState<string>();
+  const pending = [...leaving].filter((id) => messages.some((message) => message.id === id));
+  if (pending.length !== leaving.size) setLeaving(new Set(pending));
   const shown = messages.filter((message) => !leaving.has(message.id));
-  // A message the agent takes, or that's taken back, folds out of the list.
-  const [rows, release] = useLingering(shown, (message) => message.id);
+  // A message folds out of the list while others stay. The tray carries the last one away.
+  const [rows, release] = useLingering(
+    shown,
+    (message) => message.id,
+    (_, after) => after.length > 0,
+  );
   const steered = steeredFor === shown[0]?.id;
 
   const withdraw = (message: UserBlock, edit: boolean) => {
@@ -62,7 +72,7 @@ export function QueueTray({
   };
 
   return (
-    <Reveal>
+    <Reveal carry className={className}>
       {shown.length === 0 ? null : (
         <div className="mx-2.5 mt-2.5 rounded-xl border border-line-subtle p-1">
           <div className="flex items-center justify-between gap-2 px-2 pt-0.5 pb-1 text-caption text-fg-tertiary">

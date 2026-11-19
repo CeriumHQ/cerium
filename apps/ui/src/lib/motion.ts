@@ -88,14 +88,20 @@ export function usePresence(
 /**
  * A list's elements by key, and where each stands. Where they stand is kept current as any of them
  * changes size (one growing in or folding out, a card opening), which moves the rest without the
- * list rendering, so a render's glide starts from where they really were. Positions are layout
- * positions (`offsetTop`), so a glide under way doesn't skew the next.
+ * list rendering, so a render's glide starts from where they really were. Layout offsets ignore
+ * scrolling and let a new glide start from the running one's visible position.
  */
 class Glide {
+  private readonly axis: "x" | "y";
   private readonly elements = new Map<string, HTMLElement>();
   private readonly refs = new Map<string, (element: HTMLElement | null) => () => void>();
-  private tops = new Map<string, number>();
+  private readonly animations = new Map<string, Animation>();
+  private positions = new Map<string, number>();
   private readonly observer = new ResizeObserver(() => this.measure());
+
+  constructor(axis: "x" | "y") {
+    this.axis = axis;
+  }
 
   /** The ref of the element of `key`, the same one each render. */
   readonly ref = (key: string) => {
@@ -108,6 +114,7 @@ class Glide {
         return () => {
           this.observer.unobserve(element);
           this.elements.delete(key);
+          this.cancel(key);
         };
       };
       this.refs.set(key, ref);
@@ -116,21 +123,48 @@ class Glide {
   };
 
   private measure() {
-    this.tops = new Map([...this.elements].map(([key, element]) => [key, element.offsetTop]));
+    this.positions = new Map(
+      [...this.elements].map(([key, element]) => [
+        key,
+        this.axis === "x" ? element.offsetLeft : element.offsetTop,
+      ]),
+    );
+  }
+
+  private cancel(key: string) {
+    this.animations.get(key)?.cancel();
+    this.animations.delete(key);
   }
 
   /** Glides each element that moved since it was last measured from there to where it stands. */
-  settle() {
-    const before = this.tops;
+  settle(enabled: boolean, skip: string | undefined, duration: number) {
+    const before = this.positions;
     this.measure();
-    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    for (const [key, top] of this.tops) {
+    if (skip !== undefined) this.cancel(skip);
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      for (const key of this.animations.keys()) this.cancel(key);
+      return;
+    }
+    if (!enabled) return;
+    for (const [key, element] of this.elements) {
+      const position = this.positions.get(key)!;
       const was = before.get(key);
-      if (was === undefined || was === top) continue;
-      this.elements.get(key)?.animate([{ translate: `0 ${was - top}px` }, { translate: "0 0" }], {
-        duration: 300,
-        easing: "cubic-bezier(0.22, 0.8, 0.24, 1)",
-      });
+      if (key === skip || was === undefined || was === position) continue;
+      const style = getComputedStyle(element);
+      const current = this.animations.has(key)
+        ? parseFloat(style.translate.split(" ")[this.axis === "x" ? 0 : 1] ?? "0") || 0
+        : 0;
+      this.cancel(key);
+      const distance = was + current - position;
+      if (distance === 0) continue;
+      const animation = element.animate(
+        [{ translate: this.axis === "x" ? `${distance}px 0` : `0 ${distance}px` }, { translate: "0 0" }],
+        { duration, easing: style.getPropertyValue("--ease-out-soft").trim() || "ease-out" },
+      );
+      this.animations.set(key, animation);
+      animation.onfinish = () => {
+        if (this.animations.get(key) === animation) this.animations.delete(key);
+      };
     }
   }
 
@@ -144,33 +178,85 @@ class Glide {
  * and it has moved: a reordered list rearranges itself instead of jumping. Gives each element's ref
  * by its key.
  */
-export function useGlide(): (key: string) => (element: HTMLElement | null) => () => void {
-  const [glide] = useState(() => new Glide());
-  useLayoutEffect(() => glide.settle());
+export function useGlide({
+  axis = "y",
+  enabled = true,
+  skip,
+  duration = 300,
+}: {
+  axis?: "x" | "y";
+  enabled?: boolean;
+  skip?: string | undefined;
+  duration?: number;
+} = {}): (key: string) => (element: HTMLElement | null) => () => void {
+  const [glide] = useState(() => new Glide(axis));
+  useLayoutEffect(() => glide.settle(enabled, skip, duration));
   useEffect(() => () => glide.disconnect(), [glide]);
   return glide.ref;
 }
 
-/** A morphing box as it last stood: its height and corners, and where each of its marked parts starts. */
+interface MorphPart {
+  readonly layer: HTMLElement;
+  readonly x: number;
+  readonly y: number;
+}
+
+/** A morphing box as it last stood: its height and corners, and where its contents start. */
 interface MorphFrame {
   readonly height: number;
   readonly radius: string;
-  readonly parts: ReadonlyMap<string, { readonly x: number; readonly y: number }>;
+  readonly parts: ReadonlyMap<string, MorphPart>;
+  readonly layers: ReadonlyMap<HTMLElement, number>;
 }
 
-/** Where a part's own content starts inside the box: past its border and padding, as text sits. */
-const morphFrame = (box: HTMLElement): MorphFrame => {
+const MORPH_PART = "[data-morph]";
+
+const morphOffset = (element: HTMLElement) =>
+  getComputedStyle(element)
+    .translate.split(" ")
+    .map((axis) => parseFloat(axis) || 0);
+
+/** Measure where the marked content starts and move its whole layer, including any placeholder. */
+const morphFrame = (box: HTMLElement, target?: MorphFrame): MorphFrame => {
   const origin = box.getBoundingClientRect();
-  const parts = new Map<string, { x: number; y: number }>();
-  for (const part of box.querySelectorAll<HTMLElement>("[data-morph]")) {
+  const style = getComputedStyle(box);
+  const parts = new Map<string, MorphPart>();
+  const layers = new Map<HTMLElement, number>();
+  for (const layer of box.children) {
+    if (!(layer instanceof HTMLElement)) continue;
+    const part = layer.matches(MORPH_PART) ? layer : layer.querySelector<HTMLElement>(MORPH_PART);
+    if (part === null) {
+      if (layer.offsetHeight === 0 || getComputedStyle(layer).position === "absolute") continue;
+      const top = target?.layers.get(layer);
+      layers.set(
+        layer,
+        top === undefined
+          ? layer.getBoundingClientRect().top - origin.top
+          : top + (morphOffset(layer)[1] ?? 0),
+      );
+      continue;
+    }
+    const name = part.dataset.morph!;
+    const point = target?.parts.get(name);
+    // The new layout is in the DOM already. Read the running offset against its old target.
+    if (point !== undefined) {
+      const [x = 0, y = 0] = morphOffset(point.layer);
+      parts.set(name, {
+        layer,
+        x: point.x + x,
+        y: point.y + y,
+      });
+      continue;
+    }
     const rect = part.getBoundingClientRect();
-    const style = getComputedStyle(part);
-    parts.set(part.dataset.morph!, {
-      x: rect.left - origin.left + part.clientLeft + parseFloat(style.paddingLeft),
-      y: rect.top - origin.top + part.clientTop + parseFloat(style.paddingTop),
+    const partStyle = getComputedStyle(part);
+    parts.set(name, {
+      layer,
+      x: rect.left - origin.left + part.clientLeft + parseFloat(partStyle.paddingLeft),
+      y: rect.top - origin.top + part.clientTop + parseFloat(partStyle.paddingTop),
     });
   }
-  return { height: box.offsetHeight, radius: getComputedStyle(box).borderRadius, parts };
+  return { height: parseFloat(style.height), radius: style.borderRadius, parts, layers };
 };
 
 /** Whether any of the animations is still under way, held paused or not. */
@@ -181,17 +267,29 @@ const moving = (animations: ReadonlyArray<Animation>) =>
  * Morphs a box between two shapes instead of jumping when `shape` changes. Its height and corners
  * ease from the old shape's to the new one's, clipped on the way, with its foot standing still, as a
  * box anchored to the bottom of the window grows and shrinks from its top. Each part marked
- * `data-morph="name"` glides from where its content started to where it starts now, and the box's
- * other children hold to the foot as the box changes height around them, so a row of controls stays
- * on the line it was on. What shows when the box first mounts is simply there.
+ * `data-morph="name"` moves its layer with the content. The box's other children hold to the foot
+ * as the box changes height around them. The return value lets nested motion defer, including on
+ * the first render of the new shape. `layout` lets content changes retarget a morph in flight.
  */
 export function useMorph(
   ref: RefObject<HTMLElement | null>,
   shape: string,
-  { duration = 340, easing = "cubic-bezier(0.32, 0.72, 0, 1)" }: { duration?: number; easing?: string } = {},
+  {
+    duration = 340,
+    easing = "cubic-bezier(0.32, 0.72, 0, 1)",
+    layout,
+  }: { duration?: number; easing?: string; layout?: string } = {},
 ) {
-  const morph = useRef<{ shape: string; frame?: MorphFrame; running: ReadonlyArray<Animation> }>({
+  const [motion, setMotion] = useState({ shape, active: false });
+  if (motion.shape !== shape) setMotion({ shape, active: true });
+  const morph = useRef<{
+    shape: string;
+    layout: string | undefined;
+    frame?: MorphFrame;
+    running: ReadonlyArray<Animation>;
+  }>({
     shape,
+    layout,
     running: [],
   });
 
@@ -201,18 +299,29 @@ export function useMorph(
     if (!box) return;
     const changed = current.shape !== shape;
     const busy = moving(current.running);
-    // While it moves the box isn't where it stands; the frame it moves to stays the one to start from.
-    if (!changed && busy) return;
+    if (!changed && busy && current.layout === layout) return;
+    const before = busy ? morphFrame(box, current.frame) : current.frame;
     for (const animation of current.running) animation.cancel();
-    const before = current.frame;
     const after = morphFrame(box);
     current.shape = shape;
+    current.layout = layout;
     current.frame = after;
-    if (!changed || before === undefined) return;
-    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const timing = { duration, easing };
+    const running: Animation[] = [];
+    current.running = running;
+    const release = () => {
+      if (current.running === running) setMotion({ shape, active: false });
+    };
+    if (
+      (!changed && !busy) ||
+      before === undefined ||
+      matchMedia("(prefers-reduced-motion: reduce)").matches
+    ) {
+      if (motion.active) queueMicrotask(release);
+      return;
+    }
+    const timing: KeyframeAnimationOptions = { duration, easing, fill: "backwards" };
     const held = before.height - after.height;
-    const running = [
+    running.push(
       box.animate(
         [
           { height: `${before.height}px`, borderRadius: before.radius, overflow: "clip" },
@@ -220,22 +329,24 @@ export function useMorph(
         ],
         timing,
       ),
-    ];
-    for (const part of box.querySelectorAll<HTMLElement>("[data-morph]")) {
-      const from = before.parts.get(part.dataset.morph!);
-      const to = after.parts.get(part.dataset.morph!);
-      if (!from || !to || (from.x === to.x && from.y === to.y)) continue;
+    );
+    for (const [name, to] of after.parts) {
+      const from = before.parts.get(name);
+      if (!from || (from.x === to.x && from.y === to.y)) continue;
       running.push(
-        part.animate([{ translate: `${from.x - to.x}px ${from.y - to.y}px` }, { translate: "0 0" }], timing),
+        to.layer.animate(
+          [{ translate: `${from.x - to.x}px ${from.y - to.y}px` }, { translate: "0 0" }],
+          timing,
+        ),
       );
     }
-    if (held !== 0) {
-      for (const child of box.children) {
-        if (child.matches("[data-morph]") || child.querySelector("[data-morph]")) continue;
-        running.push(child.animate([{ translate: `0 ${held}px` }, { translate: "0 0" }], timing));
-      }
+    for (const [layer, top] of after.layers) {
+      const from = busy ? before.layers.get(layer) : undefined;
+      const offset = from === undefined ? held : from - top;
+      if (offset === 0) continue;
+      running.push(layer.animate([{ translate: `0 ${offset}px` }, { translate: "0 0" }], timing));
     }
-    current.running = running;
+    void Promise.allSettled(running.map((animation) => animation.finished)).then(release);
   });
 
   // The box changes size without rendering (the window narrowing, a line wrapping), so the frame a
@@ -243,15 +354,22 @@ export function useMorph(
   useEffect(() => {
     const box = ref.current;
     if (!box) return;
+    const current = morph.current;
     const observer = new ResizeObserver(() => {
-      const current = morph.current;
       if (!moving(current.running)) {
         current.frame = morphFrame(box);
       }
     });
     observer.observe(box);
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      const { running } = current;
+      current.running = [];
+      for (const animation of running) animation.cancel();
+    };
   }, [ref]);
+
+  return motion.active;
 }
 
 /** More new items than this at once are a load, such as a thread's history, rather than arrivals. */
@@ -266,22 +384,29 @@ const ARRIVAL_BATCH = 4;
 export function useArrivals(
   keys: ReadonlyArray<string>,
   { replacements = true }: { replacements?: boolean } = {},
-): (key: string) => boolean {
+): ((key: string) => boolean) & { together: (first: string, second: string) => boolean } {
   const [state, setState] = useState(() => ({
-    seen: new Set(keys),
+    seen: new Map(keys.map((key) => [key, 0])),
     still: new Set(keys),
     count: keys.length,
+    batch: 0,
   }));
   let { seen, still } = state;
   const fresh = keys.filter((key) => !seen.has(key));
   if (fresh.length > 0 || keys.length !== state.count) {
-    seen = new Set([...seen, ...fresh]);
+    const batch = state.batch + 1;
+    seen = new Map(seen);
+    for (const key of fresh) seen.set(key, batch);
     const replaced = !replacements && keys.length - state.count < fresh.length;
     if (state.seen.size === 0 || fresh.length > ARRIVAL_BATCH || replaced)
       still = new Set([...still, ...fresh]);
-    setState({ seen, still, count: keys.length });
+    setState({ seen, still, count: keys.length, batch });
   }
-  return (key) => !still.has(key);
+  const arrived = (key: string) => !still.has(key);
+  return Object.assign(arrived, {
+    together: (first: string, second: string) =>
+      arrived(first) && seen.has(first) && seen.get(first) === seen.get(second),
+  });
 }
 
 /** An item of a list as it shows: still in the list, or just gone from it and on its way out. */

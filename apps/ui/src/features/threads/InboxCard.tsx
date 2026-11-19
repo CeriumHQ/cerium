@@ -105,7 +105,7 @@ export function InboxCard({
   // Room the quick actions and the menu button take at the right end on hover.
   const room = (actions.length + (menuItems === undefined ? 0 : 1)) * 24;
 
-  const cardClass = `grid w-full grid-cols-[18px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-0.5 rounded-lg px-2 pt-2 pb-2.25 text-left text-body transition-[background-color,opacity] duration-150 data-popup-open:bg-surface-hover max-md:gap-x-3 max-md:rounded-xl max-md:px-2.5 max-md:py-2.5 max-md:text-[15px] ${selection?.active ? "pl-8 max-md:pl-8" : ""} ${
+  const cardClass = `grid w-full grid-cols-[18px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-0.5 rounded-lg px-2 pt-2 pb-2.25 text-left text-body transition-[background-color,opacity,padding-left] duration-[150ms,150ms,180ms] ease-out-soft data-popup-open:bg-surface-hover max-md:gap-x-3 max-md:rounded-xl max-md:px-2.5 max-md:py-2.5 max-md:text-[15px] ${selection?.active ? "pl-8 max-md:pl-8" : ""} ${
     leaving ? "opacity-0" : ""
   } ${selected || editing ? "bg-surface-selected" : "hover:bg-surface-hover"}`;
   const titleClass = `min-w-0 truncate ${
@@ -225,15 +225,17 @@ export function InboxCard({
     <>
       <div className="group/row relative">
         {menuItems === undefined ? button : <ContextMenuArea menu={menuItems}>{button}</ContextMenuArea>}
-        {!selection?.active ? null : (
+        {selection ? (
           <SelectBox
-            checked={selection.checked}
-            mixed={selection.mixed}
+            visible={selection.active}
+            returnFocus={() => row.current?.focus({ preventScroll: true })}
+            checked={selection.active && selection.checked}
+            mixed={selection.active && selection.mixed}
             label={group ? `Select these ${group.count} threads` : `Select “${title}”`}
             onChange={() => selection.onToggle("toggle")}
-            className="left-2 top-1/2 -translate-y-1/2 !opacity-100"
+            className="left-2 top-1/2 -translate-y-1/2"
           />
-        )}
+        ) : null}
         <div className="absolute top-1.5 right-1.5 flex items-center gap-0.5 opacity-0 transition-opacity duration-150 group-has-[[data-popup-open]]/row:opacity-100 focus-within:opacity-100 md:group-hover/row:opacity-100 max-md:top-2 pointer-coarse:opacity-100">
           {actions.map((action) => (
             <Tooltip

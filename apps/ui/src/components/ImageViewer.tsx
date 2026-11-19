@@ -6,12 +6,14 @@ import {
   createContext,
   use,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type PointerEvent,
   type ReactElement,
   type ReactNode,
   type Ref,
+  type RefObject,
 } from "react";
 
 import { imageAtom, toolImageAtom } from "../backend/files.ts";
@@ -109,7 +111,7 @@ export function WithImageMenu({
 
 interface GalleryApi {
   /** Opens the viewer on `image`, among the gallery's others when it is one of them. */
-  readonly show: (image: GalleryImage) => void;
+  readonly show: (image: GalleryImage, origin: ThumbnailOrigin | undefined) => void;
 }
 
 const Gallery = createContext<GalleryApi | undefined>(undefined);
@@ -128,10 +130,15 @@ export function ImageGallery({
   images: () => ReadonlyArray<GalleryImage>;
   children: ReactNode;
 }) {
-  const [shown, setShown] = useState<{ open: boolean; current: string; opened: GalleryImage }>();
+  const [shown, setShown] = useState<{
+    open: boolean;
+    current: string;
+    opened: GalleryImage;
+    origin: ThumbnailOrigin | undefined;
+  }>();
   // The same object for good, so the thumbnails that read it don't render again with the gallery.
   const [api] = useState<GalleryApi>(() => ({
-    show: (image) => setShown({ open: true, current: image.key, opened: image }),
+    show: (image, origin) => setShown({ open: true, current: image.key, opened: image, origin }),
   }));
   const all = shown ? images() : [];
   // The image opened on stands alone if the gallery has lost it since.
@@ -144,10 +151,13 @@ export function ImageGallery({
           images={gallery}
           current={shown.current}
           open={shown.open}
+          origin={shown.origin}
           menu
-          onCurrentChange={(current) => setShown({ ...shown, current })}
-          onOpenChange={(open) => setShown({ ...shown, open })}
-          onClosed={() => setShown(undefined)}
+          onCurrentChange={(current) =>
+            setShown((now) => (now?.open && now.opened === shown.opened ? { ...now, current } : now))
+          }
+          onOpenChange={(open) => setShown((now) => now && { ...now, open })}
+          onClosed={() => setShown((now) => (now?.open ? now : undefined))}
         />
       ) : null}
     </Gallery>
@@ -162,6 +172,7 @@ export function ImageViewer({
   images,
   current,
   open,
+  origin,
   menu,
   onCurrentChange,
   onOpenChange,
@@ -171,6 +182,7 @@ export function ImageViewer({
   /** The key of the image shown. */
   current: string;
   open: boolean;
+  origin?: ThumbnailOrigin | undefined;
   /** Whether a right-click on the image offers to copy or save it. */
   menu: boolean;
   onCurrentChange: (key: string) => void;
@@ -187,10 +199,12 @@ export function ImageViewer({
       }}
     >
       <Dialog.Portal>
-        <Dialog.Popup className="fixed inset-0 z-50 transition-opacity duration-200 ease-out-soft outline-none data-ending-style:opacity-0 data-starting-style:opacity-0">
+        <Dialog.Popup className="fixed inset-0 z-50 outline-none data-ending-style:pointer-events-none">
           <Stage
             images={images}
             current={current}
+            open={open}
+            origin={origin}
             menu={menu}
             onCurrentChange={onCurrentChange}
             onClose={() => onOpenChange(false)}
@@ -198,6 +212,184 @@ export function ImageViewer({
         </Dialog.Popup>
       </Dialog.Portal>
     </Dialog.Root>
+  );
+}
+
+interface ThumbnailFrame {
+  readonly rect: DOMRectReadOnly;
+  readonly clip: { top: number; right: number; bottom: number; left: number };
+  readonly radius: number;
+}
+
+interface ThumbnailOrigin {
+  readonly key: string;
+  readonly url: string;
+  readonly element: HTMLImageElement;
+  readonly frame: ThumbnailFrame;
+}
+
+/** The thumbnail's bounds, including any part clipped by its button or a scrolling ancestor. */
+function thumbnailFrame(element: HTMLImageElement): ThumbnailFrame | undefined {
+  if (!element.checkVisibility({ visibilityProperty: true })) return;
+  const rect = element.getBoundingClientRect();
+  let { left, top, right, bottom } = rect;
+  left = Math.max(left, 0);
+  top = Math.max(top, 0);
+  right = Math.min(right, document.documentElement.clientWidth);
+  bottom = Math.min(bottom, document.documentElement.clientHeight);
+  for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+    const { overflowX, overflowY, opacity } = getComputedStyle(parent);
+    if (opacity === "0") return;
+    if (overflowX === "visible" && overflowY === "visible") continue;
+    const bounds = parent.getBoundingClientRect();
+    if (overflowX !== "visible") {
+      left = Math.max(left, bounds.left);
+      right = Math.min(right, bounds.right);
+    }
+    if (overflowY !== "visible") {
+      top = Math.max(top, bounds.top);
+      bottom = Math.min(bottom, bounds.bottom);
+    }
+  }
+  if (right <= left || bottom <= top) return;
+  return {
+    rect,
+    clip: {
+      top: top - rect.top,
+      right: rect.right - right,
+      bottom: rect.bottom - bottom,
+      left: left - rect.left,
+    },
+    radius: parseFloat(getComputedStyle(element.parentElement ?? element).borderTopLeftRadius) || 0,
+  };
+}
+
+/** Capture where the click came from before the dialog changes focus or locks scrolling. */
+export function thumbnailOrigin(key: string, element: HTMLImageElement | null): ThumbnailOrigin | undefined {
+  if (!element?.naturalWidth) return;
+  const frame = thumbnailFrame(element);
+  if (frame) return { key, element, frame, url: element.src };
+}
+
+const fittedFrame = { transform: "none", clipPath: "inset(0% round 0px)" };
+
+/** Covers the thumbnail's box the same way as object-cover, with the extra image clipped away. */
+function thumbnailKeyframe(image: HTMLImageElement, frame: ThumbnailFrame): Keyframe | undefined {
+  const base = image.getBoundingClientRect();
+  if (!base.width || !base.height || !image.naturalWidth) return;
+  const { rect, clip, radius } = frame;
+  const scale = Math.max(rect.width / base.width, rect.height / base.height);
+  const parentScale = base.width / image.offsetWidth;
+  const width = base.width * scale;
+  const height = base.height * scale;
+  const x = (rect.left + rect.width / 2 - base.left - base.width / 2) / parentScale;
+  const y = (rect.top + rect.height / 2 - base.top - base.height / 2) / parentScale;
+  const insetX = (width - rect.width) / 2;
+  const insetY = (height - rect.height) / 2;
+  return {
+    transform: `translate(${x}px, ${y}px) scale(${scale})`,
+    clipPath: `inset(${((insetY + clip.top) / height) * 100}% ${((insetX + clip.right) / width) * 100}% ${((insetY + clip.bottom) / height) * 100}% ${((insetX + clip.left) / width) * 100}% round ${radius / (parentScale * scale)}px)`,
+  };
+}
+
+/** Moves the actual picture, underneath the viewer's independent zoom and pan transforms. */
+function useThumbnailTransition(
+  stage: RefObject<HTMLDivElement | null>,
+  picture: RefObject<HTMLImageElement | null>,
+  open: boolean,
+  origin: ThumbnailOrigin | undefined,
+  canTravel: boolean,
+) {
+  const motion = useRef<{
+    open: boolean;
+    origin: ThumbnailOrigin | undefined;
+    animations: Animation[];
+    paused: Animation[];
+    flight?: { image: HTMLImageElement; animation: Animation };
+  }>(undefined);
+  useLayoutEffect(() => {
+    const previous = motion.current;
+    if (previous?.open === open && previous.origin === origin) return;
+    const layer = stage.current;
+    const popup = layer?.closest<HTMLElement>('[role="dialog"]');
+    if (!layer || !popup) return;
+    const image = picture.current;
+    const popupStyle = getComputedStyle(popup);
+    const chromeOpacity = previous ? popupStyle.getPropertyValue("--image-viewer-opacity") : "0";
+    const layerOpacity = previous ? getComputedStyle(layer).opacity : "0";
+    const flight = previous?.flight;
+    // A reversal starts from the frame actually on screen, before releasing the old animations.
+    const style =
+      image &&
+      flight?.image === image &&
+      image.src === previous?.origin?.url &&
+      (flight.animation.playState !== "finished" || !previous.open)
+        ? getComputedStyle(image)
+        : undefined;
+    const moving = style ? { transform: style.transform, clipPath: style.clipPath } : undefined;
+    for (const animation of previous?.animations ?? []) animation.cancel();
+    for (const animation of previous?.paused ?? []) animation.play();
+
+    const next: NonNullable<typeof motion.current> = { open, origin, animations: [], paused: [] };
+    motion.current = next;
+    const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const frame =
+      canTravel && !reduced && origin && image?.src === origin.url && origin.element.src === origin.url
+        ? open
+          ? origin.frame
+          : thumbnailFrame(origin.element)
+        : undefined;
+    // Hold the exact settling zoom or pan frame while measuring and flying back to the thumbnail.
+    if (image && frame && !open) {
+      for (let parent = image.parentElement; parent && parent !== layer; parent = parent.parentElement) {
+        for (const transition of parent.getAnimations()) {
+          if (!(transition instanceof CSSTransition) || transition.transitionProperty !== "transform")
+            continue;
+          const time = transition.currentTime ?? 0;
+          transition.pause();
+          transition.currentTime = time;
+          next.paused.push(transition);
+        }
+      }
+    }
+    const target = image && frame ? thumbnailKeyframe(image, frame) : undefined;
+    if (!target) for (const animation of next.paused.splice(0)) animation.play();
+    const opacity = open ? "1" : "0";
+    const photoOpacity = target ? "1" : opacity;
+    popup.style.setProperty("--image-viewer-opacity", opacity);
+    layer.style.setProperty("opacity", photoOpacity);
+    if (reduced) return;
+
+    const timing: KeyframeAnimationOptions = {
+      duration: open ? 280 : 240,
+      easing: popupStyle.getPropertyValue(open ? "--ease-out-soft" : "--ease-in-soft").trim(),
+      fill: "backwards",
+    };
+    // The popup owns the chrome's fade, so Base UI keeps the dialog mounted through the exit.
+    next.animations.push(popup.animate({ "--image-viewer-opacity": [chromeOpacity, opacity] }, timing));
+    if (layerOpacity !== photoOpacity && (previous || !target)) {
+      next.animations.push(layer.animate({ opacity: [layerOpacity, photoOpacity] }, timing));
+    }
+    if (!image || (!target && !moving)) return;
+    const from = moving ?? (open ? target : undefined) ?? fittedFrame;
+    const to = open ? fittedFrame : (target ?? from);
+    const animation = image.animate([from, to], { ...timing, fill: open ? "backwards" : "both" });
+    next.flight = { image, animation };
+    next.animations.push(animation);
+    if (target && origin) {
+      next.animations.push(
+        origin.element.animate({ opacity: [0, 0] }, { ...timing, fill: open ? "backwards" : "both" }),
+      );
+    }
+  });
+  useLayoutEffect(
+    () => () => {
+      const state = motion.current;
+      for (const animation of state?.animations ?? []) animation.cancel();
+      for (const animation of state?.paused ?? []) animation.cancel();
+      motion.current = undefined;
+    },
+    [],
   );
 }
 
@@ -245,12 +437,16 @@ const track = (velocity: Velocity, position: number) => {
 function Stage({
   images,
   current,
+  open,
+  origin,
   menu,
   onCurrentChange,
   onClose,
 }: {
   images: ReadonlyArray<GalleryImage>;
   current: string;
+  open: boolean;
+  origin: ThumbnailOrigin | undefined;
   menu: boolean;
   onCurrentChange: (key: string) => void;
   onClose: () => void;
@@ -259,6 +455,7 @@ function Stage({
     0,
     images.findIndex((image) => image.key === current),
   );
+  const [selection, setSelection] = useState({ current, open });
   const [view, setView] = useState<View>(FIT);
   /** How far the row of images is slid sideways. */
   const [offset, setOffset] = useState(0);
@@ -275,7 +472,35 @@ function Stage({
   const velocity = useRef<Velocity>({ value: 0, at: 0, position: 0 });
   const lastTap = useRef<{ at: number; point: Point }>(undefined);
   const settle = useRef<number>(undefined);
+  const image = images[index];
 
+  if (selection.current !== current || selection.open !== open) {
+    setSelection({ current, open });
+    if (selection.current !== current) setView(FIT);
+    if (open && !selection.open) {
+      setDrop(0);
+      setOffset(0);
+      setDragging(false);
+    }
+  }
+
+  useThumbnailTransition(
+    stage,
+    picture,
+    open,
+    origin,
+    origin?.key === current && image?.key === current && (open || offset === 0),
+  );
+
+  useLayoutEffect(() => {
+    if (open) return;
+    // A pending slide belongs to the opening that just closed.
+    window.clearTimeout(settle.current);
+    settle.current = undefined;
+    pointers.current.clear();
+    gesture.current = undefined;
+    lastTap.current = undefined;
+  }, [open]);
   useEffect(() => () => window.clearTimeout(settle.current), []);
 
   /** The sizes the zoom works within, measured as they are now. */
@@ -308,7 +533,6 @@ function Stage({
       setSwapping(true);
       onCurrentChange(next.key);
       setOffset(0);
-      setView(FIT);
       requestAnimationFrame(() => requestAnimationFrame(() => setSwapping(false)));
     }, SETTLE_MS);
   };
@@ -455,6 +679,7 @@ function Stage({
   // The viewer is modal, so the arrow keys are its own wherever focus sits in it: taken as they
   // come down, before the window's own shortcuts can use them.
   useEffect(() => {
+    if (!open) return;
     const keyDown = (event: KeyboardEvent) => {
       if (event.key === "ArrowLeft") go(-1);
       else if (event.key === "ArrowRight") go(1);
@@ -466,14 +691,13 @@ function Stage({
     return () => window.removeEventListener("keydown", keyDown, true);
   });
 
-  const image = images[index];
   const eased = !dragging && !swapping;
   const many = images.length > 1;
   return (
     <div className="absolute inset-0">
       <div
         className="absolute inset-0 bg-surface-overlay backdrop-blur-2xl"
-        style={{ opacity: 1 - Math.min(drop / 400, 0.7) }}
+        style={{ opacity: `calc(var(--image-viewer-opacity) * ${1 - Math.min(drop / 400, 0.7)})` }}
       />
       <div
         ref={stage}
@@ -518,27 +742,33 @@ function Stage({
       {/* Under the titlebar's height in the desktop app, whose caption buttons the system draws over
           every page: the close button sits clear of them. */}
       <div
-        className="absolute inset-x-0 top-[env(titlebar-area-height,0px)] flex h-[calc(3.5rem+env(safe-area-inset-top))] items-center gap-3 px-4 pt-[env(safe-area-inset-top)] transition-opacity duration-200"
-        style={{ opacity: drop > 0 ? 0 : 1 }}
+        className={`pointer-events-none absolute inset-0 opacity-(--image-viewer-opacity) ${
+          open ? "[&>*]:pointer-events-auto" : ""
+        }`}
       >
-        <Dialog.Title className="flex min-w-0 flex-1 items-baseline gap-2 text-meta">
-          <span className="min-w-0 truncate text-fg-secondary">{image?.name}</span>
-          {many ? (
-            <span className="shrink-0 text-fg-tertiary tabular-nums">
-              {index + 1} / {images.length}
-            </span>
-          ) : null}
-        </Dialog.Title>
-        <Dialog.Close aria-label="Close" className={chromeButton}>
-          <X size={16} strokeWidth={2} />
-        </Dialog.Close>
+        <div
+          className="absolute inset-x-0 top-[env(titlebar-area-height,0px)] flex h-[calc(3.5rem+env(safe-area-inset-top))] items-center gap-3 px-4 pt-[env(safe-area-inset-top)] transition-opacity duration-200"
+          style={{ opacity: drop > 0 ? 0 : 1 }}
+        >
+          <Dialog.Title className="flex min-w-0 flex-1 items-baseline gap-2 text-meta">
+            <span className="min-w-0 truncate text-fg-secondary">{image?.name}</span>
+            {many ? (
+              <span className="shrink-0 text-fg-tertiary tabular-nums">
+                {index + 1} / {images.length}
+              </span>
+            ) : null}
+          </Dialog.Title>
+          <Dialog.Close aria-label="Close" className={chromeButton}>
+            <X size={16} strokeWidth={2} />
+          </Dialog.Close>
+        </div>
+        {many ? (
+          <>
+            <ChromeArrow side="left" hidden={index === 0} onClick={() => go(-1)} />
+            <ChromeArrow side="right" hidden={index === images.length - 1} onClick={() => go(1)} />
+          </>
+        ) : null}
       </div>
-      {many ? (
-        <>
-          <ChromeArrow side="left" hidden={index === 0} onClick={() => go(-1)} />
-          <ChromeArrow side="right" hidden={index === images.length - 1} onClick={() => go(1)} />
-        </>
-      ) : null}
     </div>
   );
 }
