@@ -1,5 +1,5 @@
 import { Orchestrator, UserSettings } from "@cerium/orchestrator";
-import type { EventPayload, ProviderId, ThreadOverview } from "@cerium/protocol";
+import { harnessName, type EventPayload, type ProviderId, type ThreadOverview } from "@cerium/protocol";
 import { type Duration, Effect, Layer, Queue, Stream } from "effect";
 import { basename } from "node:path";
 
@@ -23,14 +23,7 @@ const UPDATE_GAP = "4 seconds";
 /** Discord's limit on an activity's lines. */
 const MAX_LINE = 128;
 
-/** Each provider's harness by the name its makers give it. */
-export const harnessName: Record<ProviderId, string> = {
-  claude: "Claude Code",
-  codex: "Codex",
-  muse: "Muse Code",
-  cursor: "Cursor",
-  opencode: "OpenCode",
-};
+export { harnessName };
 
 /** The events that can change what the activity says: agents starting and stopping, and waits on the user. */
 const changesActivity = new Set<EventPayload["_tag"]>([

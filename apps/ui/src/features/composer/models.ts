@@ -232,6 +232,9 @@ export const accessLimit = (
   return first && { blocks: [...new Set(limits.flatMap((limit) => limit.blocks))], reason: first.reason };
 };
 
-/** The access a thread starts with: the one picked, or Full access, the one that runs commands, when it's limited. */
+/** When sandboxed commands are unavailable (e.g. Muse on Windows), offer its command-capable mode.
+ * A harness that cannot enforce Read only must never turn that selection into Full access. */
 export const allowedAccess = (access: AccessMode, limit: HarnessLimit | undefined): AccessMode =>
-  limit?.blocks.includes(access) ? "fullAccess" : access;
+  limit?.blocks.includes(access) && !limit.blocks.includes("readOnly") && !limit.blocks.includes("fullAccess")
+    ? "fullAccess"
+    : access;

@@ -123,7 +123,7 @@ export const systemPrompt = (
     child
       ? `You are child agent ${agent.id} with role "${agent.role}" of lead ${agent.parentId}. Complete your assignment; its concise final result reaches the lead automatically.`
       : "You are this thread's lead agent. Build the requested work yourself unless delegation is appropriate and authorized.",
-    "Native subagents and messaging are disabled. Use Cerium's tools instead.",
+    "Start and message agents only through Cerium's MCP tools so their work stays visible in the thread.",
     ...(child
       ? []
       : [

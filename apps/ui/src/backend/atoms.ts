@@ -24,7 +24,7 @@ import {
   type CloudThreadStateView,
   type ThreadStateView,
 } from "@cerium/protocol";
-import { SCOPED_EVENTS_RPC_VERSION } from "@cerium/rpc";
+import { HARNESS_PROVIDERS_HEADER, SCOPED_EVENTS_RPC_VERSION } from "@cerium/rpc";
 import { Clock, Effect, Equal, Option, PubSub, Schedule, Schema, Stream } from "effect";
 import { AsyncResult, Atom } from "effect/reactivity";
 
@@ -208,7 +208,11 @@ export const threadsAtom = Backend.runtime
 
 export const harnessesAtom = Backend.runtime.atom((get) => {
   get(connectionEpochAtom);
-  return Backend.use((client) => client("HarnessStatuses", undefined)).pipe(
+  return Backend.use((client) =>
+    client("HarnessStatuses", undefined, {
+      headers: { [HARNESS_PROVIDERS_HEADER]: OFFERED_PROVIDERS.join(",") },
+    }),
+  ).pipe(
     // The status check may have discovered an external sign-in or update and invalidated its list.
     Effect.tap(() => Effect.sync(() => get.refresh(modelsAtom))),
   );

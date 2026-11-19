@@ -231,4 +231,7 @@ export const providerName: Record<ProviderId, string> = {
   muse: "Muse",
   cursor: "Cursor",
   opencode: "OpenCode",
+  antigravity: "Antigravity",
+  copilot: "Copilot",
+  grok: "Grok Build",
 };

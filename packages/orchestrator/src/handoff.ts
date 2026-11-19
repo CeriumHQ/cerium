@@ -1,13 +1,6 @@
-import type { AgentId } from "@cerium/protocol";
+import { harnessName, type AgentId } from "@cerium/protocol";
 import { HelperUsage } from "./helperUsage.ts";
-import type {
-  AgentEvent,
-  AgentInfo,
-  LeadHandedOff,
-  ModelChoice,
-  ProviderId,
-  TodoItem,
-} from "@cerium/protocol";
+import type { AgentEvent, AgentInfo, LeadHandedOff, ModelChoice, TodoItem } from "@cerium/protocol";
 import { Context, Effect, FileSystem, Layer, Option, Path } from "effect";
 
 import { renderTurn } from "./prompts.ts";
@@ -20,15 +13,6 @@ import { titleModels } from "./titles.ts";
 // text: the new session is told the conversation so far with its first turn, the newest turns word
 // for word and the older ones condensed by the quick model that titles threads, with the files the
 // thread changed, its plan and the agents still at work.
-
-/** Each harness by the name its makers give it, as the new session is told where it came from. */
-const harnessName: Record<ProviderId, string> = {
-  claude: "Claude Code",
-  codex: "Codex",
-  muse: "Muse Code",
-  cursor: "Cursor",
-  opencode: "OpenCode",
-};
 
 /** How much of the conversation a handoff tells word for word, in characters (about 12k tokens). */
 const VERBATIM_BUDGET = 48_000;

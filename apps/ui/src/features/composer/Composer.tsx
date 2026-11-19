@@ -394,7 +394,8 @@ export function Composer({
     AsyncResult.getOrElse(useAtomValue(harnessesAtom), () => []),
     starting,
   );
-  const access = allowedAccess(pickedAccess, limit);
+  const access = isNew && target.mode === "chat" ? "readOnly" : allowedAccess(pickedAccess, limit);
+  const blockedAccess = isNew && limit?.blocks.includes(access) ? limit.reason : undefined;
   /** One effort for every model starting; each model that lacks it runs at its own default. */
   const efforts = effortsOf(starting);
   // Keep the effort valid when switching to a model with fewer levels.
@@ -430,7 +431,7 @@ export function Composer({
     draft.segments.every((segment) => segment.kind === "text" && segment.text.replace(/\n/g, "") === "") &&
     draft.attachments.length === 0 &&
     comments.length === 0;
-  const sendable = written && !preparing && !connecting && (!isNew || starting.length > 0);
+  const sendable = written && !preparing && !connecting && !blockedAccess && (!isNew || starting.length > 0);
   const canSend = sendable && !needsFolder;
   /** A finished message waits only for a project: sending opens the project list rather than doing nothing. */
   const asksForProject = sendable && needsFolder;
@@ -929,7 +930,7 @@ export function Composer({
         ...(level ? { effort: level } : {}),
         ...(level && autoEffort ? { autoEffort } : {}),
         ...(pace ? { speed: pace } : {}),
-        access: isNew && target.mode === "chat" ? "readOnly" : access,
+        access,
         ...(worktree ? { worktree } : {}),
         ...(draft.start?.workspace
           ? { workspace: draft.start.workspace }
@@ -1151,7 +1152,8 @@ export function Composer({
       </Button>
     </Tooltip>
   );
-  const sendLabel = asksForProject ? "Choose a project first" : running ? "Send after this turn" : "Send";
+  const sendLabel =
+    blockedAccess ?? (asksForProject ? "Choose a project first" : running ? "Send after this turn" : "Send");
   const sendPops = turned || (running && sendPhase === "entering");
   // The glass can change rows as the draft clears. Send still fades from a full disc in the new row.
   const sendMotion = leavingSend
