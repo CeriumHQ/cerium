@@ -1,4 +1,4 @@
-import { query, type Options } from "@anthropic-ai/claude-agent-sdk";
+import type { Options } from "@anthropic-ai/claude-agent-sdk";
 import { HarnessFailure, type CompletionRequest } from "@cerium/harness";
 import { Effect } from "effect";
 
@@ -34,6 +34,7 @@ export const completeWithClaude = Effect.fn("ClaudeAdapter.complete")(function* 
 ) {
   return yield* Effect.tryPromise({
     try: async (signal) => {
+      const { query } = await import("@anthropic-ai/claude-agent-sdk");
       const abortController = new AbortController();
       signal.addEventListener("abort", () => abortController.abort(), { once: true });
       for await (const message of query({

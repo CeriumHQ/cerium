@@ -4,7 +4,7 @@ import { Effect, FileSystem, Option, Path, Schema } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import { INSTALL_HINT, LOGIN_COMMAND } from "./manifest.ts";
-import { connect } from "./rpc.ts";
+import { connect, type AppServer } from "./rpc.ts";
 
 const failure = (message: string) => (cause: unknown) =>
   new HarnessFailure({ provider: "codex", message, cause });
@@ -57,8 +57,7 @@ export const findCodexExecutable = Effect.gen(function* () {
 });
 
 /** Login state from the app-server, which reports the plan without starting a thread. */
-const readAuth = Effect.fn("CodexAdapter.readAuth")(function* (executablePath: string) {
-  const server = yield* connect(executablePath);
+export const readAuth = Effect.fn("CodexAdapter.readAuth")(function* (server: AppServer) {
   const response = yield* server
     .request("account/read", {})
     .pipe(Effect.mapError(failure("Could not read the Codex login state")));
@@ -74,7 +73,7 @@ const readAuth = Effect.fn("CodexAdapter.readAuth")(function* (executablePath: s
         : // Providers that need no OpenAI login (e.g. a local model provider) report no account.
           { _tag: "LoggedIn" };
   return auth;
-}, Effect.scoped);
+});
 
 export const probeCodex = Effect.gen(function* () {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
@@ -100,6 +99,6 @@ export const probeCodex = Effect.gen(function* () {
     provider: "codex",
     executablePath: executable.value,
     version,
-    auth: yield* readAuth(executable.value),
+    auth: yield* connect(executable.value).pipe(Effect.flatMap(readAuth), Effect.scoped),
   } satisfies HarnessStatus;
 });

@@ -1,3 +1,5 @@
+import { MEDIA_RANGE_RPC_VERSION } from "@cerium/rpc";
+import { drivenRpcVersionAtom } from "./atoms.ts";
 import type { FilesChanged } from "@cerium/rpc";
 import { Cause, Clock, Effect, Option, Schedule, Stream } from "effect";
 import { AsyncResult, Atom, type AtomRegistry } from "effect/reactivity";
@@ -130,6 +132,7 @@ export const mediaAtom = Atom.family((id: string) => {
       });
       // This computer's own files play from its backend as they load; another machine's come
       // over RPC, whole, before they show.
+      const rangeSupported = get(drivenRpcVersionAtom) >= MEDIA_RANGE_RPC_VERSION;
       const overRpc = Stream.unwrap(
         Backend.use((client) => Effect.succeed(client("ReadFileBytes", { root, path }))),
       ).pipe(
@@ -148,7 +151,7 @@ export const mediaAtom = Atom.family((id: string) => {
         ),
       );
       return Stream.unwrap(
-        Effect.map(localMediaUrl(root, path, version), (direct) =>
+        Effect.map(localMediaUrl(root, path, version, rangeSupported), (direct) =>
           direct === undefined ? overRpc : Stream.succeed<MediaLoad>({ received: 0, url: direct }),
         ),
       );

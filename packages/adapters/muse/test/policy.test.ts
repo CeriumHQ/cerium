@@ -10,7 +10,6 @@ import {
   ceriumEfforts,
   choiceOutcome,
   decisionOutcome,
-  fingerprintVerdict,
   isTrustedTool,
   pickApprovalChoice,
   runsSandboxed,
@@ -256,3 +255,5 @@ describe("fingerprintVerdict", () => {
     expect(fingerprintVerdict("other", "1.4.2")).toBe("incompatible");
   });
 });
+
+import { fingerprintVerdict } from "../src/fingerprint.ts";

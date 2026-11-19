@@ -1,9 +1,4 @@
-import {
-  getSessionMessages,
-  listSessions,
-  type SDKMessage,
-  type SessionMessage,
-} from "@anthropic-ai/claude-agent-sdk";
+import type { SDKMessage, SessionMessage } from "@anthropic-ai/claude-agent-sdk";
 import { HarnessFailure, type PastHistory, type PastSession, type PastTurn } from "@cerium/harness";
 import { Effect } from "effect";
 
@@ -19,7 +14,8 @@ const failure = (message: string) => (cause: unknown) =>
  * and so are those with no folder recorded: Claude Code resumes a session only in its own folder.
  */
 export const listClaudeSessions = Effect.tryPromise({
-  try: () => listSessions({ includeProgrammatic: false }),
+  try: async () =>
+    (await import("@anthropic-ai/claude-agent-sdk")).listSessions({ includeProgrammatic: false }),
   catch: failure("Could not list the Claude sessions"),
 }).pipe(
   Effect.map((sessions) =>
@@ -100,7 +96,11 @@ export const toPastHistory = (messages: ReadonlyArray<SessionMessage>): PastHist
 /** A Claude Code session's conversation, read from its transcript with the SDK. */
 export const readClaudeSession = Effect.fn("ClaudeAdapter.readSession")(function* (session: PastSession) {
   const messages = yield* Effect.tryPromise({
-    try: () => getSessionMessages(session.id, session.cwd === undefined ? {} : { dir: session.cwd }),
+    try: async () =>
+      (await import("@anthropic-ai/claude-agent-sdk")).getSessionMessages(
+        session.id,
+        session.cwd === undefined ? {} : { dir: session.cwd },
+      ),
     catch: failure("Could not read the Claude session"),
   });
   return toPastHistory(messages);

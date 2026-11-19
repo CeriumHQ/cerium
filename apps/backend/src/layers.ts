@@ -2,9 +2,9 @@ import { AntigravityAdapter } from "@cerium/adapter-antigravity";
 import { ClaudeAdapter } from "@cerium/adapter-claude";
 import { CodexAdapter } from "@cerium/adapter-codex";
 import { CopilotAdapter } from "@cerium/adapter-copilot";
-import { CursorAdapter } from "@cerium/adapter-cursor";
+import { CursorAdapter } from "@cerium/adapter-cursor/adapter";
 import { GrokAdapter } from "@cerium/adapter-grok";
-import { MuseAdapter } from "@cerium/adapter-muse";
+import { MuseAdapter } from "@cerium/adapter-muse/adapter";
 import { OpenCodeAdapter } from "@cerium/adapter-opencode";
 import { BrowserHost, BusHttpServer, BusRegistryLive, BusRoutes } from "@cerium/bus";
 import {
@@ -122,7 +122,7 @@ export const backendLayer = (options: BackendOptions) => {
     version: options.account?.device.version ?? "dev",
   }).pipe(Layer.provide(Ptys.layer), Layer.provide(threadEnvLayer));
 
-  return HttpRouter.serve(
+  const serving = HttpRouter.serve(
     Layer.mergeAll(
       BusRoutes,
       rpcRoutes(options.token),
@@ -144,7 +144,6 @@ export const backendLayer = (options: BackendOptions) => {
         Automations.layer({ file: join(options.dataDirectory, "automations.json") }).pipe(
           Layer.provideMerge(
             Layer.mergeAll(
-              limitWarnings,
               Pushes.layer({ file: join(options.dataDirectory, "pushes.json") }),
               // The reviews of a diff by another harness each thread holds.
               Reviews.layer({ file: join(options.dataDirectory, "reviews.json") }),
@@ -255,4 +254,6 @@ export const backendLayer = (options: BackendOptions) => {
       ),
       Layer.provideMerge(BusHttpServer),
     );
+  // Usage polling can start provider processes. Bind the listener before subscribing.
+  return limitWarnings.pipe(Layer.provideMerge(serving));
 };

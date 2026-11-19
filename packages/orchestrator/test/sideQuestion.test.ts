@@ -67,7 +67,11 @@ describe("Orchestrator side questions", () => {
       const { seen, waitFor } = yield* recordEvents;
       const { lead } = yield* startThread;
       yield* orchestrator.sendUserMessage(lead.id, "Fix the parser");
-      yield* waitFor((events) => events.find((event) => event.payload._tag === "SessionStarted"));
+      yield* waitFor((events) =>
+        events.some((e) => e.payload._tag === "SessionStarted") && fake.sessions[0]?.sent.length
+          ? true
+          : undefined,
+      );
       const before = seen.length;
 
       const answer = yield* orchestrator.askSideQuestion(lead.id, "What are you on?", []);

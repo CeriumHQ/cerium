@@ -1,10 +1,9 @@
-import {
-  query,
-  type FastModeDisabledReason,
-  type ModelInfo as SdkModelInfo,
-  type Options,
-  type Query,
-  type SDKUserMessage,
+import type {
+  FastModeDisabledReason,
+  ModelInfo as SdkModelInfo,
+  Options,
+  Query,
+  SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
 import { HarnessFailure } from "@cerium/harness";
 import type { ModelInfo } from "@cerium/protocol";
@@ -37,6 +36,7 @@ export const inspectClaude = <A>(
   use: (session: Query) => Promise<A>,
 ) =>
   Effect.gen(function* () {
+    const { query } = yield* Effect.promise(() => import("@anthropic-ai/claude-agent-sdk"));
     const input = yield* Queue.unbounded<SDKUserMessage, Cause.Done>();
     return yield* Effect.acquireUseRelease(
       Effect.sync(() =>

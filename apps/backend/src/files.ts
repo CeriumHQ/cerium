@@ -411,7 +411,11 @@ export class Files extends Context.Service<
     /** A file under `root` as the viewer shows it. */
     read(root: string, path: string): Effect.Effect<FilePreview, FilesError>;
     /** A media file's bytes under `root`, in pieces. */
-    readBytes(root: string, path: string): Stream.Stream<FileBytes, FilesError>;
+    readBytes(
+      root: string,
+      path: string,
+      range?: { readonly offset: number; readonly length: number },
+    ): Stream.Stream<FileBytes, FilesError>;
     /** Where a media file under `root` is on disk, its size and its type, for serving it in ranges. */
     media(
       root: string,
@@ -615,7 +619,11 @@ export class Files extends Context.Service<
         return { target: file.target, size: file.size, mediaType: kind.mediaType };
       });
 
-      const readBytes = (root: string, relative: string) =>
+      const readBytes = (
+        root: string,
+        relative: string,
+        range?: { readonly offset: number; readonly length: number },
+      ) =>
         Stream.unwrap(
           Effect.gen(function* () {
             const file = yield* fileAt(root, relative);
@@ -623,10 +631,15 @@ export class Files extends Context.Service<
               return yield* new FilesError({ message: "This file isn't on disk any more." });
             if (file.size > MAX_MEDIA_BYTES)
               return yield* new FilesError({ message: "This file is too large to open here." });
-            return fs.stream(file.target, { chunkSize: BYTES_CHUNK }).pipe(
-              Stream.mapError(refuse("That file couldn't be read.")),
-              Stream.map((chunk): FileBytes => ({ data: Buffer.from(chunk).toString("base64") })),
-            );
+            return fs
+              .stream(file.target, {
+                chunkSize: BYTES_CHUNK,
+                ...(range ? { offset: range.offset, bytesToRead: range.length } : {}),
+              })
+              .pipe(
+                Stream.mapError(refuse("That file couldn't be read.")),
+                Stream.map((chunk): FileBytes => ({ data: Buffer.from(chunk).toString("base64") })),
+              );
           }),
         );
 

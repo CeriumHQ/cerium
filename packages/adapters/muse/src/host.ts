@@ -1,5 +1,5 @@
 import { HarnessFailure } from "@cerium/harness";
-import { spawnMspConnection, type Connection, type SpawnedMspConnection } from "@muse-code/sdk";
+import type { Connection, SpawnedMspConnection } from "@muse-code/sdk";
 import type { ClientCapabilities } from "@muse-code/sdk/dist/src/msp.js";
 import { Effect } from "effect";
 
@@ -40,7 +40,8 @@ export interface HostOptions {
 /** Spawns `muse serve` and completes the handshake. The host closes with the enclosing scope. */
 export const openHost = (executablePath: string, args: ReadonlyArray<string>, options: HostOptions) =>
   Effect.acquireRelease(
-    Effect.suspend(() => {
+    Effect.gen(function* () {
+      const { spawnMspConnection } = yield* Effect.promise(() => import("@muse-code/sdk"));
       const stderr = new StderrTail();
       const handshake = spawnMspConnection({
         command: executablePath,
@@ -49,7 +50,7 @@ export const openHost = (executablePath: string, args: ReadonlyArray<string>, op
         onStderr: (chunk) => stderr.push(chunk),
         shutdownTimeoutMs: SHUTDOWN_DRAIN_MS,
       });
-      return Effect.tryPromise({
+      return yield* Effect.tryPromise({
         try: async () => {
           try {
             return await handshake.initialize({

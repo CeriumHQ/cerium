@@ -1162,7 +1162,7 @@ export class Store extends Context.Service<
             query(
               "Could not read cloud event page",
               db
-                .select(eventColumns)
+                .select({ id: events.id })
                 .from(events)
                 .where(
                   and(
@@ -1172,8 +1172,9 @@ export class Store extends Context.Service<
                   ),
                 )
                 .orderBy(sql`rowid`)
-                .limit(limit),
-            ).pipe(Effect.flatMap((rows) => Effect.forEach(rows, decodeEvent))),
+                .limit(limit)
+                .pipe(Effect.flatMap((rows) => compactEvents(rows.map((row) => row.id)))),
+            ),
           stopLiveAgents: query(
             "Could not stop live agents",
             db

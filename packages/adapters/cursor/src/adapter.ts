@@ -2,13 +2,9 @@ import { HarnessUnavailable, type HarnessAdapter, type SessionOptions } from "@c
 import { Cache, Context, Effect, Exit, FileSystem, Layer, Path, Stream } from "effect";
 import type { ChildProcessSpawner } from "effect/process";
 
-import { completeWithCursor } from "./complete.ts";
 import { makeCursorHub } from "./hub.ts";
-import { cursorLogin } from "./login.ts";
 import { cursorManifest } from "./manifest.ts";
 import { fetchModelCatalog, toModelInfo } from "./models.ts";
-import { makeCursorProbe } from "./probe.ts";
-import { startCursorSession } from "./session.ts";
 import { readCursorUsage } from "./usage.ts";
 
 export class CursorAdapter extends Context.Service<CursorAdapter, HarnessAdapter>()(
@@ -32,7 +28,10 @@ export class CursorAdapter extends Context.Service<CursorAdapter, HarnessAdapter
         timeToLive: (exit) => (Exit.isSuccess(exit) ? "10 minutes" : 0),
       });
       const catalog = Cache.get(catalogs, "models");
-      const probe = makeCursorProbe(catalog).pipe(Effect.provide(platform));
+      const probe = Effect.promise(() => import("./probe.ts")).pipe(
+        Effect.flatMap(({ makeCursorProbe }) => makeCursorProbe(catalog)),
+        Effect.provide(platform),
+      );
 
       /** Succeeds once the SDK is usable and can authenticate. */
       const ready = Effect.gen(function* () {
@@ -54,6 +53,7 @@ export class CursorAdapter extends Context.Service<CursorAdapter, HarnessAdapter
 
       const startSession = Effect.fn("CursorAdapter.startSession")(function* (options: SessionOptions) {
         yield* ready;
+        const { startCursorSession } = yield* Effect.promise(() => import("./session.ts"));
         return yield* startCursorSession(options, catalog);
       });
 
@@ -61,7 +61,7 @@ export class CursorAdapter extends Context.Service<CursorAdapter, HarnessAdapter
         provider: "cursor",
         manifest: cursorManifest,
         probe,
-        login: cursorLogin.pipe(
+        login: Stream.unwrap(Effect.promise(async () => (await import("./login.ts")).cursorLogin)).pipe(
           Stream.tap((step) =>
             step._tag === "SignedIn" ? Cache.invalidate(catalogs, "models") : Effect.void,
           ),
@@ -72,7 +72,8 @@ export class CursorAdapter extends Context.Service<CursorAdapter, HarnessAdapter
         ),
         complete: (request) =>
           readyForCompletion.pipe(
-            Effect.andThen(completeWithCursor(request, catalog)),
+            Effect.andThen(Effect.promise(() => import("./complete.ts"))),
+            Effect.flatMap(({ completeWithCursor }) => completeWithCursor(request, catalog)),
             Effect.provide(platform),
           ),
         startSession,

@@ -1,3 +1,4 @@
+import type { Query } from "@anthropic-ai/claude-agent-sdk";
 import { HarnessUnavailable, shareProbe, type HarnessAdapter, type SessionOptions } from "@cerium/harness";
 import { Context, Effect, FileSystem, Layer, Path } from "effect";
 import { ChildProcessSpawner } from "effect/process";
@@ -48,8 +49,9 @@ export class ClaudeAdapter extends Context.Service<ClaudeAdapter, HarnessAdapter
         return status.executablePath;
       });
 
+      const liveSessions = new Set<Query>();
       const startSession = Effect.fn("ClaudeAdapter.startSession")(function* (options: SessionOptions) {
-        return probes.watchSignIn(yield* startClaudeSession(yield* ready, options), SIGNED_OUT);
+        return probes.watchSignIn(yield* startClaudeSession(yield* ready, options, liveSessions), SIGNED_OUT);
       });
 
       return ClaudeAdapter.of({
@@ -59,7 +61,9 @@ export class ClaudeAdapter extends Context.Service<ClaudeAdapter, HarnessAdapter
         listModels: ready.pipe(Effect.flatMap(listClaudeModels)),
         listSkills: (cwd) =>
           ready.pipe(Effect.flatMap((executablePath) => listClaudeSkills(executablePath, cwd))),
-        usage: ready.pipe(Effect.flatMap(readClaudeUsage)),
+        usage: ready.pipe(
+          Effect.flatMap((path) => readClaudeUsage(path, liveSessions.values().next().value)),
+        ),
         complete: (request) =>
           ready.pipe(Effect.flatMap((executablePath) => completeWithClaude(executablePath, request))),
         fork: forkClaudeSession,

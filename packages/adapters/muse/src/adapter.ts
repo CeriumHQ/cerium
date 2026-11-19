@@ -8,12 +8,10 @@ import {
 import { Context, Effect, FileSystem, Layer, Path, Stream } from "effect";
 import { ChildProcessSpawner } from "effect/process";
 
-import { completeWithMuse } from "./complete.ts";
 import { INSTALL_HINT, LOGIN_COMMAND, museManifest } from "./manifest.ts";
 import { listMuseModels } from "./models.ts";
 import { limitInstructions, limitNotice, sandboxInstructions, sandboxNotice } from "./policy.ts";
 import { probeMuse } from "./probe.ts";
-import { startMuseSession } from "./session.ts";
 import { listMuseSessions, readMuseSession } from "./sessions.ts";
 
 const SIGNED_OUT = `Muse Code is not logged in. Run \`${LOGIN_COMMAND}\`.`;
@@ -52,6 +50,7 @@ export class MuseAdapter extends Context.Service<MuseAdapter, HarnessAdapter>()(
 
       const startSession = Effect.fn("MuseAdapter.startSession")(function* (options: SessionOptions) {
         const { executablePath: executable, setup, limit } = yield* ready;
+        const { startMuseSession } = yield* Effect.promise(() => import("./session.ts"));
         // Commands in this mode would fail, until the sandbox is set up or for as long as Muse can't
         // sandbox them here: tell the agent and the user.
         const blocked = setup?.blocks.includes(options.access)
@@ -83,7 +82,13 @@ export class MuseAdapter extends Context.Service<MuseAdapter, HarnessAdapter>()(
         probe: probes.fresh,
         listModels: ready.pipe(Effect.flatMap((status) => listMuseModels(status.executablePath))),
         complete: (request) =>
-          ready.pipe(Effect.flatMap((status) => completeWithMuse(status.executablePath, request))),
+          ready.pipe(
+            Effect.flatMap((status) =>
+              Effect.promise(() => import("./complete.ts")).pipe(
+                Effect.flatMap(({ completeWithMuse }) => completeWithMuse(status.executablePath, request)),
+              ),
+            ),
+          ),
         listSessions: ready.pipe(Effect.flatMap((status) => listMuseSessions(status.executablePath))),
         readSession: (session) =>
           ready.pipe(Effect.flatMap((status) => readMuseSession(status.executablePath, session))),

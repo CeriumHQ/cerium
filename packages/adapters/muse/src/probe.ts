@@ -1,6 +1,5 @@
 import { findOnPath, HarnessFailure, parseVersion } from "@cerium/harness";
 import type { AuthStatus, HarnessStatus } from "@cerium/protocol";
-import { MspError } from "@muse-code/sdk";
 import { Effect, FileSystem, Option, Path, Schema } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
@@ -68,6 +67,7 @@ export const readMuseHost = Effect.fn("MuseAdapter.readHost")(function* (executa
 }, Effect.scoped);
 
 const readAuth = Effect.fn("MuseAdapter.readAuth")(function* (host: MuseHost) {
+  const { MspError } = yield* Effect.promise(() => import("@muse-code/sdk"));
   const account = yield* query(host, "account/read").pipe(
     Effect.flatMap(Schema.decodeUnknownEffect(AccountState)),
     Effect.asSome,

@@ -13,7 +13,7 @@ import { createContext, useContext, useState, type ComponentProps, type ReactNod
 import { FileIcon } from "../../components/FileIcon.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { LineText } from "../viewer/CodeView.tsx";
-import { useHighlight } from "../viewer/highlight.ts";
+import { useHighlightRange, useHighlightSource } from "../viewer/highlight.ts";
 import { Artifact } from "./Artifact.tsx";
 import { CopyButton } from "./CopyButton.tsx";
 import { codePreview, fenceText } from "./markdownBlocks.ts";
@@ -270,16 +270,18 @@ export function FencedCode({
 }) {
   const [expanded, setExpanded] = useState(false);
   const drawn = language === "mermaid" || language === "math";
-  const highlighted = useHighlight(
-    unfinished || language === "" || drawn ? undefined : text,
-    `snippet.${language}`,
-  );
   const bounded = unfinished ? codePreview(text) : text;
   const preview = raw ? fenceText(bounded, indent) : bounded;
-  if (language === ARTIFACT_LANGUAGE) return <Artifact code={preview} isIncomplete={unfinished} />;
   const lines = preview.split("\n");
   const folds = !unfinished && lines.length > FOLDED_LINES + FOLD_SLACK;
   const shown = folds && !expanded ? lines.slice(0, FOLDED_LINES) : lines;
+  // A folded block only ever draws its first lines: leave the rest of a long snippet unhighlighted.
+  const highlighted = useHighlightRange(
+    useHighlightSource(unfinished || language === "" || drawn ? undefined : text, `snippet.${language}`),
+    0,
+    shown.length,
+  );
+  if (language === ARTIFACT_LANGUAGE) return <Artifact code={preview} isIncomplete={unfinished} />;
   const diff = language === "diff" || language === "patch";
   const name = LANGUAGE_NAMES[language] ?? language;
   const view = (note?: string) => (

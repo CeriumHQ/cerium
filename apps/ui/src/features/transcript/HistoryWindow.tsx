@@ -34,7 +34,9 @@ export function HistoryWindow<A extends { readonly id: string }>({
   items: ReadonlyArray<A>;
   viewport: RefObject<HTMLDivElement | null>;
   render: (item: A) => ReactNode;
-  history?: Pick<ThreadHistory, "more" | "loadOlder" | "pageRevision" | "loadError"> | undefined;
+  history?:
+    | Pick<ThreadHistory, "more" | "loadOlder" | "pageRevision" | "loadError" | "skipped" | "fillGaps">
+    | undefined;
   following?: boolean;
   contains?: ((item: A, id: string) => boolean) | undefined;
   onReveal?: (() => void) | undefined;
@@ -130,6 +132,11 @@ export function HistoryWindow<A extends { readonly id: string }>({
     <>
       {history?.loadError ? (
         <output className="self-center text-meta text-fg-secondary">{history.loadError}</output>
+      ) : null}
+      {history?.skipped && history.fillGaps ? (
+        <Button className={button} onClick={history.fillGaps}>
+          Tool activity is skipped in part of this jump · Load it
+        </Button>
       ) : null}
       {start > 0 || history?.more ? (
         <Button className={button} disabled={loading} onClick={earlier}>
