@@ -7,7 +7,7 @@ export const palettes: Readonly<Record<string, string>> = {
   amber: "oklch(0.8 0.13 70)",
   uranium: "oklch(0.89 0.19 123)",
   seaglass: "oklch(0.86 0.09 180)",
-  cobalt: "oklch(0.66 0.19 264)",
+  cobalt: "oklch(0.7 0.17 264)",
   cranberry: "oklch(0.77 0.13 356)",
 };
 

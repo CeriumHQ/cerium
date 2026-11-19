@@ -159,7 +159,7 @@
   margin: 0;
 }
 
-@media (max-width: 860px) {
+@media (max-width: 900px) {
   .policy {
     grid-template-columns: 1fr;
   }

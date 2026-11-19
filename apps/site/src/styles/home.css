@@ -179,7 +179,7 @@
   }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 720px) {
   .hero {
     min-height: 700px;
   }

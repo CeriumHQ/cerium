@@ -17,25 +17,25 @@
   --void-deep: oklch(0.095 var(--glass-c) var(--tint-h));
   --fg: oklch(0.965 calc(var(--tint-c) * 0.4) var(--tint-h));
   --fg-2: oklch(0.79 calc(var(--tint-c) * 0.8) var(--tint-h));
-  --fg-3: oklch(0.62 calc(var(--tint-c) * 1) var(--tint-h));
+  --fg-3: oklch(0.66 calc(var(--tint-c) * 1) var(--tint-h));
 
   /* The app's light films, raised off the glass by lightening it. */
   --film: oklch(0.97 var(--glass-c) var(--tint-h) / 0.045);
-  --film-2: oklch(0.97 var(--glass-c) var(--tint-h) / 0.085);
+  --film-2: oklch(0.97 var(--glass-c) var(--tint-h) / 0.08);
   --film-3: oklch(0.97 var(--glass-c) var(--tint-h) / 0.13);
-  --line: oklch(1 0 0 / 0.08);
-  --line-2: oklch(1 0 0 / 0.15);
+  --line: oklch(1 0 0 / 0.07);
+  --line-2: oklch(1 0 0 / 0.14);
   --rim: 0 1px 0 oklch(1 0 0 / 0.09) inset;
 
-  --accent: oklch(0.96 0 0);
-  --accent-fg: oklch(0.16 0 0);
+  --accent: oklch(0.95 0 0);
+  --accent-fg: oklch(0.17 0 0);
 
   /* The spectrum, red to blue: the five tinted glasses Cerium ships beside its clear one. */
   --sp-cranberry: oklch(0.74 0.15 356);
   --sp-amber: oklch(0.81 0.14 68);
   --sp-uranium: oklch(0.89 0.19 123);
   --sp-seaglass: oklch(0.85 0.1 182);
-  --sp-cobalt: oklch(0.68 0.19 264);
+  --sp-cobalt: oklch(0.7 0.17 264);
 
   --font-display: "Anybody Variable", "Red Hat Text Variable", sans-serif;
   --font-text: "Red Hat Text Variable", ui-sans-serif, system-ui, sans-serif;
@@ -68,7 +68,7 @@
   --tint-c: 0.02;
   --glass-c: 0.035;
   --accent: oklch(0.86 0.09 180);
-  --accent-fg: oklch(0.2 0.04 190);
+  --accent-fg: oklch(0.24 0.04 195);
 }
 [data-palette="cobalt"] {
   --tint-h: 266;
@@ -82,7 +82,7 @@
   --tint-c: 0.026;
   --glass-c: 0.045;
   --accent: oklch(0.77 0.13 356);
-  --accent-fg: oklch(0.2 0.05 355);
+  --accent-fg: oklch(0.21 0.05 355);
 }
 
 *,
@@ -136,7 +136,7 @@ a {
 
 :focus-visible {
   outline: 2px solid color-mix(in oklab, var(--accent) 70%, transparent);
-  outline-offset: 3px;
+  outline-offset: 2px;
   border-radius: 6px;
 }
 

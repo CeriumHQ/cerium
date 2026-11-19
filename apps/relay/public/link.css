@@ -29,19 +29,19 @@
   --backdrop-deep: oklch(0.095 0.012 250);
   /* The app's light films, raised off the glass by lightening it. */
   --film: oklch(0.97 0.012 250 / 0.045);
-  --film-2: oklch(0.97 0.012 250 / 0.085);
+  --film-2: oklch(0.97 0.012 250 / 0.08);
   --rim: 0 1px 0 oklch(1 0 0 / 0.09) inset;
   --surface-raised: oklch(0.2 0.006 250);
   --surface-sunken: oklch(0 0 0 / 0.22);
   --surface-hover: oklch(1 0 0 / 0.05);
-  --line-subtle: oklch(1 0 0 / 0.08);
-  --line-strong: oklch(1 0 0 / 0.15);
+  --line-subtle: oklch(1 0 0 / 0.07);
+  --line-strong: oklch(1 0 0 / 0.14);
   --fg-primary: oklch(0.965 0.002 250);
   --fg-secondary: oklch(0.79 0.005 250);
-  --fg-tertiary: oklch(0.62 0.006 250);
-  --accent: oklch(0.96 0 0);
+  --fg-tertiary: oklch(0.66 0.006 250);
+  --accent: oklch(0.95 0 0);
   --accent-strong: oklch(1 0 0);
-  --accent-fg: oklch(0.16 0 0);
+  --accent-fg: oklch(0.17 0 0);
   --focus-ring: oklch(1 0 0 / 0.55);
   --status-attention: oklch(0.83 0.15 78);
   --status-error: oklch(0.7 0.19 25);
@@ -69,18 +69,18 @@
     --surface-raised: oklch(0.995 0 0);
     --surface-sunken: oklch(0.2 0.01 250 / 0.04);
     --surface-hover: oklch(0 0 0 / 0.04);
-    --line-subtle: oklch(0 0 0 / 0.08);
+    --line-subtle: oklch(0 0 0 / 0.1);
     --line-strong: oklch(0 0 0 / 0.14);
     --fg-primary: oklch(0.18 0.006 250);
     --fg-secondary: oklch(0.38 0.006 250);
-    --fg-tertiary: oklch(0.54 0.006 250);
+    --fg-tertiary: oklch(0.51 0.006 250);
     --accent: oklch(0.2 0 0);
     --accent-strong: oklch(0.1 0 0);
     --accent-fg: oklch(0.98 0 0);
     --focus-ring: oklch(0 0 0 / 0.5);
-    --status-attention: oklch(0.62 0.16 65);
+    --status-attention: oklch(0.68 0.16 65);
     --status-error: oklch(0.56 0.21 25);
-    --status-success: oklch(0.55 0.15 152);
+    --status-success: oklch(0.58 0.15 152);
     --shadow-panel: 0 40px 80px -40px oklch(0.3 0.02 250 / 0.3);
     --spectrum-1: oklch(0.62 0.19 356);
     --spectrum-2: oklch(0.72 0.16 64);
@@ -360,7 +360,7 @@ body {
 
 :focus-visible {
   outline: 2px solid var(--focus-ring);
-  outline-offset: 3px;
+  outline-offset: 2px;
 }
 
 /* Saying no to an assistant, under the button that allows it. */
