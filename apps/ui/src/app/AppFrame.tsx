@@ -238,6 +238,8 @@ function DesktopFrame({
   // the panel is there (until it has slid out), rather than let the panel cover the transcript and its
   // message box. The panel's own button brings the sidebar back by closing the panel.
   const sidebarYields = withSidebar.foldsSidebar && inspectorPhase !== "gone";
+  // The sidebar yields at the same pace as the inspector takes its place.
+  const inspectorEnter = "duration-300 ease-out-soft";
   const showSidebar = wantSidebar && !sidebarYields;
   const { sidebarWidth, sidebarMax, sidebarSpace, floating, inspectorWidth, inspectorMax } = sidebarYields
     ? panelLayout(bodyWidth, saved, false, sideSpec, sidebarMin)
@@ -294,7 +296,9 @@ function DesktopFrame({
             inert={!showSidebar}
             style={{ width: sidebarSpace }}
             className={`shrink-0 overflow-hidden ${
-              dragging === "sidebar" ? "" : "transition-[width,opacity] duration-200 ease-out-soft"
+              dragging === "sidebar"
+                ? ""
+                : `transition-[width,opacity] ${sidebarYields ? inspectorEnter : "duration-200 ease-out-soft"}`
             } ${showSidebar ? "opacity-100" : "opacity-0"}`}
           >
             <div className="h-full" style={{ width: sidebarWidth - GUTTER }}>
@@ -397,22 +401,22 @@ function DesktopFrame({
             ) : (
               <>
                 {showInspector ? <div className="relative w-0 shrink-0">{inspectorHandle}</div> : null}
-                {/* Slides out from under the window's edge as the transcript gives way, and back
-                    under it; the panel keeps its width meanwhile, so its rows don't reflow. */}
+                {/* The panel keeps its width and gutter inside the fold, so its rows don't reflow
+                    and the transcript resizes all the way to the edge. */}
                 <div
                   ref={inspector}
                   data-phase={inspectorPhase}
                   inert={!showInspector}
                   style={{ "--side": `${inspectorWidth + GUTTER}px` } as CSSProperties}
-                  className={`flex w-(--side) shrink-0 overflow-clip pl-1.5 data-[phase=shown]:overflow-visible data-[phase=entering]:starting:w-0 data-[phase=entering]:starting:opacity-0 data-[phase=leaving]:w-0 data-[phase=leaving]:opacity-0 ${
+                  className={`flex w-(--side) shrink-0 overflow-clip data-[phase=shown]:overflow-visible data-[phase=entering]:starting:w-0 data-[phase=entering]:starting:opacity-0 data-[phase=leaving]:w-0 data-[phase=leaving]:opacity-0 ${
                     dragging === "inspector"
                       ? ""
-                      : "transition-[width,opacity] duration-300 ease-out-soft data-[phase=leaving]:duration-200 data-[phase=leaving]:ease-in-soft"
+                      : `transition-[width,opacity] ${inspectorEnter} data-[phase=leaving]:duration-200 data-[phase=leaving]:ease-in-soft`
                   }`}
                 >
                   <aside
                     style={{ width: inspectorWidth }}
-                    className="shrink-0 overflow-hidden rounded-xl border border-line-subtle bg-surface-pane shadow-raised"
+                    className="ml-1.5 shrink-0 overflow-hidden rounded-xl border border-line-subtle bg-surface-pane shadow-raised"
                   >
                     <SidePanelContext value={{ floating: false, close: onCloseSide }}>
                       {shownSide ? (
