@@ -1,0 +1,36 @@
+Run from the repository root:
+CERIUM_ANTIGRAVITY_LIVE=1 bun run test --run packages/adapters/antigravity/test
+
+Fixture: a subprocess replay of ACP plus an opt-in signed-in agy session with a loopback HTTP MCP server.
+Expected: three fixture tests and one live test pass. The live agent reads an approved fixture value and recalls it after resume.
+
+$ vp test --run packages/adapters/antigravity/test
+
+ RUN  v5.0.5 /Users/looped/Projects/apps/cerium
+
+stdout | packages/adapters/antigravity/test/live.test.ts > Installed Antigravity CLI > uses the installed CLI to call an injected MCP tool and resume its conversation
+Installed CLI 1.5.12 catalog size 9 model gemini-3.8-flash
+
+stdout | packages/adapters/antigravity/test/live.test.ts > Installed Antigravity CLI > uses the installed CLI to call an injected MCP tool and resume its conversation
+ACP events SessionStarted ContextReported ContextReported ToolCallStarted PermissionRequested PermissionResolved ToolCallCompleted MessageDelta MessageDelta MessageDelta MessageDelta MessageDelta ContextReported MessageCompleted UsageReported TurnCompleted
+Local fixture MCP calls server/discover initialize notifications/initialized tools/list notifications/roots/list_changed notifications/roots/list_changed tools/call
+
+stdout | packages/adapters/antigravity/test/live.test.ts > Installed Antigravity CLI > uses the installed CLI to call an injected MCP tool and resume its conversation
+ACP events SessionStarted MessageDelta MessageDelta MessageDelta MessageDelta ContextReported MessageCompleted UsageReported TurnCompleted
+
+
+ Test Files  2 passed (2)
+      Tests  4 passed (4)
+   Start at  07:12:40
+   Duration  14.34s (tests 97%, import 2%)
+
+
+Shared live-check
+bun run live-check --providers=antigravity --access=ask --prompt='Reply CERIUM_OK without tools.' --expect-reply=CERIUM_OK --timeout=30
+Observed: the adapter was found and listed models. Session setup failed before prompting because the shared live-check requests includeUserMcpServers: false and Antigravity loads configured MCP servers.
+
+Package checks
+bun x --no-install tsc --noEmit -p packages/adapters/antigravity --pretty false
+node_modules/.bin/vp lint packages/adapters/antigravity --type-aware --deny-warnings
+node_modules/.bin/vp fmt packages/adapters/antigravity --check
+Observed: all passed.

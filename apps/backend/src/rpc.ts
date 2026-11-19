@@ -31,6 +31,7 @@ import {
   actionListProblem,
   CeriumError,
   CeriumRpcs,
+  HARNESS_PROVIDERS_HEADER,
   MachineRpcs,
   type GitError,
   type GitHubStatus,
@@ -404,10 +405,17 @@ export const Handlers = MachineRpcs.toLayer(
       WorktreeChanges: ({ threadId }) => orchestrator.worktreeChanges(threadId).pipe(Effect.mapError(refuse)),
       SearchThreads: ({ query, mode }) =>
         store.searchMessages(query, { mode, limit: THREAD_SEARCH_LIMIT }).pipe(Effect.mapError(refuse)),
-      HarnessStatuses: () =>
-        Effect.forEach([...adapters.values()], (adapter) => Effect.option(described(adapter)), {
-          concurrency: "unbounded",
-        }).pipe(Effect.map((statuses) => statuses.flatMap(Option.toArray))),
+      HarnessStatuses: (_, { headers }) => {
+        // Earlier viewers decode the entire array strictly and only recognize the original five.
+        const known = new Set(
+          (headers[HARNESS_PROVIDERS_HEADER] ?? "claude,codex,muse,cursor,opencode").split(","),
+        );
+        return Effect.forEach(
+          [...adapters.values()].filter((adapter) => known.has(adapter.provider)),
+          (adapter) => Effect.option(described(adapter)),
+          { concurrency: "unbounded" },
+        ).pipe(Effect.map((statuses) => statuses.flatMap(Option.toArray)));
+      },
       // Viewers before `RPC_VERSION` 20 read a tested range, which no version falls outside.
       HarnessManifests: () =>
         Effect.succeed(

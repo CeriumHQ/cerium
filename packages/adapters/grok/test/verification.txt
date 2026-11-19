@@ -1,0 +1,32 @@
+Grok Build ACP verification
+
+Run from the Cerium repo root. The live check uses the local Grok CLI login, a temporary
+marker file, and a loopback HTTP MCP server. The approved command changes only the marker's
+mode. The fixture check runs the adapter against a scripted Grok ACP process without an account.
+
+$ node packages/adapters/grok/test/live.ts
+PASS probe and model catalog 1.0.70 grok-4.7 [ 'low', 'medium', 'high', 'xhigh' ]
+Grok ACP session opened
+HTTP MCP catalog requested
+TOOL run_terminal_cmd
+DENY run_terminal_cmd
+PASS streamed reply, denied shell command, and turn usage
+TOOL run_terminal_cmd
+ALLOW run_terminal_cmd
+PASS one scoped approval ran the exact shell command
+TOOL search_tool
+TOOL use_tool
+PASS injected trusted HTTP MCP tool
+HTTP MCP catalog requested
+PASS cold resume retained history and Cerium instructions
+TOOL Web search:
+TOOL Web search:
+PASS read-only resume withheld the shell
+
+$ bun run test --run packages/adapters/grok/test/grok.test.ts
+Test Files  1 passed (1)
+Tests       1 passed (1)
+
+The fixture asserts local auth and signed-out status, model and effort selection, image
+encoding, MCP injection, streamed events and usage, one-time approvals including a missing
+allow-once option, cancellation while awaiting permission, cold resume, and process exit.

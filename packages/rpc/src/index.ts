@@ -110,6 +110,9 @@ export * from "./terminal.ts";
 export const RPC_VERSION = 51;
 export const SCOPED_EVENTS_RPC_VERSION = 50;
 
+/** Status readers send the provider ids their schema can decode. */
+export const HARNESS_PROVIDERS_HEADER = "x-cerium-harness-providers";
+
 /** Which of a harness's own commands `RunHarnessCommand` runs. */
 export const HarnessCommand = Schema.Literals(["login", "update"]);
 export type HarnessCommand = typeof HarnessCommand.Type;
@@ -547,7 +550,7 @@ export const MachineRpcs = RpcGroup.make(
     success: Schema.Array(ThreadMatch),
     error: CeriumError,
   }),
-  Rpc.make("HarnessStatuses", { success: Schema.Array(HarnessStatus) }),
+  Rpc.make("HarnessStatuses", { success: LenientArray(HarnessStatus) }),
   /** What each installed adapter's harness can do; ones this version can't read are skipped. */
   Rpc.make("HarnessManifests", { success: LenientArray(CapabilityManifest) }),
   /**

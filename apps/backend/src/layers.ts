@@ -1,6 +1,9 @@
+import { AntigravityAdapter } from "@cerium/adapter-antigravity";
 import { ClaudeAdapter } from "@cerium/adapter-claude";
 import { CodexAdapter } from "@cerium/adapter-codex";
+import { CopilotAdapter } from "@cerium/adapter-copilot";
 import { CursorAdapter } from "@cerium/adapter-cursor";
+import { GrokAdapter } from "@cerium/adapter-grok";
 import { MuseAdapter } from "@cerium/adapter-muse";
 import { OpenCodeAdapter } from "@cerium/adapter-opencode";
 import { BrowserHost, BusHttpServer, BusRegistryLive, BusRoutes } from "@cerium/bus";
@@ -87,6 +90,9 @@ export const AdaptersLive = Layer.effect(
       yield* MuseAdapter,
       yield* CursorAdapter,
       yield* OpenCodeAdapter,
+      yield* AntigravityAdapter,
+      yield* CopilotAdapter,
+      yield* GrokAdapter,
     ];
     return new Map(adapters.map((adapter) => [adapter.provider, adapter]));
   }),
@@ -98,6 +104,9 @@ export const AdaptersLive = Layer.effect(
       MuseAdapter.layer,
       CursorAdapter.layer,
       OpenCodeAdapter.layer,
+      AntigravityAdapter.layer,
+      CopilotAdapter.layer,
+      GrokAdapter.layer,
     ),
   ),
 );

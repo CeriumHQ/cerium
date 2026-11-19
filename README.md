@@ -25,8 +25,8 @@
   <img alt="Works with OpenCode" src="https://img.shields.io/badge/OpenCode-211e1e?style=for-the-badge&logo=data:image/svg%2bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0id2hpdGUiIGZpbGwtcnVsZT0iZXZlbm9kZCIgZD0iTTE2IDZIOHYxMmg4VjZ6bTQgMTZINFYyaDE2djIweiIvPjwvc3ZnPg==" />
 </p>
 
-Ask once. A lead agent splits the job across Claude Code, Codex, Cursor, OpenCode and Muse Code, the
-helpers work in parallel and talk to each other, and you get one answer back.
+Ask once. A lead agent splits the job across your installed coding harnesses. Its helpers work in
+parallel and talk to each other, and you get one answer back.
 
 [**Download**](https://github.com/CeriumHQ/cerium/releases/latest) ·
 [Website](https://cerium.nonlooped.xyz) ·
@@ -104,21 +104,27 @@ push". Your phone hears about it when it's done.
 
 ## Your harnesses, on your plans
 
-Each agent is the real harness, driven through its official SDK on your own subscription. Cerium
+Each agent runs through the harness's local CLI or SDK on your own account. Cerium
 starts each harness's own sign-in and never reads its tokens or keys.
 
-| Harness         | Driven through                                      | Sign in                  |
-| --------------- | --------------------------------------------------- | ------------------------ |
-| **Claude Code** | Claude Agent SDK, running your installed `claude`   | `claude` login           |
-| **Codex**       | `codex app-server`, with types from your install    | `codex login`            |
-| **Muse Code**   | `@muse-code/sdk`, over a private `muse serve`       | `muse login`             |
-| **Cursor**      | `@cursor/sdk`, running Cursor's agent locally       | Cursor's browser sign-in |
-| **OpenCode**    | `@opencode/client`, over a private `opencode serve` | `opencode auth login`    |
+| Harness            | Driven through                                      | Sign in                  |
+| ------------------ | --------------------------------------------------- | ------------------------ |
+| **Claude Code**    | Claude Agent SDK, running your installed `claude`   | `claude` login           |
+| **Codex**          | `codex app-server`, with types from your install    | `codex login`            |
+| **Muse Code**      | `@muse-code/sdk`, over a private `muse serve`       | `muse login`             |
+| **Cursor**         | `@cursor/sdk`, running Cursor's agent locally       | Cursor's browser sign-in |
+| **OpenCode**       | `@opencode/client`, over a private `opencode serve` | `opencode auth login`    |
+| **Antigravity**    | Antigravity CLI over ACP (`agy acp`)                | `agy acp --login`        |
+| **GitHub Copilot** | Copilot CLI over JSON-RPC on stdio                  | `copilot login`          |
+| **Grok Build**     | xAI's Grok Build CLI over ACP                       | `grok login`             |
 
 Install any of them and sign in as usual; Cerium finds them. OpenCode's free models need no sign-in.
+Antigravity requires CLI 1.5.0 or newer and runs work threads with the user's MCP configuration enabled.
+Its CLI cannot enforce read-only access, so it is unavailable for chat threads. Cerium directs Antigravity to delegate through the bus, though the CLI does not offer a switch to disable its native subagents.
+GitHub Copilot uses manual approval prompts in Auto mode.
 On Windows, Muse runs commands with Full access only for now: `muse serve` can't sandbox them there.
 Cerium is an independent project, not affiliated with or endorsed by Anthropic, OpenAI, Meta,
-Anysphere or Anomaly.
+Anysphere, Anomaly, Google, GitHub or xAI.
 
 <details>
 <summary><b>How it works</b></summary>
@@ -134,7 +140,10 @@ flowchart LR
   Backend --> Muse["Muse Code"]
   Backend --> Cursor["Cursor"]
   Backend --> OpenCode["OpenCode"]
-  Claude & Codex & Muse & Cursor & OpenCode <-. "MCP bus:<br/>spawn, message, stop" .-> Backend
+  Backend --> Antigravity["Antigravity"]
+  Backend --> Copilot["GitHub Copilot"]
+  Backend --> Grok["Grok Build"]
+  Claude & Codex & Muse & Cursor & OpenCode & Antigravity & Copilot & Grok <-. "MCP bus:<br/>spawn, message, stop" .-> Backend
 ```
 
 Adapters translate each harness's stream into one event schema, stored as an append-only log. Cerium

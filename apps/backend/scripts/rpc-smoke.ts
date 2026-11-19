@@ -2,7 +2,8 @@
 //
 // Usage: node apps/backend/scripts/rpc-smoke.ts   (after `bun run dev:backend`)
 
-import { CeriumRpcs } from "@cerium/rpc";
+import { OFFERED_PROVIDERS } from "@cerium/protocol";
+import { CeriumRpcs, HARNESS_PROVIDERS_HEADER } from "@cerium/rpc";
 import { NodeRuntime, NodeSocket } from "@effect/platform-node";
 import { Console, Effect, Layer } from "effect";
 import { RpcClient, RpcSerialization } from "effect/rpc";
@@ -17,7 +18,9 @@ const program = Effect.gen(function* () {
   const client = yield* RpcClient.make(CeriumRpcs);
   const threads = yield* client.ListThreads();
   yield* Console.log(`threads: ${threads.length}`);
-  for (const status of yield* client.HarnessStatuses()) {
+  for (const status of yield* client.HarnessStatuses(undefined, {
+    headers: { [HARNESS_PROVIDERS_HEADER]: OFFERED_PROVIDERS.join(",") },
+  })) {
     yield* Console.log(
       status._tag === "HarnessInstalled"
         ? `${status.provider}: ${status.version} ${status.latestVersion === undefined ? "" : ` (${status.latestVersion} available)`}, ${status.auth._tag}`

@@ -17,7 +17,7 @@ export const watchBackendActivity = (options: {
   readonly previews: (threads: ReadonlyArray<PreviewThread>) => void;
   readonly browser: (call: BrowserCall) => Promise<BrowserOutcome>;
 }) =>
-  Effect.runFork(
+  Effect.runPromiseExit(
     Effect.tryPromise(options.connection).pipe(
       Effect.flatMap(({ url, token }) =>
         Effect.gen(function* () {
@@ -82,4 +82,4 @@ export const watchBackendActivity = (options: {
       Effect.retry(Schedule.spaced("1 second")),
     ),
     { signal: options.signal },
-  );
+  ).then(() => undefined);

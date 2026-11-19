@@ -32,6 +32,15 @@
       "path": "./packages/account"
     },
     {
+      "path": "./packages/adapters/antigravity"
+    },
+    {
+      "path": "./packages/adapters/copilot"
+    },
+    {
+      "path": "./packages/adapters/grok"
+    },
+    {
       "path": "./packages/adapters/claude"
     },
     {

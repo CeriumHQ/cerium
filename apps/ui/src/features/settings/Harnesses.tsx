@@ -1,5 +1,11 @@
 import { Button } from "@base-ui/react/button";
-import { OFFERED_PROVIDERS, type HarnessSetup, type HarnessStatus, type ProviderId } from "@cerium/protocol";
+import {
+  harnessName,
+  OFFERED_PROVIDERS,
+  type HarnessSetup,
+  type HarnessStatus,
+  type ProviderId,
+} from "@cerium/protocol";
 import type { CommandTerminal, HarnessCommand } from "@cerium/rpc";
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
@@ -21,14 +27,7 @@ import { useHarnessUpdates, type HarnessUpdate } from "./harnessUpdates.ts";
 import { SettingsNote, SettingsPage } from "./parts.tsx";
 import { InstalledMenu, RowButton, RowLink, ToolRow } from "./ToolRow.tsx";
 
-/** Each provider's harness by the name its makers give it. */
-export const harnessName: Record<ProviderId, string> = {
-  claude: "Claude Code",
-  codex: "Codex",
-  muse: "Muse Code",
-  cursor: "Cursor",
-  opencode: "OpenCode",
-};
+export { harnessName };
 
 type Installed = Extract<HarnessStatus, { _tag: "HarnessInstalled" }>;
 

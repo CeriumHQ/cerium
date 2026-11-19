@@ -37,6 +37,8 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Added
 
+- Antigravity, GitHub Copilot and xAI Grok Build join the coding harnesses you can use in a Cerium thread. Each runs locally with its own sign-in.
+
 - Archiving a single thread from the inbox offers Undo at the foot of the list.
 - Composer autocomplete is a beta feature enabled by default. It suggests a short follow-up when the open thread’s lead finishes with a clear next step. Press Tab in the empty composer to edit the suggestion, or type your own message. Suggestions use the thread’s current model.
 
