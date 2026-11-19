@@ -5,6 +5,8 @@ import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } fro
 import type { PreviewBounds, PreviewBridge } from "../../backend/shell.ts";
 import { IconButton } from "../../components/ui/IconButton.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
+import { viewportWidths, type PreviewViewport as Viewport } from "@cerium/browser/inspector";
+import { PreviewNotice, PreviewTools } from "./PreviewTools.tsx";
 import { previewBridge, previewStates, shortUrl, subscribePreviews } from "./model.ts";
 
 /** How far in from the pane's edges the page sits, and how long the pane watches its place after a change. */
@@ -146,13 +148,57 @@ const navClass =
  * browses and the thread's agents drive. The page itself is the shell's, laid over the pane. Outside
  * the desktop app it says where the preview runs instead.
  */
-export function PreviewPane({ threadId, onClose }: { threadId: string; onClose: () => void }) {
+export function PreviewPane({
+  threadId,
+  onClose,
+  onSendIssues,
+}: {
+  threadId: string;
+  onClose: () => void;
+  /** Sends the issues gathered from the page to the thread's agent; the parent does the sending. */
+  onSendIssues: () => Promise<void>;
+}) {
   const bridge = previewBridge();
   const states = useSyncExternalStore(subscribePreviews, previewStates);
   const state = states[threadId];
   const [draft, setDraft] = useState<string>();
   const [refused, setRefused] = useState(false);
   const field = useRef<HTMLInputElement>(null);
+  const [sending, setSending] = useState(false);
+  const [failure, setFailure] = useState<string>();
+  const picking = state?.picking ?? false;
+  const viewport = state?.viewport ?? "fit";
+  const theme = state?.theme ?? "system";
+
+  const apply = (operation: Promise<void>) => {
+    setFailure(undefined);
+    void operation.catch((error: unknown) =>
+      setFailure(error instanceof Error ? error.message : "The preview control failed."),
+    );
+  };
+
+  useEffect(() => {
+    if (!picking || bridge === undefined) return;
+    const stop = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.stopPropagation();
+      apply(bridge.setPicking(threadId, false));
+    };
+    window.addEventListener("keydown", stop, true);
+    return () => window.removeEventListener("keydown", stop, true);
+  }, [picking, bridge, threadId]);
+
+  const send = () => {
+    setFailure(undefined);
+    setSending(true);
+    onSendIssues()
+      .catch((error: unknown) =>
+        setFailure(
+          `Couldn't send the issues${error instanceof Error && error.message ? `: ${error.message}` : "."}`,
+        ),
+      )
+      .finally(() => setSending(false));
+  };
 
   const url = state?.url ?? "";
   const open = (input: string) => {
@@ -168,7 +214,7 @@ export function PreviewPane({ threadId, onClose }: { threadId: string; onClose: 
 
   return (
     <section aria-label="Preview" className="flex h-full flex-col">
-      <header className="flex h-10 shrink-0 items-center gap-0.5 border-b border-line-subtle pr-1.5 pl-1.5 max-md:h-12">
+      <header className="flex min-h-10 shrink-0 flex-wrap items-center gap-x-0.5 border-b border-line-subtle pr-1.5 pl-1.5 max-md:min-h-12">
         <Tooltip label="Back">
           <Button
             aria-label="Back"
@@ -200,7 +246,7 @@ export function PreviewPane({ threadId, onClose }: { threadId: string; onClose: 
           </Button>
         </Tooltip>
         <form
-          className="mx-1 flex min-w-0 flex-1"
+          className="mx-1 flex min-w-40 flex-1 basis-40"
           onSubmit={(event) => {
             event.preventDefault();
             open(draft ?? url);
@@ -241,6 +287,31 @@ export function PreviewPane({ threadId, onClose }: { threadId: string; onClose: 
         </form>
         <IconButton icon={X} label="Close preview" onClick={onClose} className="max-md:size-10" />
       </header>
+      {bridge?.setPicking !== undefined ? (
+        <PreviewTools
+          picking={picking}
+          viewport={viewport}
+          theme={theme}
+          issueCount={state?.issueCount ?? 0}
+          sending={sending}
+          disabled={url === "" || state?.error !== undefined}
+          onPick={() => apply(bridge.setPicking(threadId, !picking))}
+          onViewport={(value) => apply(bridge.setViewport(threadId, value))}
+          onTheme={(value) => apply(bridge.setTheme(threadId, value))}
+          onSend={send}
+        />
+      ) : null}
+      {failure !== undefined ? (
+        <PreviewNotice tone="error" onDismiss={() => setFailure(undefined)}>
+          {failure}
+        </PreviewNotice>
+      ) : state?.inspectorError ? (
+        <PreviewNotice tone="error">{state.inspectorError}</PreviewNotice>
+      ) : picking ? (
+        <PreviewNotice tone="hint">
+          {state?.hover ?? "Click an element to add it to your message. Esc to stop."}
+        </PreviewNotice>
+      ) : null}
       {/* A hairline that runs while the page loads. */}
       <div className="relative h-px shrink-0 overflow-hidden">
         {state?.loading ? (
@@ -255,6 +326,7 @@ export function PreviewPane({ threadId, onClose }: { threadId: string; onClose: 
             bridge={bridge}
             threadId={threadId}
             url={url}
+            viewport={viewport}
             error={state?.loading ? undefined : state?.error}
             onRetry={() => bridge.go(threadId, "reload")}
           />
@@ -269,12 +341,14 @@ function Page({
   bridge,
   threadId,
   url,
+  viewport,
   error,
   onRetry,
 }: {
   bridge: PreviewBridge;
   threadId: string;
   url: string;
+  viewport: Viewport;
   error: string | undefined;
   onRetry: () => void;
 }) {
@@ -283,7 +357,11 @@ function Page({
   const still = useLaidOver(bridge, threadId, area, empty || error !== undefined);
   return (
     <div className="absolute inset-0" style={{ padding: INSET }}>
-      <div ref={area} className="relative h-full w-full overflow-hidden rounded-lg">
+      <div
+        ref={area}
+        style={{ maxWidth: viewportWidths[viewport] }}
+        className="relative mx-auto h-full w-full overflow-hidden rounded-lg "
+      >
         {empty ? (
           <Away icon>Type an address above, or click a localhost link in a terminal.</Away>
         ) : error !== undefined ? (

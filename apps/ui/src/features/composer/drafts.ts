@@ -58,6 +58,20 @@ const StoredDraft = Schema.Struct({
         quote: Schema.String,
         text: Schema.String,
         // Optional, so the draft a device an older version reads stays a draft it understands.
+        element: Schema.optionalKey(
+          Schema.Struct({
+            tag: Schema.String,
+            selector: Schema.String,
+            url: Schema.String,
+            width: Schema.Finite,
+            height: Schema.Finite,
+            component: Schema.optionalKey(Schema.String),
+            source: Schema.optionalKey(Schema.String),
+            styles: Schema.Record(Schema.String, Schema.String),
+            html: Schema.String,
+            screenshot: Attachment,
+          }),
+        ),
         file: Schema.optionalKey(
           Schema.Struct({
             path: Schema.String,

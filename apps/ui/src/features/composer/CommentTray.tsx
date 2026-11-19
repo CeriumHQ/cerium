@@ -6,6 +6,7 @@ import { useLingering } from "../../lib/motion.ts";
 import { lineRange } from "./draft.ts";
 import { nameOf } from "../files/model.ts";
 import type { DraftComment } from "./draft.ts";
+import { ElementChip } from "./ElementChip.tsx";
 
 /**
  * The comments the draft makes, on passages of the agent's responses and on lines of its diffs,
@@ -40,7 +41,11 @@ export function CommentTray({
                           : `${comment.file.path}:${lineRange(comment.file.start, comment.file.end)}\n${comment.quote}`
                       }
                       className={`truncate border-l-2 border-accent/60 pl-2 text-meta text-fg-tertiary ${
-                        comment.file === undefined ? "" : "flex items-baseline gap-1.5 font-mono tabular-nums"
+                        comment.element !== undefined
+                          ? "hidden"
+                          : comment.file === undefined
+                            ? ""
+                            : "flex items-baseline gap-1.5 font-mono tabular-nums"
                       }`}
                     >
                       {comment.file === undefined ? (
@@ -52,6 +57,7 @@ export function CommentTray({
                         </>
                       )}
                     </p>
+                    {comment.element === undefined ? null : <ElementChip element={comment.element} />}
                     <textarea
                       aria-label="Comment"
                       value={comment.text}

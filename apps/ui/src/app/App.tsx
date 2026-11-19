@@ -1,3 +1,4 @@
+import { saveAttachment } from "../backend/files.ts";
 import {
   OFFERED_PROVIDERS,
   type AccountState,
@@ -500,6 +501,31 @@ function Workspace() {
   const focusComposer = () => handlesOf(openKey.current)?.input.current?.focus();
   /** Puts a comment of the window's into the routed thread's draft, where the tray and the diffs read it. */
   const setDrafts = useAtomSet(draftsAtom);
+  useEffect(
+    () =>
+      previewBridge()?.onPicked?.((threadId, element, png) => {
+        if (registry.get(machineAtom) !== undefined) return;
+        const id = crypto.randomUUID();
+        void saveAttachment(registry, id, {
+          name: `preview-${element.tag}-${id.slice(0, 8)}.png`,
+          mediaType: "image/png",
+          data: png,
+        })
+          .then((screenshot) => {
+            setDrafts((drafts) =>
+              withDraft(drafts, threadId, (draft) => ({
+                ...draft,
+                comments: [
+                  ...(draft.comments ?? []),
+                  { id, quote: element.selector, text: "", element: { ...element, screenshot } },
+                ],
+              })),
+            );
+          })
+          .catch((error: unknown) => setActionError(messageOf(error)));
+      }),
+    [registry, setDrafts],
+  );
   const putComment = useEffectEvent((content: Parameters<MessageBox["comment"]>[0]) => {
     const key = lastThread.current ?? openKey.current;
     if (key === undefined) return;
@@ -2353,6 +2379,21 @@ function Workspace() {
                 <PreviewPane
                   key={previewed}
                   threadId={previewed}
+                  onSendIssues={async () => {
+                    const bridge = previewBridge();
+                    const agent = resolved.shown && leadOf(resolved.shown.agents);
+                    if (!bridge || !agent) throw new Error("The thread’s agent is unavailable.");
+                    const { url, issues } = await bridge.issues(previewed);
+                    const last = issues.at(-1);
+                    if (!last) return;
+                    if (registry.get(machineAtom) !== undefined)
+                      throw new Error("The preview’s machine has changed.");
+                    const text = [`Preview issues from ${url}`, ...issues.map((issue) => issue.text)].join(
+                      "\n\n",
+                    );
+                    await send({ payload: { agentId: agent.id, text } });
+                    await bridge.acknowledge(previewed, last.id);
+                  }}
                   onClose={() => previewDocks.close(previewed)}
                 />
               ),

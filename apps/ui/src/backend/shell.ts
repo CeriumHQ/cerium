@@ -1,3 +1,10 @@
+import type {
+  PreviewElement,
+  PreviewInspectorState,
+  PreviewIssue,
+  PreviewTheme,
+  PreviewViewport,
+} from "@cerium/browser/inspector";
 import type { NotificationKind } from "@cerium/protocol";
 
 import { drivenMachine } from "./machine.ts";
@@ -192,7 +199,7 @@ export interface Editor {
 }
 
 /** Mirrors the shell's `PreviewState` in apps/desktop/src/preview.ts. */
-export interface PreviewState {
+export interface PreviewState extends Partial<PreviewInspectorState> {
   readonly threadId: string;
   readonly url: string;
   readonly title: string;
@@ -212,6 +219,16 @@ export interface PreviewBounds {
 
 /** Each thread's preview page, kept by the shell; the pane says where to lay it and drives it. */
 export interface PreviewBridge {
+  readonly setPicking: (threadId: string, enabled: boolean) => Promise<void>;
+  readonly setViewport: (threadId: string, viewport: PreviewViewport) => Promise<void>;
+  readonly setTheme: (threadId: string, theme: PreviewTheme) => Promise<void>;
+  readonly issues: (
+    threadId: string,
+  ) => Promise<{ readonly url: string; readonly issues: ReadonlyArray<PreviewIssue> }>;
+  readonly acknowledge: (threadId: string, lastId: number) => Promise<void>;
+  readonly onPicked: (
+    listener: (threadId: string, element: PreviewElement, png: string) => void,
+  ) => () => void;
   /** Lays the page over `bounds`, or takes it away (`null`), opening one first if it has none. */
   readonly place: (threadId: string, bounds: PreviewBounds | null) => void;
   /** Opens what the user typed; resolves false for an address the preview won't open. */

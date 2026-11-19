@@ -6,6 +6,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./inspector": "./src/inspector.ts",
     "./url": "./src/url.ts"
   },
   "devDependencies": {

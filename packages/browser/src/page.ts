@@ -231,27 +231,41 @@ export class Page {
   private front = false;
   readonly cdp: CdpSession;
 
-  private constructor(cdp: CdpSession) {
+  private constructor(cdp: CdpSession, onIssue?: (text: string) => void) {
     this.cdp = cdp;
     const push = (entry: ConsoleEntry) => {
       this.console.push({ level: entry.level, text: entry.text.slice(0, 500) });
       if (this.console.length > LOG_LIMIT) this.console.shift();
     };
-    cdp.on("Runtime.consoleAPICalled", (event) =>
-      push({
-        level: event.type,
-        text: (event.args ?? [])
-          .map((arg: any) => (arg.value !== undefined ? String(arg.value) : (arg.description ?? arg.type)))
-          .join(" "),
-      }),
-    );
-    cdp.on("Runtime.exceptionThrown", (event) =>
-      push({
-        level: "exception",
-        text:
-          event.exceptionDetails?.exception?.description ?? event.exceptionDetails?.text ?? "Uncaught error",
-      }),
-    );
+    const issue = (
+      label: string,
+      text: string,
+      stack?: {
+        callFrames: Array<{ functionName: string; url: string; lineNumber: number; columnNumber: number }>;
+      },
+    ) => {
+      if (!onIssue) return;
+      const frames =
+        stack?.callFrames
+          .slice(0, 12)
+          .map(
+            (frame) =>
+              `    at ${frame.functionName || "(anonymous)"} (${frame.url}:${frame.lineNumber + 1}:${frame.columnNumber + 1})`,
+          ) ?? [];
+      onIssue([`${label}: ${text}`, ...frames].join("\n"));
+    };
+    cdp.on("Runtime.consoleAPICalled", (event) => {
+      const text = (event.args ?? [])
+        .map((arg: any) => String(arg.value !== undefined ? arg.value : (arg.description ?? arg.type)))
+        .join(" ");
+      push({ level: event.type, text });
+      if (event.type === "error") issue("Console error", text, event.stackTrace);
+    });
+    cdp.on("Runtime.exceptionThrown", ({ exceptionDetails: details }) => {
+      const text = details.exception?.description ?? details.text ?? "Uncaught error";
+      push({ level: "exception", text });
+      issue("Uncaught exception", text, text.includes("\n    at ") ? undefined : details.stackTrace);
+    });
     cdp.on("Page.javascriptDialogOpening", (event) => {
       push({ level: "dialog", text: `${event.type}: ${event.message} (accepted)` });
       void cdp.send("Page.handleJavaScriptDialog", { accept: true }).catch(() => undefined);
@@ -274,9 +288,9 @@ export class Page {
    * A page driven through a session another carrier holds, such as an Electron web view's debugger,
    * which also keeps the requests that fail for `drainRequests`.
    */
-  static async attach(session: CdpSession): Promise<Page> {
-    const page = new Page(session);
-    page.watchRequests();
+  static async attach(session: CdpSession, onIssue?: (text: string) => void): Promise<Page> {
+    const page = new Page(session, onIssue);
+    page.watchRequests(onIssue);
     await Promise.all([
       session.send("Page.enable"),
       session.send("Runtime.enable"),
@@ -285,24 +299,33 @@ export class Page {
     return page;
   }
 
-  private watchRequests() {
-    const requests = new Map<string, { url: string; method: string }>();
-    const push = (entry: FailedRequest) => {
+  private watchRequests(onIssue?: (text: string) => void) {
+    const requests = new Map<string, { url: string; method: string; type?: string }>();
+    const push = (entry: FailedRequest, type: string | undefined) => {
+      if (type === "Fetch" || type === "XHR")
+        onIssue?.(`${type} ${entry.method} ${entry.url} — ${entry.failure}`);
       this.failed.push({ ...entry, url: entry.url.slice(0, 300) });
       if (this.failed.length > LOG_LIMIT) this.failed.shift();
     };
     this.cdp.on("Network.requestWillBeSent", (event) => {
       if (requests.size > 1_000) requests.clear();
-      requests.set(event.requestId, { url: event.request.url, method: event.request.method });
+      requests.set(event.requestId, {
+        url: event.request.url,
+        method: event.request.method,
+        type: event.type,
+      });
     });
     this.cdp.on("Network.responseReceived", (event) => {
       const request = requests.get(event.requestId);
       if (event.response.status >= 400) {
-        push({
-          url: event.response.url,
-          method: request?.method ?? "GET",
-          failure: `${event.response.status} ${event.response.statusText ?? ""}`.trim(),
-        });
+        push(
+          {
+            url: event.response.url,
+            method: request?.method ?? "GET",
+            failure: `${event.response.status} ${event.response.statusText ?? ""}`.trim(),
+          },
+          event.type,
+        );
       }
     });
     this.cdp.on("Network.loadingFinished", (event) => requests.delete(event.requestId));
@@ -311,7 +334,10 @@ export class Page {
       requests.delete(event.requestId);
       // A request the page called off itself (a navigation away, an aborted fetch) failed nothing.
       if (request === undefined || event.canceled === true) return;
-      push({ url: request.url, method: request.method, failure: event.errorText ?? "failed" });
+      push(
+        { url: request.url, method: request.method, failure: event.errorText ?? "failed" },
+        event.type ?? request.type,
+      );
     });
   }
 
