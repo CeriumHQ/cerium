@@ -226,7 +226,7 @@ describe("Orchestrator edit and resend", () => {
       assert.strictEqual(original.text, "two");
       assert.strictEqual((yield* orchestrator.listAgents(lead.threadId))[0]?.state, "idle");
       assert.deepStrictEqual(
-        fake.forks.map((fork) => fork.before.index),
+        fake.forks.map((fork) => fork.before?.index),
         [1],
       );
       yield* waitFor(() => fake.sessions[1]);

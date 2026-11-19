@@ -9,7 +9,7 @@ import {
   type ThreadId,
   type WorktreeChanges,
 } from "@cerium/protocol";
-import { RPC_VERSION, type TeardownReport, type ThreadOverview } from "@cerium/rpc";
+import { FORK_THREAD_RPC_VERSION, RPC_VERSION, type TeardownReport, type ThreadOverview } from "@cerium/rpc";
 import {
   RegistryContext,
   RegistryProvider,
@@ -77,6 +77,8 @@ import {
   deleteThread,
   editMessage,
   fileChangesAtom,
+  forkThread,
+  previewForkThread,
   harnessesAtom,
   importedThreadsAtom,
   interruptAgent,
@@ -164,7 +166,7 @@ import type { PaletteCommand } from "../features/palette/palette.ts";
 import { useFilesExplorer } from "../features/files/useFilesExplorer.tsx";
 import { GIT_VERSION } from "../features/git/model.ts";
 import { useSourceControl } from "../features/git/useSourceControl.tsx";
-import { WorkspaceStatus } from "../features/git/WorkspaceStatus.tsx";
+import { ThreadLineage, WorkspaceStatus, type Lineage } from "../features/git/WorkspaceStatus.tsx";
 import { GitHubPanel } from "../features/github/GitHubPanel.tsx";
 import { GitHubPageEmpty, GitHubPageList } from "../features/github/GitHubPage.tsx";
 import { GitHubTabView } from "../features/github/GitHubTab.tsx";
@@ -877,6 +879,8 @@ function Workspace() {
   const openImport = useAtomSet(importOpenAtom);
   const openWelcome = useAtomSet(welcomeOpenAtom);
   const create = useAtomSet(createThread, { mode: "promise" });
+  const fork = useAtomSet(forkThread, { mode: "promise" });
+  const checkFork = useAtomSet(previewForkThread, { mode: "promise" });
   const send = useAtomSet(sendMessage, { mode: "promise" });
   const edit = useAtomSet(editMessage, { mode: "promise" });
   const checkRestore = useAtomSet(previewRestore, { mode: "promise" });
@@ -2117,9 +2121,25 @@ function Workspace() {
     if (summary) openSummary(summary);
   };
 
+  /** Who a thread was forked from and who was forked from it, among the threads listed here. */
+  const lineageOf = (threadId: string, forkedFrom: { readonly threadId: string } | undefined): Lineage => ({
+    ...(forkedFrom === undefined
+      ? {}
+      : {
+          parent: {
+            id: forkedFrom.threadId,
+            title: overviews.find(({ thread }) => thread.id === forkedFrom.threadId)?.thread.title,
+          },
+        }),
+    forks: overviews
+      .filter(({ thread }) => thread.forkedFrom?.threadId === threadId)
+      .map(({ thread }) => ({ id: thread.id, title: thread.title })),
+  });
+
   /** The open work thread whose checkout the titlebar shows: local, in a folder, on a machine that keeps workspaces. */
   const workspaceThread =
     workspacesOk && runThreadId !== undefined && !compact ? selected?.thread : undefined;
+  const lineage = viewed === undefined ? undefined : lineageOf(viewed.thread.id, viewed.thread.forkedFrom);
 
   const paneActions: ThreadPaneActions = {
     sourceControlEnabled: workspacesOk,
@@ -2134,6 +2154,20 @@ function Workspace() {
         ? {
             preview: (agentId, messageId) => checkRestore({ payload: { agentId, messageId } }),
             restore: (agentId, messageId) => restore({ payload: { agentId, messageId } }),
+          }
+        : undefined,
+    fork:
+      drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= FORK_THREAD_RPC_VERSION
+        ? {
+            preview: (threadId, turn) => checkFork({ payload: { threadId, turn } }),
+            fork: async (threadId, { turn, ...choice }) => {
+              // Rejects with the backend's reason, which the fork dialog says in place.
+              const { thread } = await fork({ payload: { threadId, turn, ...choice } });
+              refreshThreads();
+              // The sibling opens where this thread is, in its own mode.
+              setOpenThread((open) => ({ ...open, [thread.mode]: thread.id }));
+              setPane("main");
+            },
           }
         : undefined,
     turnFiles:
@@ -2896,22 +2930,23 @@ function Workspace() {
       onTogglePanel={togglePanel}
       onCloseSide={() => setSidePanel(undefined)}
       {...(terminal.available ? { terminal: { open: terminal.open, onToggle: terminal.toggle } } : {})}
-      {...(workspaceThread === undefined
-        ? {}
-        : {
-            workspace: (
-              <WorkspaceStatus
-                key={workspaceThread.id}
-                threadId={workspaceThread.id as ThreadId}
-                checkoutFolder={workspaceThread.worktree?.root ?? workspaceThread.cwd ?? ""}
-                projectRoot={workspaceThread.worktree?.project ?? workspaceThread.cwd ?? ""}
-                onOpenSourceControl={() => {
-                  if (!gitOpen) toggleGit();
-                }}
-                onOpenThread={openThreadById}
-              />
-            ),
-          })}
+      workspace={
+        workspaceThread !== undefined ? (
+          <WorkspaceStatus
+            key={workspaceThread.id}
+            threadId={workspaceThread.id as ThreadId}
+            checkoutFolder={workspaceThread.worktree?.root ?? workspaceThread.cwd ?? ""}
+            projectRoot={workspaceThread.worktree?.project ?? workspaceThread.cwd ?? ""}
+            onOpenSourceControl={() => {
+              if (!gitOpen) toggleGit();
+            }}
+            onOpenThread={openThreadById}
+            lineage={lineage}
+          />
+        ) : lineage !== undefined ? (
+          <ThreadLineage key={viewed?.thread.id} lineage={lineage} onOpenThread={openThreadById} />
+        ) : undefined
+      }
       {...(runThreadId === undefined
         ? {}
         : {

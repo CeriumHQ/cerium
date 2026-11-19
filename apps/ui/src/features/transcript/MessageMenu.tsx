@@ -3,6 +3,7 @@ import {
   ClipboardCopy,
   Copy,
   ExternalLink,
+  GitFork,
   Link,
   Pencil,
   RotateCcw,
@@ -52,6 +53,7 @@ export function MessageMenuArea({
   onSavePrompt,
   onEdit,
   onRestore,
+  onFork,
   className,
   children,
 }: {
@@ -64,12 +66,18 @@ export function MessageMenuArea({
   onEdit?: (() => void) | undefined;
   /** Asks to restore the thread to before the user's own message. */
   onRestore?: (() => void) | undefined;
+  /** Asks to fork the thread into a new one from the user's own message. */
+  onFork?: (() => void) | undefined;
   className?: string;
   children: ReactNode;
 }) {
   const [hit, setHit] = useState<Hit>({ selection: "" });
   const { link, selection } = hit;
-  const ownActions = onCopyToMessageBox !== undefined || onEdit !== undefined || onRestore !== undefined;
+  const ownActions =
+    onCopyToMessageBox !== undefined ||
+    onEdit !== undefined ||
+    onRestore !== undefined ||
+    onFork !== undefined;
   const hasMain = selection !== "" || text !== "" || ownActions;
   // Links and selections live in the text, so without any there is nothing to offer.
   if (text === "" && !ownActions) {
@@ -119,6 +127,11 @@ export function MessageMenuArea({
           {onRestore ? (
             <MenuItem icon={RotateCcw} onClick={onRestore}>
               Restore to before this message
+            </MenuItem>
+          ) : null}
+          {onFork ? (
+            <MenuItem icon={GitFork} onClick={onFork}>
+              Fork into new thread
             </MenuItem>
           ) : null}
         </>

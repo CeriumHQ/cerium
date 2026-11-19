@@ -106,14 +106,15 @@ export interface TurnRef {
   readonly index: number;
 }
 
-/** A copy of a session that ends before one of its turns. */
-export interface ForkRequest {
+/** A copy of a session that ends immediately before or after one of its turns. */
+export type ForkRequest = {
   readonly cwd: string;
   /** The harness's session id to copy from; it stays as it was. */
   readonly sessionId: string;
-  /** The first turn the copy leaves out, with every turn after it. Never the session's first turn. */
-  readonly before: TurnRef;
-}
+} & (
+  | { readonly before: TurnRef; readonly through?: never }
+  | { readonly before?: never; readonly through: TurnRef }
+);
 
 export interface CompletionUsage {
   readonly unreported?: boolean;

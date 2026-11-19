@@ -417,6 +417,8 @@ export const FilesSaved = Schema.TaggedStruct("FilesSaved", {
   snapshot: Schema.NonEmptyString,
   /** The `turnId` of the turn it ended; it is saved behind the turn, so another may have begun. */
   turnId: Schema.optionalKey(Schema.NonEmptyString),
+  /** The original snapshot store, for a checkpoint carried over from another workspace. */
+  folder: Schema.optionalKey(Schema.NonEmptyString),
 });
 
 /** A file one of an agent's turns changed. */
@@ -677,7 +679,14 @@ export const WorkspaceMoved = Schema.TaggedStruct("WorkspaceMoved", {
   cwd: Schema.String,
 });
 
+/** Inherited turns before this point are held in Cerium's log and must be briefed to a new session. */
+export const ForkContext = Schema.TaggedStruct("ForkContext", {
+  from: Schema.Struct({ provider: ProviderId, model: Schema.NonEmptyString }),
+});
+export type ForkContext = typeof ForkContext.Type;
+
 export const EventPayload = Schema.Union([
+  ForkContext,
   WorkspaceMoved,
   SessionStarted,
   SessionImported,

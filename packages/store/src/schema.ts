@@ -9,6 +9,7 @@ export const threads = sqliteTable("threads", {
   cwd: text("cwd"),
   /** The thread's own worktree (`ThreadWorktree`), when it runs in one. */
   worktree: text("worktree", { mode: "json" }),
+  forkedFrom: text("forked_from", { mode: "json" }),
   createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
   archivedAt: integer("archived_at"),

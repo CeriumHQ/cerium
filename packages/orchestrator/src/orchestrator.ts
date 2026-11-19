@@ -30,7 +30,6 @@ import {
   type InputItem,
   type HistoryPage,
   type HistoryRequest,
-  type LeadHandedOff,
   type LimitPolicy,
   type LimitReached,
   type LiveEventDelivery,
@@ -134,6 +133,7 @@ import {
   Checkpoints,
   OrchestratorConfig,
   Worktrees,
+  offeredModels,
   type CatalogEntry,
   type NewWorktree,
   type OrchestratorSettings,
@@ -158,6 +158,7 @@ import {
 } from "./scripts.ts";
 import { SideQuestions, type SideExchange } from "./sideQuestion.ts";
 import { ThreadTitles } from "./titles.ts";
+import { FORK_TAGS, threadForkPoint } from "./threadFork.ts";
 
 export interface CreateThreadInput {
   readonly title: string;
@@ -180,6 +181,14 @@ export interface CreateThreadInput {
     readonly speed?: ModelSpeed;
     readonly access: AccessMode;
   };
+}
+
+export interface ForkThreadInput {
+  readonly threadId: ThreadId;
+  readonly turn: string;
+  readonly workspace?: "current" | "worktree";
+  readonly harness?: ProviderId;
+  readonly model?: string;
 }
 
 /** What the user sent beside the text of a message. */
@@ -394,6 +403,7 @@ const isImage = (attachment: Attachment) => attachment.mediaType.startsWith("ima
  * a long history, say nothing about any of it.
  */
 const RESUME_TAGS: ReadonlyArray<EventPayload["_tag"]> = [
+  "ForkContext",
   "PermissionRequested",
   "PermissionResolved",
   "QuestionAsked",
@@ -515,6 +525,12 @@ export class Orchestrator extends Context.Service<
   {
     createThread(
       input: CreateThreadInput,
+    ): Effect.Effect<{ readonly thread: ThreadInfo; readonly lead: AgentInfo }, OrchestratorError>;
+    previewForkThread(
+      input: Pick<ForkThreadInput, "threadId" | "turn">,
+    ): Effect.Effect<{ readonly snapshot: boolean }, OrchestratorError>;
+    forkThread(
+      input: ForkThreadInput,
     ): Effect.Effect<{ readonly thread: ThreadInfo; readonly lead: AgentInfo }, OrchestratorError>;
     /** Delivers the user's message to a lead, resuming its harness session if it stopped or failed. */
     sendUserMessage(
@@ -949,7 +965,7 @@ export class Orchestrator extends Context.Service<
         { readonly undelivered: ReadonlyArray<InputItem>; readonly notices: ReadonlyArray<InputItem> }
       >();
       /** The leads handed to another harness whose new session hasn't heard the conversation yet. */
-      const briefsOwed = new Map<AgentId, LeadHandedOff>();
+      const briefsOwed = new Map<AgentId, NonNullable<ReturnType<typeof pendingHandoff>>>();
       /** The timers that end the pauses of leads waiting for their harness's limit to reset. */
       const pauseTimers = new Map<AgentId, Fiber.Fiber<void>>();
       /** The app is quitting: its agents stop, but their pauses go on for the next start. */
@@ -2225,7 +2241,7 @@ export class Orchestrator extends Context.Service<
             _tag: "SystemNotice",
             text: handoffBrief(history, {
               from: handoff.from,
-              cause: handoff.cause,
+              ...(handoff._tag === "ForkContext" ? { forked: true } : { cause: handoff.cause }),
               summary: Option.getOrUndefined(summary),
               running,
             }),
@@ -3957,6 +3973,216 @@ export class Orchestrator extends Context.Service<
         return { thread, lead };
       });
 
+      const findForkPoint = Effect.fn("Orchestrator.findForkPoint")(function* ({
+        threadId,
+        turn,
+      }: Pick<ForkThreadInput, "threadId" | "turn">) {
+        const source = yield* threadInfo(threadId);
+        const agents = yield* store.listAgents(threadId).pipe(Effect.mapError(unavailable));
+        const original = agents.find((agent) => agent.role === LEAD_ROLE && agent.parentId === undefined);
+        if (original === undefined) return yield* notFound("This thread has no lead to fork.");
+        const events = yield* store
+          .listEvents(original.id, { tags: FORK_TAGS })
+          .pipe(Effect.mapError(unavailable));
+        const cwd = threadDirectory(source);
+        const point = threadForkPoint(events, turn, cwd, original);
+        if (point === undefined) return yield* notFound("That turn is no longer in the conversation.");
+        if (
+          !point.completed &&
+          point.turnId !== undefined &&
+          runtimes.get(original.id)?.currentTurnId === point.turnId
+        ) {
+          return yield* notAllowed("Wait for this turn to finish, then try again.");
+        }
+        return { source, original, point, cwd };
+      });
+
+      const forkThread = Effect.fn("Orchestrator.forkThread")(function* (input: ForkThreadInput) {
+        const { source, original, point, cwd } = yield* acceptPermit.withPermits(1)(findForkPoint(input));
+        const provider = input.harness ?? original.provider;
+        const adapter = adapters.get(provider);
+        if (adapter === undefined) {
+          return yield* new OrchestratorError({
+            reason: "unavailable",
+            message: `No ${provider} adapter is installed.`,
+          });
+        }
+        const model =
+          input.model ??
+          (provider === original.provider
+            ? original.model
+            : (yield* offeredModels(catalog)).find((choice) => choice.provider === provider)?.model);
+        if (model === undefined) return yield* notAllowed("Choose a model for the fork's harness.");
+
+        let sessionId: string | undefined;
+        if (
+          source.mode === "work" &&
+          input.workspace !== "worktree" &&
+          provider === original.provider &&
+          point.nativeTurn !== undefined &&
+          original.providerSessionId !== undefined &&
+          adapter.manifest.session.fork &&
+          adapter.manifest.session.resume &&
+          adapter.fork !== undefined &&
+          (yield* fs.exists(cwd).pipe(Effect.orElseSucceed(() => false)))
+        ) {
+          sessionId = yield* adapter
+            .fork({ cwd, sessionId: original.providerSessionId, through: point.nativeTurn })
+            .pipe(
+              Effect.tapError((error) =>
+                Effect.logWarning(`Couldn't fork ${provider} session: ${error.message}`),
+              ),
+              Effect.option,
+              Effect.map(Option.getOrUndefined),
+            );
+        }
+
+        const createdAt = yield* now;
+        const threadId = (yield* makeId("thr")) as ThreadId;
+        const leadId = (yield* makeId("agt")) as AgentId;
+        const title = `Fork of ${source.title}`.slice(0, MAX_THREAD_TITLE);
+        const isolated = input.workspace === "worktree";
+        const snapshot = point.snapshot;
+        if (isolated && (source.mode !== "work" || snapshot?.folder === undefined)) {
+          return yield* notAllowed("This turn has no file snapshot for a new worktree.");
+        }
+        const planned = isolated
+          ? yield* worktrees
+              .plan(source.worktree?.project ?? cwd, title)
+              .pipe(Effect.mapError(refusedWorktree))
+          : undefined;
+        const directory =
+          planned?.cwd ?? (source.mode === "chat" ? path.join(config.chatDirectory, threadId) : cwd);
+        if (
+          !isolated &&
+          source.mode === "work" &&
+          !(yield* fs.exists(directory).pipe(Effect.orElseSucceed(() => false)))
+        ) {
+          return yield* notAllowed(
+            "This workspace is unavailable. Choose a new worktree to use the turn's snapshot.",
+          );
+        }
+        const thread: ThreadInfo = {
+          id: threadId,
+          title,
+          mode: source.mode,
+          ...(source.mode === "work" ? { cwd: directory } : {}),
+          ...(planned === undefined ? {} : { worktree: planned.worktree }),
+          forkedFrom: { threadId: source.id, turn: point.turn },
+          ...(source.onLimit === undefined ? {} : { onLimit: source.onLimit }),
+          createdAt,
+          updatedAt: createdAt,
+        };
+        const keptModel = provider === original.provider && model === original.model;
+        const lead: AgentInfo = {
+          id: leadId,
+          threadId,
+          role: LEAD_ROLE,
+          provider,
+          model,
+          ...(keptModel && original.effort ? { effort: original.effort } : {}),
+          ...(keptModel && original.autoEffort ? { autoEffort: true } : {}),
+          ...(keptModel && original.speed ? { speed: original.speed } : {}),
+          ...(sessionId === undefined ? {} : { providerSessionId: sessionId }),
+          access: original.access,
+          state: "idle",
+          createdAt,
+          updatedAt: createdAt,
+        };
+        const history = point.history;
+        const context: Extract<EventPayload, { _tag: "ForkContext" }> = {
+          _tag: "ForkContext",
+          from: point.from,
+        };
+        if (sessionId === undefined) history.push({ at: createdAt, payload: context });
+        else if (point.inheritedBoundary !== undefined) {
+          const boundary = point.inheritedBoundary;
+          history.splice(boundary, 0, { at: history[boundary]?.at ?? createdAt, payload: context });
+        }
+        const seed = history.map(({ at, payload }, sequence): AgentEvent => ({
+          id: `${leadId}:${sequence}` as EventId,
+          threadId,
+          agentId: leadId,
+          sequence,
+          at,
+          payload,
+        }));
+        const makeDirectory = fs
+          .makeDirectory(directory, { recursive: true })
+          .pipe(
+            Effect.mapError(
+              (error) => new OrchestratorError({ reason: "unavailable", message: error.message }),
+            ),
+          );
+        yield* Effect.gen(function* () {
+          if (planned !== undefined && snapshot?.folder !== undefined) {
+            yield* worktrees
+              .checkOut(planned.worktree, { copyIgnored: false })
+              .pipe(Effect.mapError(refusedWorktree));
+            // The base revision may hold a symlink where the source turn had a folder.
+            // Walk below the new checkout before writing anything at that location.
+            const prefix = path.relative(planned.worktree.root, directory);
+            const realPath = (folder: string) =>
+              fs
+                .realPath(folder)
+                .pipe(
+                  Effect.mapError(
+                    (error) => new OrchestratorError({ reason: "unavailable", message: error.message }),
+                  ),
+                );
+            let folder = yield* realPath(planned.worktree.root);
+            for (const segment of prefix.split(path.sep).filter(Boolean)) {
+              folder = path.join(folder, segment);
+              const entry = yield* fs.stat(folder).pipe(Effect.option);
+              if (
+                Option.isSome(entry) &&
+                (entry.value.type !== "Directory" || (yield* realPath(folder)) !== folder)
+              ) {
+                return yield* notAllowed(
+                  "The selected project folder isn't a directory in the new worktree.",
+                );
+              }
+              if (Option.isNone(entry)) {
+                yield* fs
+                  .makeDirectory(folder)
+                  .pipe(
+                    Effect.mapError(
+                      (error) => new OrchestratorError({ reason: "unavailable", message: error.message }),
+                    ),
+                  );
+              }
+            }
+            yield* checkpoints
+              .restoreInto(snapshot.folder, snapshot.snapshot, directory)
+              .pipe(
+                Effect.mapError(
+                  (error) => new OrchestratorError({ reason: "unavailable", message: error.message }),
+                ),
+              );
+          } else if (source.mode === "chat") yield* makeDirectory;
+          yield* store.createThread(thread, { lead, history: seed }).pipe(Effect.mapError(unavailable));
+        }).pipe(
+          Effect.onError(() =>
+            planned === undefined
+              ? Effect.void
+              : worktrees.remove(threadId, planned.worktree).pipe(
+                  Effect.tapError((error) =>
+                    Effect.logWarning(`Couldn't remove the unfinished fork worktree: ${error.message}`),
+                  ),
+                  Effect.ignore,
+                ),
+          ),
+          Effect.uninterruptible,
+        );
+
+        threadDirectories.set(threadId, directory);
+        threadModes.set(threadId, thread.mode);
+        if (planned !== undefined) threadWorktrees.set(threadId, planned.worktree);
+        if (sessionId === undefined) briefsOwed.set(leadId, context);
+        yield* startRuntime(lead, directory, sessionId === undefined ? {} : { resume: sessionId });
+        return { thread, lead };
+      });
+
       /**
        * The user's message to a lead; one a lead wrote for them when it started the thread says so.
        * With `rewindBefore`, the conversation first goes back to before that earlier message.
@@ -4028,6 +4254,9 @@ export class Orchestrator extends Context.Service<
 
       const orchestrator: Orchestrator["Service"] = Orchestrator.of({
         createThread,
+        previewForkThread: (input) =>
+          findForkPoint(input).pipe(Effect.map(({ point }) => ({ snapshot: point.snapshot !== undefined }))),
+        forkThread,
 
         sendUserMessage: (agentId, text, extras = {}) =>
           acceptUserMessage(agentId, text, {

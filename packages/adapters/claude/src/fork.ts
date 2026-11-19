@@ -31,7 +31,7 @@ export const lastKept = (messages: ReadonlyArray<SessionMessage>, turn: TurnRef)
   return at > 0 ? messages[at - 1]?.uuid : undefined;
 };
 
-/** Copies a Claude Code session up to the turn before `before` with the SDK's own `forkSession`. */
+/** Copies a Claude Code session at the requested boundary with the SDK's own `forkSession`. */
 export const forkClaudeSession = Effect.fn("ClaudeAdapter.fork")(function* (request: ForkRequest) {
   const failure = (message: string) => (cause: unknown) =>
     new HarnessFailure({ provider: "claude", message, cause });
@@ -39,7 +39,17 @@ export const forkClaudeSession = Effect.fn("ClaudeAdapter.fork")(function* (requ
     try: () => getSessionMessages(request.sessionId, { dir: request.cwd, includeSystemMessages: true }),
     catch: failure("Could not read the Claude session"),
   });
-  const upToMessageId = lastKept(messages, request.before);
+  const through = request.through;
+  let upToMessageId: string | undefined;
+  if (through === undefined) upToMessageId = lastKept(messages, request.before);
+  else {
+    const prompts = messages.flatMap((message, index) => (isPrompt(message) ? [index] : []));
+    const at = prompts.find((index) => messages[index]?.uuid === through.id) ?? prompts[through.index];
+    if (at !== undefined) {
+      const next = prompts.find((index) => index > at) ?? messages.length;
+      upToMessageId = messages[next - 1]?.uuid;
+    }
+  }
   if (upToMessageId === undefined) {
     return yield* new HarnessFailure({
       provider: "claude",

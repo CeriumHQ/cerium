@@ -72,7 +72,7 @@ import { CeriumError } from "./error.ts";
 import { FileBytes, FileDiff, FileListing, FilePreview, FileStatuses, FilesChanged } from "./files.ts";
 import { GitRpcs } from "./git.ts";
 import { GitBranchRpcs } from "./gitBranches.ts";
-import { AutomationRpcs, GITHUB_AUTOMATIONS_RPC_VERSION } from "./automations.ts";
+import { AutomationRpcs } from "./automations.ts";
 import { GitHubRpcs } from "./github.ts";
 import { HubRpcs } from "./hub.ts";
 import { IssueRpcs } from "./githubIssues.ts";
@@ -107,7 +107,8 @@ export * from "./terminal.ts";
  * addition a client relies on, so a client driving another machine knows what that machine's backend
  * offers.
  */
-export const RPC_VERSION = GITHUB_AUTOMATIONS_RPC_VERSION;
+export const FORK_THREAD_RPC_VERSION = 53;
+export const RPC_VERSION = FORK_THREAD_RPC_VERSION;
 export const SCOPED_EVENTS_RPC_VERSION = 50;
 
 /** Status readers send the provider ids their schema can decode. */
@@ -168,6 +169,19 @@ export const CreateThreadPayload = Schema.Struct({
   }),
 });
 export type CreateThreadPayload = typeof CreateThreadPayload.Type;
+
+const ForkPointFields = {
+  threadId: ThreadId,
+  /** The turn id, or its input event or a delivered message id for older turns. */
+  turn: Schema.NonEmptyString,
+};
+export const ForkThreadPayload = Schema.Struct({
+  ...ForkPointFields,
+  workspace: Schema.optionalKey(Schema.Literals(["current", "worktree"])),
+  harness: Schema.optionalKey(ProviderId),
+  model: Schema.optionalKey(Schema.NonEmptyString),
+});
+export type ForkThreadPayload = typeof ForkThreadPayload.Type;
 
 /**
  * The effort router's key and what it has spent. The key is never sent back: only its last four
@@ -279,6 +293,18 @@ export const MachineRpcs = RpcGroup.make(
   Rpc.make("CreateThread", {
     payload: CreateThreadPayload,
     success: Schema.Struct({ thread: ThreadInfo, lead: AgentInfo }),
+    error: CeriumError,
+  }),
+  /** Starts a sibling with the lead's conversation through the selected turn. Since RPC_VERSION 53. */
+  Rpc.make("ForkThread", {
+    payload: ForkThreadPayload,
+    success: Schema.Struct({ thread: ThreadInfo, lead: AgentInfo }),
+    error: CeriumError,
+  }),
+  /** Whether the selected turn has an end-of-turn checkpoint. Since RPC_VERSION 53. */
+  Rpc.make("PreviewForkThread", {
+    payload: ForkPointFields,
+    success: Schema.Struct({ snapshot: Schema.Boolean }),
     error: CeriumError,
   }),
   /** A message needs text, attachments or both. */

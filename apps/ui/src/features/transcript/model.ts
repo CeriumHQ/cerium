@@ -43,6 +43,8 @@ export type TranscriptBlock =
       readonly sentVia?: string;
       /** Whether the message reached the agent, so the user can edit it and send it again. */
       readonly delivered?: true;
+      /** The turn this input reached. */
+      readonly forkTurn?: string;
     }
   | {
       readonly kind: "notice";
@@ -51,7 +53,13 @@ export type TranscriptBlock =
       /** Another thread's message that waits for the agent's next turn. */
       readonly waiting?: true;
     }
-  | { readonly kind: "message"; readonly id: string; readonly text: string; readonly streaming: boolean }
+  | {
+      readonly kind: "message";
+      readonly id: string;
+      readonly text: string;
+      readonly streaming: boolean;
+      readonly forkTurn?: string;
+    }
   | {
       readonly kind: "reasoning";
       readonly id: string;
@@ -250,6 +258,7 @@ export const createTranscriptFold = (sameModel: (a: string, b: string) => boolea
     | undefined;
   /** The turn in progress, by the id its files are recorded under. */
   let turnId: string | undefined;
+  let forkTurn: string | undefined;
   /**
    * A turn took input since the last ended. One that took none and compacted, or failed to, is a
    * compaction the user asked for: it has no response for a footer to end.
@@ -292,6 +301,7 @@ export const createTranscriptFold = (sameModel: (a: string, b: string) => boolea
           restoredVersion = replaced.length > 0 ? `replaced:${id}` : undefined;
           if (restoredVersion) blocks.push({ kind: "replaced", id: restoredVersion, blocks: replaced });
           lastUsage = undefined;
+          forkTurn = undefined;
           break;
         }
         // A restore's files follow the rewind of its conversation.
@@ -362,6 +372,7 @@ export const createTranscriptFold = (sameModel: (a: string, b: string) => boolea
         }
         case "TurnInput":
           turnId = payload.turnId;
+          forkTurn = turnId ?? id;
           answering = true;
           turnStartedAt ??= at;
           payload.items.forEach((item, index) => {
@@ -369,7 +380,11 @@ export const createTranscriptFold = (sameModel: (a: string, b: string) => boolea
             // A message keeps the key it had while queued.
             blocks.push(
               item._tag === "FromUser"
-                ? { ...userBlock(item, item.id ?? key), ...(item.id ? { delivered: true as const } : {}) }
+                ? {
+                    ...userBlock(item, item.id ?? key),
+                    forkTurn: payload.turnId ?? id,
+                    ...(item.id ? { delivered: true as const } : {}),
+                  }
                 : { kind: "notice", id: key, item },
             );
           });
@@ -382,7 +397,13 @@ export const createTranscriptFold = (sameModel: (a: string, b: string) => boolea
         }
         case "MessageCompleted": {
           const key = `message:${payload.messageId}`;
-          upsert(key, { kind: "message", id: key, text: payload.text, streaming: false });
+          upsert(key, {
+            kind: "message",
+            id: key,
+            text: payload.text,
+            streaming: false,
+            ...(forkTurn === undefined ? {} : { forkTurn }),
+          });
           break;
         }
         case "ReasoningDelta": {
@@ -511,6 +532,7 @@ export const createTranscriptFold = (sameModel: (a: string, b: string) => boolea
           break;
         }
         case "TurnCompleted":
+          forkTurn = undefined;
           if (!answering && compacting) {
             compacting = false;
             lastUsage = undefined;

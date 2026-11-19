@@ -68,6 +68,8 @@ import {
 import { PromptStepper, promptsOf } from "./PromptStepper.tsx";
 import { PushCard } from "./PushCard.tsx";
 import { previewFailure } from "./restore.ts";
+import { ForkDialog } from "./ForkDialog.tsx";
+import type { ForkActions, ForkCheck } from "./fork.ts";
 import { RestoreDialog, type RestoreCheck } from "./RestoreDialog.tsx";
 import { SelectionReply } from "./SelectionReply.tsx";
 import { TranscriptFind } from "./FindBar.tsx";
@@ -123,6 +125,8 @@ interface TranscriptProps {
    * (or the preview), messages offer no restore.
    */
   readonly onRestoreMessage?: (messageId: string) => Promise<boolean>;
+  /** Forks the thread into a new one from one of the user's messages; without it, messages offer no fork. */
+  readonly onFork?: ForkActions | undefined;
   /** Opens the files a turn changed and undoes them; without it, a turn's files are only listed. */
   readonly turnFiles?: TurnFileActions | undefined;
   /** The thread the conversation is of, which a message a palette search picked is found in. */
@@ -268,6 +272,7 @@ export function Transcript({
   onEditMessage,
   onPreviewRestore,
   onRestoreMessage,
+  onFork,
   turnFiles,
   threadId,
   focused = false,
@@ -344,6 +349,7 @@ export function Transcript({
     ...(onAnswerPermission ? { onAnswerPermission } : {}),
     ...(onAnswerQuestion ? { onAnswerQuestion } : {}),
     ...(onEditMessage ? { onEditMessage } : {}),
+    ...(onFork ? { fork: onFork } : {}),
     ...(turnFiles ? { turnFiles } : {}),
     ...(threadId === undefined ? {} : { threadId }),
     ...(onPreviewRestore && onRestoreMessage
@@ -517,6 +523,7 @@ interface TranscriptActions {
     /** The lead's harness by name, which the restore's preview says what becomes of. */
     readonly harness: string;
   };
+  readonly fork?: ForkActions;
   readonly turnFiles?: TurnFileActions | undefined;
   /** The thread shown, whose pushes its push cards follow. */
   readonly threadId?: string | undefined;
@@ -694,7 +701,15 @@ const TranscriptItem = memo(
         case "push":
           return <PushItem key={each.id} call={each.call} />;
         case "block":
-          return <ResponseBlock key={each.id} block={each.block} activity={activity} quiet={quiet} />;
+          return (
+            <ResponseBlock
+              key={each.id}
+              block={each.block}
+              activity={activity}
+              quiet={quiet}
+              replaced={replaced}
+            />
+          );
         // Laid out by the transcript itself, around the items it holds.
         case "turnEnd":
         case "replaced":
@@ -863,10 +878,12 @@ function ResponseBlock({
   block,
   activity,
   quiet,
+  replaced,
 }: {
   block: TranscriptBlock;
   activity: AgentActivity;
   quiet: boolean;
+  replaced: boolean;
 }) {
   const payload = use(LiveText).get(block.id)?.payload;
   const text =
@@ -875,13 +892,7 @@ function ResponseBlock({
     case "notice":
       return <NoticeBlock block={block} />;
     case "message":
-      return (
-        <MessageMenuArea text={text ?? block.text} className="select-text">
-          <div data-reply-source data-find={block.id}>
-            <Markdown text={text ?? block.text} streaming={block.streaming} compact={quiet} />
-          </div>
-        </MessageMenuArea>
-      );
+      return <ReplyMessage block={block} text={text ?? block.text} quiet={quiet} replaced={replaced} />;
     case "reasoning":
       return <Reasoning block={text === undefined ? block : { ...block, text }} />;
     case "permission":
@@ -899,6 +910,63 @@ function ResponseBlock({
   }
 }
 
+function ReplyMessage({
+  block,
+  text,
+  quiet,
+  replaced,
+}: {
+  block: Block<"message">;
+  text: string;
+  quiet: boolean;
+  replaced: boolean;
+}) {
+  const fork = useTurnFork(replaced ? undefined : block.forkTurn, text);
+  return (
+    <>
+      <MessageMenuArea text={text} className="select-text" onFork={fork.open}>
+        <div data-reply-source data-find={block.id}>
+          <Markdown text={text} streaming={block.streaming} compact={quiet} />
+        </div>
+      </MessageMenuArea>
+      {fork.dialog}
+    </>
+  );
+}
+
+function useTurnFork(turn: string | undefined, message: string) {
+  const { fork } = use(Actions);
+  const [open, setOpen] = useState(false);
+  const [check, setCheck] = useState<ForkCheck>({ status: "loading" });
+  const asked = useRef(0);
+  if (fork === undefined || turn === undefined) return {};
+  return {
+    open: () => {
+      const ask = ++asked.current;
+      setCheck({ status: "loading" });
+      setOpen(true);
+      fork.preview(turn).then(
+        ({ snapshot }) => {
+          if (ask === asked.current) setCheck({ status: "ready", snapshot });
+        },
+        () => {
+          if (ask === asked.current) setCheck({ status: "failed" });
+        },
+      );
+    },
+    dialog: open ? (
+      <ForkDialog
+        open={open}
+        onOpenChange={setOpen}
+        message={message}
+        actions={fork}
+        check={check}
+        onFork={(choice) => fork.fork({ turn, ...choice })}
+      />
+    ) : null,
+  };
+}
+
 /**
  * One of the user's messages, which they can edit and send again, or restore the thread to before,
  * unless a rewind replaced it.
@@ -911,6 +979,7 @@ function EditableMessage({ block, replaced }: { block: Block<"user">; replaced: 
   /** The latest preview asked for, so an earlier one answering late is dropped. */
   const asked = useRef(0);
   const restorable = restore !== undefined && !replaced;
+  const fork = useTurnFork(replaced ? undefined : block.forkTurn, block.text);
 
   const openRestore = () => {
     if (!restore) return;
@@ -937,7 +1006,9 @@ function EditableMessage({ block, replaced }: { block: Block<"user">; replaced: 
             : undefined
         }
         onRestore={restorable ? openRestore : undefined}
+        onFork={fork.open}
       />
+      {fork.dialog}
       {restorable ? (
         <RestoreDialog
           open={restoreOpen}

@@ -67,6 +67,7 @@ import {
   queuedMessages,
 } from "../features/transcript/model.ts";
 import { ThreadLog, type ThreadHistory, type AgentHistory } from "../backend/threadLog.ts";
+import type { ForkRequest } from "../features/transcript/fork.ts";
 import { Transcript } from "../features/transcript/Transcript.tsx";
 import { EmptyThread } from "./EmptyThread.tsx";
 import type { AppMode } from "./mode.ts";
@@ -103,6 +104,16 @@ export interface ThreadPaneActions {
    * Reads what restoring a lead's thread to before one of the user's messages would undo, and does
    * it; absent when the machine's backend can't.
    */
+  /**
+   * Forks a thread from one of its user's messages and opens the new sibling; rejects with the
+   * reason it couldn't. Absent when the machine's backend can't.
+   */
+  readonly fork?:
+    | {
+        readonly preview: (threadId: ThreadId, turn: string) => Promise<{ readonly snapshot: boolean }>;
+        readonly fork: (threadId: ThreadId, request: ForkRequest) => Promise<void>;
+      }
+    | undefined;
   readonly restore?:
     | {
         readonly preview: (agentId: AgentId, messageId: string) => Promise<RestorePreview>;
@@ -312,7 +323,7 @@ export function ThreadPane({
   const leadRunning = lead?.state === "running" || lead?.state === "queued";
   // An ended lead picks the thread back up on the user's next message.
   const leadEnded = lead?.state === "stopped" || lead?.state === "failed" ? lead.state : undefined;
-  const { attempt, restore, turnFiles, handOff, askSide, suggestFollowup } = actions;
+  const { attempt, restore, fork, turnFiles, handOff, askSide, suggestFollowup } = actions;
   /** Whether two of the lead's model ids name the same model. */
   const sameModel = (a: string, b: string) =>
     a === b ||
@@ -494,6 +505,19 @@ export function ThreadPane({
                             onRestoreMessage: (messageId: string) => {
                               actions.keep(viewed.thread.id);
                               return attempt(restore.restore(lead.id, messageId));
+                            },
+                          })}
+                      {...(cloud || !fork
+                        ? {}
+                        : {
+                            onFork: {
+                              folder: viewed.thread.worktree?.root ?? viewed.thread.cwd,
+                              worktrees,
+                              provider: lead.provider,
+                              model: lead.model,
+                              available,
+                              preview: (turn) => fork.preview(viewed.thread.id, turn),
+                              fork: (request) => fork.fork(viewed.thread.id, request),
                             },
                           })}
                       {...(cloud || !turnFiles || viewed.thread.cwd === undefined

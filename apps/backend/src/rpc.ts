@@ -291,6 +291,8 @@ export const Handlers = MachineRpcs.toLayer(
           }),
           Effect.mapError(refuse),
         ),
+      PreviewForkThread: (payload) => orchestrator.previewForkThread(payload).pipe(Effect.mapError(refuse)),
+      ForkThread: (payload) => orchestrator.forkThread(payload).pipe(Effect.mapError(refuse)),
       SendMessage: ({ agentId, text, attachments, mentions }) =>
         orchestrator
           .sendUserMessage(agentId, text, {
