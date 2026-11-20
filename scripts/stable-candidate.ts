@@ -214,7 +214,7 @@ function draftOf(release: Release): Draft {
   requireCandidate(
     draft.marker === MARKER &&
       draft.tag === release.tag_name &&
-      draft.commit === release.target_commitish &&
+      (release.target_commitish === "main" || release.target_commitish === draft.commit) &&
       /^[a-f0-9]{40}$/.test(draft.commit) &&
       /^\d+\.\d+\.\d+$/.test(draft.version) &&
       Number.isSafeInteger(draft.created) &&
@@ -352,7 +352,8 @@ function prepare() {
   const draft: Draft = { marker: MARKER, created: Date.now(), tag, commit: commit(), version: version() };
   const release = api<Release>(`${repo()}/releases`, "POST", {
     tag_name: tag,
-    target_commitish: commit(),
+    // The draft has no Git tag. Its manifest records the packaged commit until promotion tags it.
+    target_commitish: "main",
     draft: true,
     prerelease: true,
     name: `Stable candidate ${version()}`,
@@ -575,13 +576,21 @@ function publish() {
   const expected = staged();
   checkReserved(expected);
   const tag = env("TAG");
+  const ref = `refs/tags/${tag}`;
+  const refs = new Map(
+    git("ls-remote", "origin", ref, `${ref}^{}`)
+      .split("\n")
+      .map((line) => {
+        const [sha, name] = line.split("\t");
+        return [name, sha];
+      }),
+  );
   requireCandidate(
-    tag === `v${version()}` && git("ls-remote", "origin", `refs/tags/${tag}`) === "",
-    "The stable tag is unavailable.",
+    tag === `v${version()}` && (refs.get(`${ref}^{}`) ?? refs.get(ref)) === commit(),
+    "The stable tag does not point to the packaged commit.",
   );
   const release = api<Release>(`${repo()}/releases/${expected.id}`, "PATCH", {
     tag_name: tag,
-    target_commitish: commit(),
     draft: false,
     prerelease: false,
     make_latest: "true",
@@ -589,10 +598,7 @@ function publish() {
     body: readFileSync(temp("notes.md"), "utf8"),
   });
   requireCandidate(
-    !release.draft &&
-      !release.prerelease &&
-      release.tag_name === tag &&
-      release.target_commitish === commit(),
+    !release.draft && !release.prerelease && release.tag_name === tag,
     "GitHub did not publish the expected stable release.",
   );
 }

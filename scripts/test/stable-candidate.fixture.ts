@@ -149,6 +149,7 @@ function fakeGithub(args: string[]) {
     const input = JSON.parse(readFileSync(0, "utf8")) as Release;
     assert.equal(input.draft, true);
     assert.equal(input.prerelease, true);
+    assert.equal(input.target_commitish, "main");
     const release = { ...input, id: 100, author: bot, published_at: null, assets: [] };
     state.releases.push(release);
     save();
@@ -187,7 +188,7 @@ function fakeGithub(args: string[]) {
     if (input.draft === false) {
       assert.equal(input.tag_name, `v${version}`);
       assert.equal(input.make_latest, "true");
-      assert.equal(input.target_commitish, state.head);
+      assert.equal(input.target_commitish, undefined);
       assert.ok(!release.assets.some((asset) => asset.name.startsWith("candidate-")));
       release.published_at = new Date().toISOString();
     }
@@ -397,6 +398,20 @@ function runFixture() {
     assert.equal(load().releases[0]!.draft, true);
     assert.ok(!load().releases[0]!.assets.some((asset) => asset.name.startsWith("candidate-")));
     file("runner-temp/notes.md", "The current release notes.\n");
+    assert.throws(() => continuePromotion("publish"), /stable tag does not point to the packaged commit/);
+    git("tag", `v${version}`, git("rev-parse", "HEAD^{tree}"));
+    assert.throws(() => continuePromotion("publish"), /stable tag does not point to the packaged commit/);
+    git(
+      "-c",
+      "user.name=Fixture",
+      "-c",
+      "user.email=fixture@example.invalid",
+      "tag",
+      "-af",
+      `v${version}`,
+      "-m",
+      "Stable",
+    );
     continuePromotion("publish");
     const published = load().releases[0]!;
     assert.equal(published.draft, false);

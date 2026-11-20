@@ -133,6 +133,33 @@ jobs:
           cloudflare-api-token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           cloudflare-account-id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           github-token: ${{ github.token }}
+      - id: tag
+        name: Push the stable tag
+        if: ${{ steps.reserve.outcome == 'success' }}
+        env: &stable-tag-env
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.notes.outputs.tag }}
+          COMMIT: ${{ needs.plan.outputs.commit }}
+        run: &push-stable-tag |
+          # The Releases API can reject implicit tags on nightlies with a different workflow tree.
+          # Publish from an explicit tag on the commit that was packaged.
+          ref="refs/tags/$TAG"
+          refs=$(git ls-remote origin "$ref" "$ref^{}")
+          target=$(awk '$2 ~ /\^\{\}$/ {peeled=$1; next} {oid=$1} END {print peeled ? peeled : oid}' <<<"$refs")
+          if [[ -n "$target" ]]; then
+            if [[ "$target" != "$COMMIT" ]]; then
+              echo "::error::The stable tag already points to a different commit."
+              exit 1
+            fi
+            exit 0
+          fi
+          # The pre-push hook verifies source changes. This push only names a commit already built by CI.
+          result=$(git -c credential.helper= -c 'credential.helper=!gh auth git-credential' \
+            push --no-verify --porcelain origin "$COMMIT:$ref")
+          echo "$result"
+          if grep -q $'^\\*\t' <<<"$result"; then
+            echo "created=true" >> "$GITHUB_OUTPUT"
+          fi
       - name: Publish the verified draft as stable
         if: ${{ steps.reserve.outcome == 'success' }}
         run: node scripts/stable-candidate.ts publish
@@ -140,6 +167,21 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.notes.outputs.tag }}
           TITLE: ${{ steps.notes.outputs.title }}
+      - name: Remove the tag if publication failed
+        if: ${{ failure() && steps.tag.outputs.created == 'true' }}
+        env: *stable-tag-env
+        run: &rollback-stable-tag |
+          # Release planning treats stable tags as published. Remove only this job's tag and
+          # only when GitHub confirms there is no published release for it.
+          response=$(gh api --include "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" 2>/dev/null) || {
+            if [[ "$response" =~ ^HTTP/[^[:space:]]+[[:space:]]404[[:space:]] ]]; then
+              ref="refs/tags/$TAG"
+              git -c credential.helper= -c 'credential.helper=!gh auth git-credential' \
+                push --no-verify --force-with-lease="$ref:$COMMIT" origin ":$ref"
+            else
+              echo "::warning::Could not verify release status for $TAG. The tag was left in place."
+            fi
+          }
 
   build:
     name: Build stable release
@@ -226,6 +268,11 @@ jobs:
           cloudflare-api-token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           cloudflare-account-id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           github-token: ${{ github.token }}
+      - id: tag
+        name: Push the stable tag
+        if: ${{ steps.notes.outputs.publish == 'true' }}
+        env: *stable-tag-env
+        run: *push-stable-tag
       - name: Publish
         if: ${{ steps.notes.outputs.publish == 'true' }}
         env:
@@ -233,8 +280,10 @@ jobs:
           GH_REPO: ${{ github.repository }}
           TAG: ${{ steps.notes.outputs.tag }}
           TITLE: ${{ steps.notes.outputs.title }}
-          COMMIT: ${{ needs.plan.outputs.commit }}
         run: |
           gh release create "$TAG" apps/desktop/out/* apps/relay/dist/cerium-web-*.tar.gz \
-            --target "$COMMIT" --title "$TITLE" \
-            --notes-file "$RUNNER_TEMP/notes.md" --latest
+            --verify-tag --title "$TITLE" --notes-file "$RUNNER_TEMP/notes.md" --latest
+      - name: Remove the tag if publication failed
+        if: ${{ failure() && steps.tag.outputs.created == 'true' }}
+        env: *stable-tag-env
+        run: *rollback-stable-tag
