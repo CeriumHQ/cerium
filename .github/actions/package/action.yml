@@ -16,9 +16,12 @@ inputs:
     required: true
   compression:
     description: >-
-      `maximum` uses release compression for stable releases and published nightlies. `fast` uses a
-      lower LZMA2 level and packs the .deb and .rpm with gzip (apps/desktop/electron-builder.ts), so
-      runs that only check the packaging finish sooner.
+      `maximum` uses release compression, for stable releases. `balanced` differs only in the Linux
+      packages, for published nightlies: the .rpm takes xz's own level, 6 instead of 9, and it and
+      the .deb are compressed on every core, which packs them in well under half the time for an .rpm
+      about 3% larger and a .deb under 1% larger. `fast` uses a lower LZMA2 level and packs the .deb
+      and .rpm with gzip (apps/desktop/electron-builder.ts), so runs that only check the packaging
+      finish sooner.
     required: true
   arch:
     description: >-
@@ -79,7 +82,8 @@ runs:
     # lists and the virtual display, while the app builds and packs, which leaves only the .rpm and
     # the dependencies it names for the smoke test to install. The packages folder is mounted from
     # its parent, which exists already. Its outcome lands in fedora-ready for the smoke test to read.
-    - name: Start the Fedora container
+    # Ubuntu's own package lists, which installing the .deb reads, are refreshed meanwhile too.
+    - name: Start the Fedora container and refresh Ubuntu's package lists
       if: runner.os == 'Linux'
       shell: bash
       run: |
@@ -91,6 +95,11 @@ runs:
             docker exec fedora dnf install -y -q xorg-x11-server-Xvfb xorg-x11-xauth
           echo $? > "$RUNNER_TEMP/fedora-ready"
         ) > "$RUNNER_TEMP/fedora.log" 2>&1 &
+        (
+          status=0
+          sudo apt-get -o Acquire::Retries=3 update -q || status=$?
+          echo "$status" > "$RUNNER_TEMP/apt-ready"
+        ) > "$RUNNER_TEMP/apt.log" 2>&1 &
       env:
         # The newest Fedora release, the one most of its users run.
         FEDORA: fedora:latest
@@ -138,12 +147,17 @@ runs:
         key: electron-builder-${{ runner.os }}-${{ inputs.arch || runner.arch }}-${{ hashFiles('apps/desktop/package.json') }}
 
     # Both architectures install the .deb during the smoke test. The image's package lists can
-    # refer to superseded Ubuntu packages even when rpmbuild is already installed.
-    - name: Refresh Ubuntu package lists and ensure rpmbuild is installed
+    # refer to superseded Ubuntu packages even when rpmbuild is already installed. They were refreshed
+    # while the app built (above); a refresh that failed there is made again here.
+    - name: Wait for Ubuntu's package lists and ensure rpmbuild is installed
       if: runner.os == 'Linux'
       shell: bash
       run: |
-        sudo apt-get -o Acquire::Retries=3 update -q
+        for _ in $(seq 120); do [ -s "$RUNNER_TEMP/apt-ready" ] && break; sleep 1; done
+        cat "$RUNNER_TEMP/apt.log"
+        if [ "$(cat "$RUNNER_TEMP/apt-ready" 2>/dev/null)" != 0 ]; then
+          sudo apt-get -o Acquire::Retries=3 update -q
+        fi
         command -v rpmbuild > /dev/null || sudo apt-get install -y -q --no-install-recommends rpm
 
     # makensis now and then fails with "Can't open output file" while writing the installer; seen in
@@ -155,11 +169,23 @@ runs:
     # matched and the smoke test's codesign check refused it. On Linux the AppImage, the .deb and the
     # .rpm pack side by side, where one after another took two minutes, each in a folder of its own
     # since each marks its unpacked app with its own package type. Their update files are then joined
-    # into the one a single run writes, the AppImage's first (scripts/merge-update-files.ts).
+    # into the one a single run writes, the AppImage's first (scripts/merge-update-files.ts). A
+    # nightly's .rpm, at xz level 9 on the two cores its two blocks could use, took nearly three
+    # minutes and was the last thing a Linux job waited for: `balanced` has electron-builder.ts pack
+    # it at level 6, on every core. The .deb's xz, which GNU tar starts with the level fpm names in
+    # XZ_OPT, reads XZ_DEFAULTS before it and so uses every core as well.
     - name: Package
       shell: bash
       run: |
-        if [ "$COMPRESSION" = fast ]; then export ELECTRON_BUILDER_COMPRESSION_LEVEL=1; fi
+        case "$COMPRESSION" in
+          fast) export ELECTRON_BUILDER_COMPRESSION_LEVEL=1 ;;
+          balanced) export XZ_DEFAULTS=-T0 CERIUM_RPM_COMPRESSION_LEVEL=6 ;;
+          maximum) ;;
+          *)
+            echo "::error::compression is '$COMPRESSION', not fast, balanced or maximum."
+            exit 1
+            ;;
+        esac
         if [ "$RUNNER_OS" = macOS ] && [ -n "${GITHUB_BASE_REF:-}" ]; then
           export CSC_FOR_PULL_REQUEST=true
         elif [ "$RUNNER_OS" = macOS ] && [ -n "$MAC_CERTIFICATE" ]; then
@@ -242,16 +268,20 @@ runs:
     # installed first and started as the system's package manager left it: its AppArmor profile is what
     # lets Chromium's sandbox into the unprivileged user namespaces Ubuntu's AppArmor otherwise keeps
     # from it. Then the AppImage, unpacked since the runner has no FUSE to mount it with, which only
-    # sandboxes itself once those namespaces are let through. Alongside the AppImage, the .rpm is installed with dnf in
-    # the Fedora container started above, which checks its dependencies resolve there, and started by
-    # a user of its own,
+    # sandboxes itself once those namespaces are let through. Meanwhile the .rpm is installed with dnf
+    # in the Fedora container started above, which checks its dependencies resolve there, and,
+    # alongside the AppImage, started by a user of its own,
     # since Chromium won't sandbox itself as root; the container's own seccomp and AppArmor profiles
     # would keep the sandbox out of the namespaces a Fedora desktop lets it into, and leave it apart
-    # from the runner's. The Fedora container shares the runner's kernel: start its test only after
+    # from the runner's. The Fedora container shares the runner's kernel: the .rpm installs while the
+    # .deb is tested, half a minute that used to follow it, but starts only after
     # the .deb has tested Ubuntu's AppArmor profile and the user-namespace restriction is lifted,
     # otherwise its unprivileged Chromium can start before that sysctl and abort. All run on a virtual
     # display. On macOS the app starts from its disk image,
-    # once its signature checks out. A report is printed again when a start fails, in case the Windows
+    # once its signature checks out. On Windows the installer takes the job's temporary folder for
+    # its own: it unpacks the whole app there before copying it into place, and the one Windows gives
+    # it is on the system drive, slower than the checkout's on x64 runners and scanned by Defender on
+    # Arm64's. A report is printed again when a start fails, in case the Windows
     # app's own output went nowhere. A push's packages upload to its draft release meanwhile, with the
     # token given to the upload alone, never to the app.
     - name: Smoke test
@@ -297,6 +327,9 @@ runs:
           powershell.exe -NoProfile -NonInteractive -Command '
             $ErrorActionPreference = "Stop"
             $directory = Join-Path $env:RUNNER_TEMP "cerium-installed"
+            $temporary = Join-Path $env:RUNNER_TEMP "cerium-installer"
+            New-Item -ItemType Directory -Force $temporary | Out-Null
+            $env:TEMP = $env:TMP = $temporary
             $installer = Start-Process -FilePath $env:CERIUM_SMOKE_INSTALLER -Wait -PassThru `
               -ArgumentList "/S", "/currentuser", "/D=$directory"
             exit $installer.ExitCode
@@ -340,11 +373,7 @@ runs:
           fi
         else
           export LANGUAGE=fr
-          # Refresh before installing so a mirror update cannot leave the runner using old package URLs.
-          sudo apt-get update -q
-          sudo apt-get install -y "$GITHUB_WORKSPACE/$out"/cerium*.deb
-          smoke deb xvfb-run -a cerium
-          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          lifted="$RUNNER_TEMP/userns-lifted"
           (
             for _ in $(seq 300); do [ -s "$RUNNER_TEMP/fedora-ready" ] && break; sleep 1; done
             if [ "$(cat "$RUNNER_TEMP/fedora-ready" 2>/dev/null)" != 0 ]; then
@@ -352,16 +381,28 @@ runs:
               echo "::error::The Fedora container didn't start."
               exit 1
             fi
-            docker exec -e CERIUM_SMOKE_LOCALE fedora bash -euo pipefail -c '
+            docker exec fedora bash -euo pipefail -c '
                 dnf install -y -q /desktop/out/cerium-*.rpm
-                useradd -m user
-                su user -c "LANGUAGE=fr xvfb-run -a cerium --smoke-test=/smoke-test"' || {
+                useradd -m user'
+            for _ in $(seq 600); do [ -e "$lifted" ] && break; sleep 1; done
+            if [ ! -e "$lifted" ]; then
+              echo "::error::The .deb's smoke test never finished, so the .rpm's didn't start."
+              exit 1
+            fi
+            docker exec -e CERIUM_SMOKE_LOCALE fedora \
+              su user -c "LANGUAGE=fr xvfb-run -a cerium --smoke-test=/smoke-test" || {
               status=$?
               cat "$RUNNER_TEMP/smoke-test/rpm/smoke-test.log" 2>/dev/null || echo "The app wrote no report."
               exit "$status"
             }
           ) > "$RUNNER_TEMP/rpm-smoke-test.log" 2>&1 &
           rpm=$!
+          # Refresh before installing so a mirror update cannot leave the runner using old package URLs.
+          sudo apt-get update -q
+          sudo apt-get install -y "$GITHUB_WORKSPACE/$out"/cerium*.deb
+          smoke deb xvfb-run -a cerium
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          touch "$lifted"
           (cd "$RUNNER_TEMP" && "$GITHUB_WORKSPACE/$out"/"$prefix"-"$VERSION"-*.AppImage --appimage-extract > /dev/null)
           smoke appimage xvfb-run -a "$RUNNER_TEMP/squashfs-root/AppRun"
           if wait "$rpm"; then

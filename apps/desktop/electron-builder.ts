@@ -36,6 +36,13 @@ const developerId = Boolean(process.env["CSC_LINK"] || process.env["CSC_NAME"]);
  * somewhat larger, and installed the same way.
  */
 const fastPacking = process.env["ELECTRON_BUILDER_COMPRESSION_LEVEL"] !== undefined;
+/**
+ * The xz level of the .rpm's payload, when a nightly's packaging names one (.github/actions/package).
+ * fpm packs it at 9 otherwise, whose blocks are so large that the app fills two and only two cores
+ * compress them; 6, xz's own default, packs it on every core in a quarter of the time, about 3%
+ * larger.
+ */
+const rpmLevel = process.env["CERIUM_RPM_COMPRESSION_LEVEL"];
 
 /**
  * Takes the npm packages built for the other Mac processor out of a packed Mac app, before it is
@@ -213,7 +220,10 @@ export default {
   // side by side.
   rpm: {
     artifactName: artifact("cerium-${version}.${arch}.${ext}"),
-    fpm: ["--rpm-rpmbuild-define=_build_id_links none"],
+    fpm: [
+      "--rpm-rpmbuild-define=_build_id_links none",
+      ...(rpmLevel === undefined || fastPacking ? [] : [`--rpm-compression-level=${rpmLevel}`]),
+    ],
     ...(fastPacking ? { compression: "gzip" } : {}),
     depends: [
       ...["gtk3", "libnotify", "nss", "libXScrnSaver", "(libXtst or libXtst6)", "xdg-utils", "at-spi2-core"],

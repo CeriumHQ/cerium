@@ -26,21 +26,33 @@ runs:
     # Defender scans every file a process opens and every program that starts, which slows installing,
     # building, packaging and the thousands of git processes the tests start. The runner is a fresh
     # machine that lasts one job. Where scanning can't be turned off, the checkout and the temporary
-    # folder are left out of it instead. Windows on Arm's runners keep real-time scanning on, so
-    # apply the existing path exclusions there without querying Defender's real-time status.
+    # folder are left out of it instead.
     - name: Configure Defender
-      if: runner.os == 'Windows'
+      if: runner.os == 'Windows' && runner.arch != 'ARM64'
       shell: pwsh
       run: |
         try {
-          $isArm64 = $env:RUNNER_ARCH -eq 'ARM64'
-          if (-not $isArm64) {
-            Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction SilentlyContinue
-          }
+          Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction SilentlyContinue
           Add-MpPreference -ExclusionPath $env:GITHUB_WORKSPACE, $env:RUNNER_TEMP -ErrorAction SilentlyContinue
-          if (-not $isArm64) {
-            "Defender real-time scanning: $((Get-MpComputerStatus).RealTimeProtectionEnabled)"
-          }
+          "Defender real-time scanning: $((Get-MpComputerStatus).RealTimeProtectionEnabled)"
+        } catch {
+          "Defender left as it was: $_"
+        }
+
+    # Windows on Arm's runners keep real-time scanning on, so only the path exclusions apply there.
+    # Adding them took about 40 seconds of every job, on the runner whose jobs finish last, so a
+    # process of its own adds them while Bun and Node are set up and the install begins. Started
+    # this way it has a hidden window of its own and none of this step's handles, so the step ends
+    # at once and the process runs on.
+    - name: Configure Defender in the background
+      if: runner.os == 'Windows' && runner.arch == 'ARM64'
+      shell: pwsh
+      run: |
+        try {
+          $command = "Add-MpPreference -ExclusionPath '$env:GITHUB_WORKSPACE', '$env:RUNNER_TEMP' -ErrorAction SilentlyContinue"
+          $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
+          Start-Process -FilePath pwsh -WindowStyle Hidden `
+            -ArgumentList '-NoProfile', '-NonInteractive', '-EncodedCommand', $encoded
         } catch {
           "Defender left as it was: $_"
         }

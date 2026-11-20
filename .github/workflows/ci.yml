@@ -250,7 +250,8 @@ jobs:
 
   # Every change that reaches main is packaged and started on every platform, on each processor's
   # own runner, and a pull request on Windows x64 alone unless it touches packaging (plan, above).
-  # Nightlies ship these packages, packed fast (.github/actions/package). Packaging installs neither
+  # Nightlies ship these packages, their Linux ones compressed on every core; a pull request's are
+  # only checked, and packed fast (.github/actions/package). Packaging installs neither
   # the relay's dependencies nor the website's, which its builds never read: Wrangler's alone brings
   # Cloudflare's runtime, about a hundred megabytes per platform. A push's packages upload straight to
   # its nightly's draft release (plan, above), which takes the write permission.
@@ -281,7 +282,7 @@ jobs:
           version: ${{ needs.plan.outputs.version }}
           release: ${{ needs.plan.outputs.release }}
           github-token: ${{ github.token }}
-          compression: ${{ needs.plan.outputs.release != '' && 'maximum' || 'fast' }}
+          compression: ${{ needs.plan.outputs.release != '' && 'balanced' || 'fast' }}
           chromium-locales: ${{ matrix.locales }}
           # Only a push's nightly reports crashes; a pull request's packages only check the packaging.
           sentry-dsn: ${{ github.event_name == 'push' && vars.SENTRY_DSN || '' }}
@@ -311,7 +312,7 @@ jobs:
           version: ${{ needs.plan.outputs.version }}
           release: ${{ needs.plan.outputs.release }}
           github-token: ${{ github.token }}
-          compression: ${{ needs.plan.outputs.release != '' && 'maximum' || 'fast' }}
+          compression: ${{ needs.plan.outputs.release != '' && 'balanced' || 'fast' }}
           chromium-locales: ${{ matrix.locales }}
           # Only a push's nightly reports crashes; a pull request's packages only check the packaging.
           sentry-dsn: ${{ github.event_name == 'push' && vars.SENTRY_DSN || '' }}
@@ -346,7 +347,7 @@ jobs:
           version: ${{ needs.plan.outputs.version }}
           release: ${{ needs.plan.outputs.release }}
           github-token: ${{ github.token }}
-          compression: ${{ needs.plan.outputs.release != '' && 'maximum' || 'fast' }}
+          compression: ${{ needs.plan.outputs.release != '' && 'balanced' || 'fast' }}
           chromium-locales: ${{ matrix.locales }}
           # Only a push's nightly reports crashes; a pull request's packages only check the packaging.
           sentry-dsn: ${{ github.event_name == 'push' && vars.SENTRY_DSN || '' }}
