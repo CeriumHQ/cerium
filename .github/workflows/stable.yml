@@ -47,13 +47,51 @@ jobs:
         with:
           node-version: 24
       - id: plan
-        run: node scripts/release.ts stable --version="$VERSION"
+        run: &plan-stable |
+          args=(stable --version="$VERSION")
+          if [[ -n "${COMMIT:-}" ]]; then
+            args+=(--commit="$COMMIT" --notes="$RUNNER_TEMP/notes.md")
+          fi
+          # A maintainer can pre-tag an older nightly for a manual release. Ignore that ref
+          # locally only after confirming GitHub has no published release for it.
+          pending_target=
+          if [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            ref="refs/tags/v$VERSION"
+            pending_target=$(git rev-parse --verify --quiet "$ref^{commit}") || pending_target=
+            if [[ -n "$pending_target" ]]; then
+              if response=$(gh api --include "repos/$GITHUB_REPOSITORY/releases/tags/v$VERSION" 2>/dev/null); then
+                pending_target=
+              elif [[ "$response" =~ ^HTTP/[^[:space:]]+[[:space:]]404[[:space:]] ]]; then
+                git update-ref -d "$ref"
+              else
+                echo "::error::Could not verify the release status of v$VERSION."
+                exit 1
+              fi
+            fi
+          fi
+          node scripts/release.ts "${args[@]}"
+          if ! grep -qx 'publish=true' "$GITHUB_OUTPUT"; then exit 0; fi
+          planned_commit=$(sed -n 's/^commit=//p' "$GITHUB_OUTPUT")
+          if [[ -n "$pending_target" ]]; then
+            if [[ "$planned_commit" != "$pending_target" ]]; then
+              echo "::error::The stable tag already points to a different commit."
+              exit 1
+            fi
+            echo "pretagged=true" >> "$GITHUB_OUTPUT"
+          elif [[ "$HAS_STABLE_TAG_TOKEN" != true ]] &&
+            ! git diff --quiet "$planned_commit" "origin/$DEFAULT_BRANCH" -- .github/workflows; then
+            echo "::error::The nightly has a different workflow tree. Configure STABLE_TAG_TOKEN with Contents and Workflows write access, or tag the nightly and dispatch its version."
+            exit 1
+          fi
         env:
           VERSION: ${{ inputs.version }}
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          HAS_STABLE_TAG_TOKEN: ${{ secrets.STABLE_TAG_TOKEN != '' }}
 
       - id: candidate
         name: Look for a completed build of this exact release
-        if: ${{ steps.plan.outputs.publish == 'true' && github.ref == 'refs/heads/main' && !github.event.repository.private && !github.event.repository.fork }}
+        if: ${{ steps.plan.outputs.publish == 'true' && steps.plan.outputs.pretagged != 'true' && github.ref == 'refs/heads/main' && !github.event.repository.private && !github.event.repository.fork }}
         continue-on-error: true
         run: node scripts/stable-candidate.ts find
         env:
@@ -134,13 +172,13 @@ jobs:
           cloudflare-account-id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           github-token: ${{ github.token }}
       - id: tag
-        name: Push the stable tag
+        name: Create the stable tag
         if: ${{ steps.reserve.outcome == 'success' }}
         env: &stable-tag-env
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.STABLE_TAG_TOKEN || github.token }}
           TAG: ${{ steps.notes.outputs.tag }}
           COMMIT: ${{ needs.plan.outputs.commit }}
-        run: &push-stable-tag |
+        run: &create-stable-tag |
           # The Releases API can reject implicit tags on nightlies with a different workflow tree.
           # Publish from an explicit tag on the commit that was packaged.
           ref="refs/tags/$TAG"
@@ -153,13 +191,8 @@ jobs:
             fi
             exit 0
           fi
-          # The pre-push hook verifies source changes. This push only names a commit already built by CI.
-          result=$(git -c credential.helper= -c 'credential.helper=!gh auth git-credential' \
-            push --no-verify --porcelain origin "$COMMIT:$ref")
-          echo "$result"
-          if grep -q $'^\\*\t' <<<"$result"; then
-            echo "created=true" >> "$GITHUB_OUTPUT"
-          fi
+          gh api "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=$ref" -f "sha=$COMMIT" --jq .ref
+          echo "created=true" >> "$GITHUB_OUTPUT"
       - name: Publish the verified draft as stable
         if: ${{ steps.reserve.outcome == 'success' }}
         run: node scripts/stable-candidate.ts publish
@@ -169,7 +202,10 @@ jobs:
           TITLE: ${{ steps.notes.outputs.title }}
       - name: Remove the tag if publication failed
         if: ${{ failure() && steps.tag.outputs.created == 'true' }}
-        env: *stable-tag-env
+        env: &rollback-tag-env
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.notes.outputs.tag }}
+          COMMIT: ${{ needs.plan.outputs.commit }}
         run: &rollback-stable-tag |
           # Release planning treats stable tags as published. Remove only this job's tag and
           # only when GitHub confirms there is no published release for it.
@@ -221,10 +257,13 @@ jobs:
       # Re-checks the plan, in case a stable was released from this commit meanwhile.
       - id: notes
         name: Write the release notes
-        run: node scripts/release.ts stable --commit="$COMMIT" --version="$VERSION" --notes="$RUNNER_TEMP/notes.md"
+        run: *plan-stable
         env:
           COMMIT: ${{ needs.plan.outputs.commit }}
           VERSION: ${{ needs.plan.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          HAS_STABLE_TAG_TOKEN: ${{ secrets.STABLE_TAG_TOKEN != '' }}
       # Each runner's packages in a folder of their own, then all in one, with the update files two
       # runners both wrote merged (scripts/merge-update-files.ts).
       - name: Fetch the packages
@@ -269,10 +308,10 @@ jobs:
           cloudflare-account-id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           github-token: ${{ github.token }}
       - id: tag
-        name: Push the stable tag
+        name: Create the stable tag
         if: ${{ steps.notes.outputs.publish == 'true' }}
         env: *stable-tag-env
-        run: *push-stable-tag
+        run: *create-stable-tag
       - name: Publish
         if: ${{ steps.notes.outputs.publish == 'true' }}
         env:
@@ -285,5 +324,5 @@ jobs:
             --verify-tag --title "$TITLE" --notes-file "$RUNNER_TEMP/notes.md" --latest
       - name: Remove the tag if publication failed
         if: ${{ failure() && steps.tag.outputs.created == 'true' }}
-        env: *stable-tag-env
+        env: *rollback-tag-env
         run: *rollback-stable-tag
