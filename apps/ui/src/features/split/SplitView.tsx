@@ -409,7 +409,7 @@ function Pane({
       onPointerDownCapture={focus}
       onFocusCapture={focus}
       style={style}
-      className={`absolute flex flex-col overflow-hidden rounded-xl border bg-surface-pane shadow-raised ${
+      className={`absolute flex flex-col overflow-hidden rounded-xl border bg-surface-pane bg-pane-light shadow-raised ${
         still ? "" : "transition-[left,top,width,height,clip-path,opacity] duration-200 ease-out-soft"
       } ${present ? "" : "z-10 opacity-0"} ${
         style["--pane-clip"] === undefined

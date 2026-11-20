@@ -17,10 +17,11 @@ import {
 } from "lucide-react";
 import { useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
 
 import { settingsAtom } from "../../backend/atoms.ts";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
+import { ProviderMark } from "../../components/ProviderMark.tsx";
 import { Disclosure } from "../../components/ui/Disclosure.tsx";
 import { IconButton } from "../../components/ui/IconButton.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
@@ -245,7 +246,7 @@ function AgentRow({
               <span className="absolute top-1/2 left-[15px] h-px w-2 bg-line-strong" />
             </>
           ) : null}
-          <ProviderLogo provider={agent.provider} size={13} />
+          <ProviderMark provider={agent.provider} size="sm" />
           <span className="shrink-0 font-medium text-fg-primary">
             {agent.parentId === undefined ? "Lead" : agent.role}
           </span>
@@ -300,6 +301,21 @@ const actionButton =
   "flex h-7 items-center gap-1.5 rounded-md px-2.5 text-meta transition-colors max-md:h-10 max-md:px-3.5 max-md:text-[14px]";
 const quietAction = "text-fg-secondary hover:bg-surface-hover hover:text-fg-primary";
 
+/** One fact about an agent: what it is on the left, its value against the panel's right edge. */
+function Fact({ label, title, children }: { label: string; title?: string; children: ReactNode }) {
+  return (
+    <>
+      <dt className="text-fg-tertiary">{label}</dt>
+      <dd
+        {...(title === undefined ? {} : { title })}
+        className="flex min-w-0 items-center justify-end gap-1.5 text-fg-secondary tabular-nums"
+      >
+        {children}
+      </dd>
+    </>
+  );
+}
+
 function AgentDetails({
   ref,
   agent,
@@ -330,6 +346,12 @@ function AgentDetails({
   const plan = agentMenuPlan(agent, { card: false, canMessage: onMessage !== undefined });
   const { inputTokens, outputTokens, costUsd } = agent.usage;
   const reported = inputTokens + outputTokens > 0;
+  // A lone agent is named by its model, as no list names it; one of a team by its part in it.
+  const tuning = [
+    agent.effort ? `${agent.autoEffort && routerOn ? "Auto, " : ""}${effortLabel[agent.effort]}` : undefined,
+    agent.speed && agent.speed !== "standard" ? speedLabel[agent.speed] : undefined,
+  ].filter((part) => part !== undefined);
+  const tuned = (bare ? tuning : [agent.model, ...tuning]).join(" · ");
   // The lead's own requests are answered in the conversation, so the panel points there.
   const asksInConversation =
     agent.parentId === undefined && (agent.approvals.length > 0 || agent.questions.length > 0);
@@ -339,44 +361,18 @@ function AgentDetails({
       className="flex flex-col gap-3 border-t border-line-subtle px-3 py-3 max-md:px-4"
       aria-label="Agent details"
     >
-      <div className="flex items-start gap-2.5">
-        <ProviderLogo provider={agent.provider} size={14} className="mt-[3px] max-md:mt-1" />
+      <div className="flex items-center gap-2.5">
+        <ProviderMark provider={agent.provider} />
         <div className="flex min-w-0 flex-1 flex-col">
           <p
-            className="truncate text-meta font-medium text-fg-primary max-md:text-[14px]"
+            className="truncate text-body font-medium text-fg-primary max-md:text-[15px]"
             title={agent.model}
           >
-            {agent.model}
-            {agent.effort ? (
-              <span className="font-normal text-fg-tertiary">
-                {" "}
-                · {agent.autoEffort && routerOn ? "Auto, " : ""}
-                {effortLabel[agent.effort]}
-              </span>
-            ) : null}
-            {agent.speed && agent.speed !== "standard" ? (
-              <span className="font-normal text-fg-tertiary"> · {speedLabel[agent.speed]}</span>
-            ) : null}
+            {bare ? agent.model : agent.parentId === undefined ? "Lead" : agent.role}
           </p>
-          <p className="flex min-w-0 items-center gap-1 text-meta text-fg-tertiary max-md:text-[13px]">
-            <AccessIcon size={11} strokeWidth={1.75} className="shrink-0" />
-            <span className="truncate">
-              {accessLabel[agent.access]} ·{" "}
-              <span title={dateTime(agent.startedAt)}>started {whenAgo(agent.startedAt)}</span>
-            </span>
-          </p>
-          {/* Usage arrives when a turn ends; until then there is nothing to count. Not every harness reports a cost. */}
-          {reported ? (
-            <p className="truncate text-meta text-fg-tertiary tabular-nums max-md:text-[13px]">
-              {compactTokens(inputTokens)} in · {compactTokens(outputTokens)} out
-              {costUsd !== undefined ? ` · ${usd(costUsd)}` : ""}
-            </p>
-          ) : null}
-          {agent.context ? (
-            <p className="mt-1 flex text-caption text-fg-tertiary max-md:text-[13px]">
-              <ContextBar context={agent.context} />
-            </p>
-          ) : null}
+          {tuned === "" ? null : (
+            <p className="truncate text-meta text-fg-tertiary max-md:text-[13px]">{tuned}</p>
+          )}
         </div>
         {bare ? (
           <span className="shrink-0 rounded-full bg-surface-hover px-2.5 py-0.5">
@@ -384,6 +380,28 @@ function AgentDetails({
           </span>
         ) : null}
       </div>
+      <dl className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-4 gap-y-1.5 text-meta max-md:text-[14px]">
+        <Fact label="Access">
+          <AccessIcon size={12} strokeWidth={1.75} className="shrink-0 text-fg-tertiary" />
+          <span className="truncate">{accessLabel[agent.access]}</span>
+        </Fact>
+        <Fact label="Started" title={dateTime(agent.startedAt)}>
+          <span className="truncate first-letter:uppercase">{whenAgo(agent.startedAt)}</span>
+        </Fact>
+        {/* Usage arrives when a turn ends; until then there is nothing to count. Not every harness reports a cost. */}
+        {reported ? (
+          <Fact label="Tokens">
+            <span>{compactTokens(inputTokens)} in</span>
+            <span>{compactTokens(outputTokens)} out</span>
+          </Fact>
+        ) : null}
+        {reported && costUsd !== undefined ? <Fact label="Cost">{usd(costUsd)}</Fact> : null}
+        {agent.context ? (
+          <Fact label="Context">
+            <ContextBar context={agent.context} />
+          </Fact>
+        ) : null}
+      </dl>
 
       {onAnswerApproval && agent.approvals.length > 0 ? (
         <AgentApproval agent={agent} named={false} onAnswer={onAnswerApproval} />

@@ -84,6 +84,7 @@ import {
   type Repeat,
   type RunState,
 } from "./model.ts";
+import { paneClass } from "../../components/ui/Pane.tsx";
 
 // The rail's Automations page: prompts that start a work thread on a schedule or when CI fails on a
 // pushed commit. The list runs down the middle; the one picked, or a new one, opens beside it as a
@@ -153,7 +154,7 @@ const repeatNote: Partial<Record<Repeat, string>> = {
 /** The page on a wide window: the list down the middle, and the picked automation beside it. */
 export function AutomationsPage({ list, detail }: { list: ReactNode; detail: ReactNode }) {
   return (
-    <div className="flex h-full overflow-hidden rounded-xl border border-line-subtle bg-surface-pane shadow-raised">
+    <div className={`flex h-full overflow-hidden ${paneClass}`}>
       <ScrollArea className="flex-1">{list}</ScrollArea>
       {detail === null ? null : (
         <aside className="w-[min(440px,48%)] shrink-0 border-l border-line-subtle">{detail}</aside>

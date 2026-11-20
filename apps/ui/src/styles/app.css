@@ -355,6 +355,31 @@ html[data-target="web"] :is(button, [role="button"], [role="treeitem"], a) {
   }
 }
 
+/*
+ * The light a new thread's glass holds while there's nothing on it (tokens.css): it pools where the
+ * message box sits and comes up with the question. Two still gradients, eased so their edges don't
+ * show as rings, and no blur.
+ */
+@layer components {
+  .question-light {
+    background:
+      radial-gradient(
+        68% 36% at 50% 50%,
+        var(--glass-light),
+        color-mix(in oklab, var(--glass-light) 50%, transparent) 38%,
+        color-mix(in oklab, var(--glass-light) 14%, transparent) 70%,
+        transparent
+      ),
+      radial-gradient(
+        110% 80% at 50% 50%,
+        color-mix(in oklab, var(--glass-light) 38%, transparent),
+        color-mix(in oklab, var(--glass-light) 12%, transparent) 55%,
+        transparent
+      );
+    animation: launch-fade 900ms ease-out backwards;
+  }
+}
+
 /* Each letter of the launch screen's name rises into place as it first shows. */
 @keyframes launch-letter {
   from {

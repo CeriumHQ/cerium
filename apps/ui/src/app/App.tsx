@@ -322,6 +322,7 @@ import { freshBlank, rememberSession, restoredSession } from "./session.ts";
 import { TextMenu } from "./TextMenu.tsx";
 import { ThreadPane, type PaneHandles, type SetupRun, type ThreadPaneActions } from "./ThreadPane.tsx";
 import { besideThread, soloThread, threadWindowOpener, useSharedPreferences } from "./threadWindow.ts";
+import { paneClass } from "../components/ui/Pane.tsx";
 
 const noEvents = Atom.make(AsyncResult.success<Array<AgentEvent>>([]));
 const FOLDER_KEY = "cerium:lastFolder";
@@ -2518,7 +2519,9 @@ function Workspace() {
     githubPick === undefined ? (
       <GitHubPageEmpty />
     ) : (
-      <div className="flex h-full flex-col overflow-hidden rounded-xl border border-line-subtle bg-surface-pane shadow-raised max-md:rounded-none max-md:border-0">
+      <div
+        className={`flex h-full flex-col overflow-hidden ${paneClass} max-md:rounded-none max-md:border-0`}
+      >
         <GitHubTabView
           onOpenThread={openThreadById}
           key={githubKey(githubPick.root, githubPick.kind, githubPick.number)}

@@ -24,6 +24,7 @@ import {
   type Task,
   type TaskPatch,
 } from "./tasks.ts";
+import { paneClass } from "../../components/ui/Pane.tsx";
 
 const ago = (at: number, now: number) => {
   const short = shortAgo(at, now);
@@ -39,7 +40,7 @@ export type HandOff = (task: Pick<Task, "title" | "note" | "folder">) => void;
  */
 export function TasksPage({ list, detail }: { list: ReactNode; detail: ReactNode }) {
   return (
-    <div className="flex h-full overflow-hidden rounded-xl border border-line-subtle bg-surface-pane shadow-raised">
+    <div className={`flex h-full overflow-hidden ${paneClass}`}>
       <ScrollArea className="flex-1">{list}</ScrollArea>
       {detail === null ? null : (
         <aside className="w-[min(360px,40%)] shrink-0 border-l border-line-subtle">{detail}</aside>

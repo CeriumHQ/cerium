@@ -5,16 +5,19 @@ import { useContext, useEffect, useState } from "react";
 
 import { followupEventAtom } from "../backend/atoms.ts";
 import { ThreadLog } from "../backend/threadLog.ts";
+import { Inspector } from "../features/agents/Inspector.tsx";
 import { Composer } from "../features/composer/Composer.tsx";
 import { useTheme } from "../features/settings/theme.ts";
 import { IncrementalTranscript } from "../features/transcript/model.ts";
 import { Transcript } from "../features/transcript/Transcript.tsx";
-import { diagrams, explanation, leadFixture, transcriptFixture } from "./transcriptFixture.ts";
+import { agentsFixture, diagrams, explanation, leadFixture, transcriptFixture } from "./transcriptFixture.ts";
+import { paneClass } from "../components/ui/Pane.tsx";
 
 // The transcript on its own, drawn from the fixture, for building and screenshotting its components
 // without running an agent: `?playground` in the dev server. `&working` approves the waiting push and
 // leaves it running; `&diagrams` swaps the explaining reply for one with a diagram and math; `&stream` replays the explaining reply as it would stream in, and `&at=<n>`
 // holds it at its nth character.
+// &agents shows the agents panel with the fixture's team.
 // &history=5000 starts with a long settled log; &grow=300 appends completed turns to it.
 // &turn-end replays a turn completing and reporting its changed files. &followup=<ms> adds a stub reply.
 // &turn-start runs a scripted response when the composer sends. &fast skips the visible wait.
@@ -85,12 +88,30 @@ export function Playground() {
   // The colour scheme the page sees, so `bun run ui --light` shows the light theme.
   useTheme("system");
   const search = new URLSearchParams(location.search);
+  if (search.has("agents")) return <AgentsFixture />;
   if (search.has("turn-start")) return <TurnStartFixture wait={search.has("fast") ? 100 : 950} />;
   if (search.has("turn-end")) {
     const followup = search.get("followup");
     return followup === null ? <TurnEndFixture /> : <FollowupFixture delay={Number(followup)} />;
   }
   return <TranscriptFixture search={search} />;
+}
+
+/** The agents panel on the fixture's team, the lead picked until another is. */
+function AgentsFixture() {
+  const [selected, setSelected] = useState<string>();
+  return (
+    <div className="flex h-full justify-end bg-surface-window p-1.5">
+      <aside className={`w-[340px] overflow-hidden ${paneClass}`}>
+        <Inspector
+          agents={agentsFixture}
+          selectedId={selected}
+          onSelect={setSelected}
+          onClose={() => undefined}
+        />
+      </aside>
+    </div>
+  );
 }
 
 const appendStartEvent = (payload: AgentEvent["payload"]) => (events: ReadonlyArray<AgentEvent>) => [
@@ -219,7 +240,7 @@ function TranscriptFixture({ search }: { search: URLSearchParams }) {
   const transcript = projection.project(agent.events, agent.generation, sameModel);
   return (
     <div className="h-full bg-surface-window p-1.5">
-      <div className="h-full overflow-hidden rounded-xl border border-line-subtle bg-surface-pane shadow-raised">
+      <div className={`h-full overflow-hidden ${paneClass}`}>
         <Transcript
           blocks={transcript.blocks}
           queued={transcript.queued}
@@ -228,7 +249,7 @@ function TranscriptFixture({ search }: { search: URLSearchParams }) {
           folder="C:/work/acme-web"
           activity="running"
           childState={(id) => (id === "agt_scout1" ? "idle" : "running")}
-          childAgent={() => undefined}
+          childAgent={(id) => agentsFixture.find((agent) => agent.id === id)}
           agentActions={{}}
           onAnswerPermission={() => undefined}
         />

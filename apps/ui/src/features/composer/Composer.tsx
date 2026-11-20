@@ -1148,7 +1148,7 @@ export function Composer({
         {/* The ring turns with the disc, so the one control that ends the turn stands out. */}
         <span
           ref={stopDisc}
-          className={`pointer-events-none relative grid size-full place-items-center rounded-full bg-accent text-accent-fg transition-[opacity,scale,filter] before:absolute ${turned ? "swap-in" : ""} before:-inset-1 before:animate-spin before:rounded-full before:border-[1.5px] before:border-transparent before:border-t-fg-secondary group-hover:opacity-90 group-active:scale-95 motion-reduce:transition-none motion-reduce:before:animate-none`}
+          className={`pointer-events-none relative grid size-full place-items-center rounded-full bg-accent text-accent-fg shadow-button transition-[opacity,scale,filter] before:absolute ${turned ? "swap-in" : ""} before:-inset-1 before:animate-spin before:rounded-full before:border-[1.5px] before:border-transparent before:border-t-fg-secondary group-hover:opacity-90 group-active:scale-95 motion-reduce:transition-none motion-reduce:before:animate-none`}
         >
           <Square size={11} fill="currentColor" strokeWidth={0} />
         </span>
@@ -1177,7 +1177,7 @@ export function Composer({
         {/* An empty draft gets an outlined ring. The disc pops without scaling the hit area. */}
         <span
           ref={sendDisc}
-          className={`pointer-events-none grid size-full place-items-center rounded-full bg-accent text-accent-fg group-disabled:bg-transparent group-disabled:text-fg-tertiary group-disabled:ring-1 group-disabled:ring-line-strong group-disabled:ring-inset ${sendMotion}`}
+          className={`pointer-events-none grid size-full place-items-center rounded-full bg-accent text-accent-fg shadow-button group-disabled:shadow-none group-disabled:bg-transparent group-disabled:text-fg-tertiary group-disabled:ring-1 group-disabled:ring-line-strong group-disabled:ring-inset ${sendMotion}`}
         >
           <ArrowUp size={16} strokeWidth={2.25} />
         </span>
@@ -1538,8 +1538,8 @@ export function Composer({
             />
           ) : null}
         </ComposerMenu>
-        {/* A film a step above the conversation's own: the box stands apart by that, its edge and the
-            blur of what scrolls under it, never as a dark slab over the glass. */}
+        {/* A film a step above the conversation's own: the box stands apart by that, its lit edge, the
+            blur of what scrolls under it and the shadow it casts below, never as a dark slab over the glass. */}
         <div
           ref={glass}
           className={`pointer-events-auto relative border bg-surface-film shadow-film backdrop-blur-2xl transition-colors ${

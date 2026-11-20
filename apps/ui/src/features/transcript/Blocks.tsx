@@ -21,6 +21,7 @@ import { useContext, useEffectEvent, useLayoutEffect, useRef, useState, type Rea
 
 import { FileImageThumb } from "../../components/ImageThumb.tsx";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
+import { ProviderMark } from "../../components/ProviderMark.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { compactTokens, usd } from "../../lib/format.ts";
 import { AgentMenuArea, type AgentActions } from "../agents/AgentMenu.tsx";
@@ -192,9 +193,18 @@ export function UserMessage({
   );
 }
 
-/** A child's result or another agent's message, delivered to this agent as input. */
-export function Notice({ block, roleOf }: { block: Block<"notice">; roleOf: (agentId: string) => string }) {
+/** A child's result or another agent's message, delivered to this agent as input, under the mark of the harness it came from when that agent is one of this thread's. */
+export function Notice({
+  block,
+  roleOf,
+  providerOf,
+}: {
+  block: Block<"notice">;
+  roleOf: (agentId: string) => string;
+  providerOf: (agentId: string) => ProviderId | undefined;
+}) {
   const { item } = block;
+  const provider = item._tag === "SystemNotice" ? undefined : providerOf(item.agentId);
   const from =
     item._tag === "ChildFinishedTurn"
       ? item.role
@@ -211,7 +221,11 @@ export function Notice({ block, roleOf }: { block: Block<"notice">; roleOf: (age
   if (preview === text) {
     return (
       <MessageMenuArea text={text} className="flex gap-2 text-meta leading-relaxed">
-        <CornerDownRight size={13} strokeWidth={1.75} className="mt-[3px] shrink-0 text-fg-tertiary" />
+        {provider !== undefined ? (
+          <ProviderMark provider={provider} size="sm" />
+        ) : (
+          <CornerDownRight size={13} strokeWidth={1.75} className="mt-[3px] shrink-0 text-fg-tertiary" />
+        )}
         <p className="min-w-0 text-fg-tertiary select-text">
           <span className="font-medium text-fg-secondary">{from}</span> {verb}: {text}
         </p>
@@ -225,7 +239,11 @@ export function Notice({ block, roleOf }: { block: Block<"notice">; roleOf: (age
       <Collapsible.Root>
         <div className="flex items-center gap-2">
           <Collapsible.Trigger className="group flex min-w-0 flex-1 items-center gap-2 text-left text-meta text-fg-tertiary transition-colors hover:text-fg-secondary">
-            <CornerDownRight size={13} strokeWidth={1.75} className="shrink-0" />
+            {provider !== undefined ? (
+              <ProviderMark provider={provider} size="sm" />
+            ) : (
+              <CornerDownRight size={13} strokeWidth={1.75} className="shrink-0" />
+            )}
             <span className="shrink-0">
               <span className="font-medium text-fg-secondary">{from}</span> {verb}
             </span>
@@ -466,7 +484,7 @@ export function Reasoning({ block }: { block: Block<"reasoning"> }) {
 /** A spawned agent as its card shows it; `needsYou` while a request of its waits on the user. */
 export type ChildState = "running" | "needsYou" | "idle" | "failed";
 
-/** Opens the agent in the agents panel; right-click for its menu. */
+/** A spawned agent's row in the roster: its harness, role, model and access, and how it's getting on. Opens the agent in the agents panel; right-click for its menu. */
 export function SpawnCard({
   block,
   state,
@@ -479,16 +497,27 @@ export function SpawnCard({
   agent?: AgentSummary | undefined;
   actions: AgentActions;
 }) {
+  // While it works, the row says what it's on, when its harness keeps a plan; otherwise what it may touch.
+  const step = state === "running" ? agent?.todos.find((todo) => todo.status === "inProgress") : undefined;
   const card = (
     <Button
       onClick={() => actions.onShow?.(block.childId)}
       title={`${block.model} · ${accessLabel[block.access]}`}
-      className="flex min-w-0 max-w-full flex-wrap items-center gap-x-2 gap-y-1 rounded-sm py-1 text-left text-meta transition-colors max-md:min-h-10 hover:text-fg-primary"
+      className="col-span-full grid grid-cols-subgrid items-center px-3 py-2 text-left transition-colors hover:bg-surface-hover data-popup-open:bg-surface-hover max-md:py-2.5"
     >
-      <ProviderLogo provider={block.provider} size={13} className="text-fg-primary" />
-      <span className="text-fg-primary">{providerName[block.provider]}</span>
-      <span className="min-w-0 truncate text-fg-tertiary">{block.role}</span>
-      <AgentState state={state} />
+      <ProviderMark provider={block.provider} className="max-md:row-span-2 max-md:row-start-1" />
+      <span className="min-w-0 truncate text-body font-medium text-fg-primary max-md:col-start-2 max-md:row-start-1 max-md:text-[15px]">
+        {block.role}
+      </span>
+      <span className="flex min-w-0 items-baseline gap-2 text-meta max-md:col-start-2 max-md:row-start-2 max-md:text-[13px]">
+        <span className="shrink-0 text-fg-secondary">{block.model}</span>
+        <span className="min-w-0 truncate text-fg-tertiary">
+          {step?.activeText ?? step?.text ?? accessLabel[block.access]}
+        </span>
+      </span>
+      <span className="justify-self-end max-md:col-start-3 max-md:row-span-2 max-md:row-start-1">
+        <AgentState state={state} />
+      </span>
     </Button>
   );
   return agent ? (

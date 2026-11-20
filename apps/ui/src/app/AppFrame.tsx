@@ -23,6 +23,7 @@ import { GUTTER, panelLayout, RAIL, SIDE_PANELS, SIDEBAR, type SidePanelId } fro
 import { ResizeHandle, usePanelWidth, usePanelWidths } from "./ResizeHandle.tsx";
 import { SidePanelContext } from "./sidePanel.ts";
 import { CompactPanelMenu, Titlebar, type PreviewToggleProps, type RunProps } from "./Titlebar.tsx";
+import { paneClass } from "../components/ui/Pane.tsx";
 
 interface AppFrameProps {
   readonly thread?: { readonly title: string; readonly project?: string };
@@ -353,10 +354,7 @@ function DesktopFrame({
                 ["page", page?.main],
                 [
                   "settings",
-                  <div
-                    key="settings"
-                    className="h-full overflow-hidden rounded-xl border border-line-subtle bg-surface-pane shadow-raised"
-                  >
+                  <div key="settings" className={`h-full overflow-hidden ${paneClass}`}>
                     {settings.page}
                   </div>,
                 ],
@@ -416,7 +414,7 @@ function DesktopFrame({
                 >
                   <aside
                     style={{ width: inspectorWidth }}
-                    className="ml-1.5 shrink-0 overflow-hidden rounded-xl border border-line-subtle bg-surface-pane shadow-raised"
+                    className={`ml-1.5 shrink-0 overflow-hidden ${paneClass}`}
                   >
                     <SidePanelContext value={{ floating: false, close: onCloseSide }}>
                       {shownSide ? (

@@ -2,7 +2,7 @@ import { Button as BaseButton } from "@base-ui/react/button";
 import type { ComponentProps } from "react";
 
 const tone = {
-  primary: "bg-accent text-accent-fg hover:bg-accent-strong active:bg-accent-strong",
+  primary: "bg-accent text-accent-fg shadow-button hover:bg-accent-strong active:bg-accent-strong",
   neutral: "border border-line-strong text-fg-primary hover:bg-surface-hover active:bg-surface-active",
   danger: "border border-error/35 bg-error/15 text-error-text hover:bg-error/25",
   quiet: "text-fg-secondary hover:bg-surface-hover hover:text-fg-primary active:bg-surface-active",

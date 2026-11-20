@@ -25,7 +25,6 @@ import {
 } from "react";
 
 import { ImageGallery } from "../../components/ImageViewer.tsx";
-import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { Reveal } from "../../components/Reveal.tsx";
 import { Disclosure } from "../../components/ui/Disclosure.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
@@ -280,11 +279,16 @@ export function Transcript({
   // Read from the spawns as text, which stays equal while they do, so `actions` below stays the same
   // object: every card that reads it renders again when it changes, which was every streamed batch.
   const spawned = JSON.stringify(
-    blocks.flatMap((block) => (block.kind === "spawn" ? [[block.childId, block.role]] : [])),
+    blocks.flatMap((block) => (block.kind === "spawn" ? [[block.childId, block.role, block.provider]] : [])),
   );
-  const roleOf = useMemo(() => {
-    const roles = new Map<string, string>(JSON.parse(spawned) as Array<[string, string]>);
-    return (agentId: string) => roles.get(agentId) ?? "An agent";
+  const { roleOf, providerOf } = useMemo(() => {
+    const spawns = JSON.parse(spawned) as Array<[string, string, ProviderId]>;
+    const roles = new Map(spawns.map(([id, role]) => [id, role]));
+    const providers = new Map(spawns.map(([id, , provider]) => [id, provider]));
+    return {
+      roleOf: (agentId: string) => roles.get(agentId) ?? "An agent",
+      providerOf: (agentId: string) => providers.get(agentId),
+    };
   }, [spawned]);
   // Messages waiting for the agent's session read as sent, with its progress below them. Ones that
   // wait behind a running turn, or for an ended agent to start again, wait in the message box.
@@ -343,6 +347,7 @@ export function Transcript({
   const column = useRef<HTMLDivElement>(null);
   const actions: TranscriptActions = {
     roleOf,
+    providerOf,
     childState,
     childAgent,
     agentActions,
@@ -511,6 +516,7 @@ function WorkingLine({ show, onVisible }: { show: boolean; onVisible: () => void
  */
 interface TranscriptActions {
   readonly roleOf: (agentId: string) => string;
+  readonly providerOf: (agentId: string) => ProviderId | undefined;
   readonly childState: TranscriptProps["childState"];
   readonly childAgent: TranscriptProps["childAgent"];
   readonly agentActions: AgentActions;
@@ -531,6 +537,7 @@ interface TranscriptActions {
 
 const Actions = createContext<TranscriptActions>({
   roleOf: () => "An agent",
+  providerOf: () => undefined,
   childState: () => "idle",
   childAgent: () => undefined,
   agentActions: {},
@@ -811,12 +818,8 @@ const TurnChangesItem = memo(
 
 function SpawnCards({ spawns }: { spawns: ReadonlyArray<Block<"spawn">> }) {
   const { childState, childAgent, agentActions } = use(Actions);
-  const groups = new Map<ProviderId, Array<Block<"spawn">>>();
   const counts = { running: 0, idle: 0, failed: 0, needsYou: 0 };
   for (const spawn of spawns) {
-    const group = groups.get(spawn.provider) ?? [];
-    group.push(spawn);
-    groups.set(spawn.provider, group);
     counts[childState(spawn.childId)]++;
   }
   const status = (
@@ -826,15 +829,6 @@ function SpawnCards({ spawns }: { spawns: ReadonlyArray<Block<"spawn">> }) {
       {counts.failed > 0 ? <span className="text-error-text">{counts.failed} failed</span> : null}
       {counts.needsYou > 0 ? <span className="text-attention-text">{counts.needsYou} need you</span> : null}
     </span>
-  );
-  const card = (spawn: Block<"spawn">) => (
-    <SpawnCard
-      key={spawn.id}
-      block={spawn}
-      state={childState(spawn.childId)}
-      agent={childAgent(spawn.childId)}
-      actions={agentActions}
-    />
   );
   return (
     <Disclosure
@@ -846,26 +840,20 @@ function SpawnCards({ spawns }: { spawns: ReadonlyArray<Block<"spawn">> }) {
         </span>
       }
     >
-      <div className="ml-1.5 flex flex-col gap-1 border-l border-line-subtle pl-4">
-        {[...groups].map(([provider, group]) =>
-          group.length === 1 ? (
-            card(group[0]!)
-          ) : (
-            <Disclosure
-              key={provider}
-              summary={
-                <span className="inline-flex items-center gap-2 text-meta font-normal">
-                  <ProviderLogo provider={provider} size={14} />
-                  <span>{providerName[provider]}</span>
-                  <span className="text-caption text-fg-tertiary">{group.length} agents</span>
-                </span>
-              }
-            >
-              <div className="flex flex-col gap-1 pl-5">{group.map(card)}</div>
-            </Disclosure>
-          ),
-        )}
-      </div>
+      {/* The team as a roster: who, on which model and with what access, and how each is getting on.
+          One grid for the list, so every row's role, model and state line up. */}
+      <ul className="grid grid-cols-[auto_minmax(0,1fr)_auto] gap-x-3 divide-y divide-line-subtle overflow-hidden rounded-lg border border-line-subtle md:grid-cols-[auto_fit-content(14rem)_minmax(0,1fr)_auto]">
+        {spawns.map((spawn) => (
+          <li key={spawn.id} className="col-span-full grid grid-cols-subgrid">
+            <SpawnCard
+              block={spawn}
+              state={childState(spawn.childId)}
+              agent={childAgent(spawn.childId)}
+              actions={agentActions}
+            />
+          </li>
+        ))}
+      </ul>
     </Disclosure>
   );
 }
@@ -1082,8 +1070,8 @@ function PushItem({ call }: { call: Block<"tool"> }) {
 }
 
 function NoticeBlock({ block }: { block: Block<"notice"> }) {
-  const { roleOf } = use(Actions);
-  return <Notice block={block} roleOf={roleOf} />;
+  const { roleOf, providerOf } = use(Actions);
+  return <Notice block={block} roleOf={roleOf} providerOf={providerOf} />;
 }
 
 function PermissionBlock({ block, expired }: { block: Block<"permission">; expired: boolean }) {

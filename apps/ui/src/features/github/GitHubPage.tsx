@@ -37,6 +37,7 @@ import { GitHubSignIn } from "./GitHubSignIn.tsx";
 import { pullStateOf, type GitHubTab } from "./model.ts";
 import { CommentCount, ItemRow, PullStateIcon } from "./parts.tsx";
 import { ChecksMark } from "./PullRequestList.tsx";
+import { paneClass } from "../../components/ui/Pane.tsx";
 
 /** What the page lists, kept while the window is open. */
 const scopeAtom = Atom.make<FeedScope>("open").pipe(Atom.keepAlive);
@@ -312,9 +313,11 @@ function Notice({ title, body, children }: { title: string; body: string; childr
 /** The page's main area while nothing is picked. */
 export function GitHubPageEmpty() {
   return (
-    <div className="grid h-full place-items-center rounded-xl border border-line-subtle bg-surface-pane shadow-raised">
-      <div className="flex flex-col items-center gap-2 text-fg-tertiary">
-        <GitPullRequest size={22} strokeWidth={1.5} />
+    <div className={`grid h-full place-items-center ${paneClass}`}>
+      <div className="flex flex-col items-center gap-3 text-fg-tertiary">
+        <span className="grid size-10 place-items-center rounded-xl border border-line-subtle bg-surface-raised shadow-raised">
+          <GitPullRequest size={18} strokeWidth={1.75} />
+        </span>
         <p className="text-body">Pick a pull request or an issue</p>
       </div>
     </div>

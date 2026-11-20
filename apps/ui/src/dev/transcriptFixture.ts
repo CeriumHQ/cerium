@@ -1,5 +1,7 @@
 import type { AgentEvent, AgentId, EventId, EventPayload, ThreadId } from "@cerium/protocol";
 
+import type { AgentSummary } from "../features/agents/model.ts";
+
 // A realistic lead transcript for building the transcript's components (the playground, src/dev):
 // an Opus lead investigates a flaky test with two Muse scouts, fixes it, explains it in a reply that
 // uses most of what markdown can do, and waits for approval to run the tests again.
@@ -376,3 +378,75 @@ export const diagrams = [
   "",
   "It costs $5 or $6 to run on CI, which stays plain text.",
 ].join("\n");
+
+/** The fixture's team as the agents panel and the roster's rows read it. */
+export const agentsFixture: ReadonlyArray<AgentSummary> = [
+  {
+    id: leadId,
+    role: "lead",
+    provider: "claude",
+    model: "Opus 5.5",
+    effort: "high",
+    access: "auto",
+    state: "running",
+    awaitingApproval: false,
+    approvals: [],
+    spawns: [],
+    questions: [],
+    usage: { inputTokens: 182_400, outputTokens: 9_900, costUsd: 0.41 },
+    context: { tokens: 64_000, window: 1_000_000 },
+    todos: [
+      { text: "Reproduce the flake", status: "completed" },
+      { text: "Await the cookie write", status: "completed" },
+      { text: "Re-run the suite on CI", status: "inProgress", activeText: "Waiting to push the branch" },
+    ],
+    background: [],
+    lastMessage: "I'll set the upstream and push, then start the CI run.",
+    startedAt: Date.now() - 6 * 60_000,
+  },
+  {
+    id: "agt_scout1",
+    parentId: leadId,
+    role: "pr-scout",
+    provider: "muse",
+    model: "Muse Spark 1.3",
+    access: "readOnly",
+    state: "idle",
+    awaitingApproval: false,
+    approvals: [],
+    spawns: [],
+    questions: [],
+    usage: { inputTokens: 21_300, outputTokens: 640 },
+    context: { tokens: 21_900, window: 200_000 },
+    todos: [],
+    background: [],
+    lastMessage:
+      "Two open PRs touch src/auth: #412 (login form styling) and #418 (OAuth scopes). Neither changes session.ts.",
+    startedAt: Date.now() - 5 * 60_000,
+  },
+  {
+    id: "agt_scout2",
+    parentId: leadId,
+    role: "pr-reviewer",
+    provider: "muse",
+    model: "Muse Spark 1.3",
+    access: "readOnly",
+    state: "running",
+    awaitingApproval: false,
+    approvals: [],
+    spawns: [],
+    questions: [],
+    usage: { inputTokens: 0, outputTokens: 0 },
+    context: { tokens: 18_200, window: 200_000 },
+    todos: [
+      { text: "Read PR #412's diff", status: "completed" },
+      {
+        text: "Check its session handling",
+        status: "inProgress",
+        activeText: "Checking session handling in LoginForm.tsx",
+      },
+    ],
+    background: [],
+    startedAt: Date.now() - 5 * 60_000,
+  },
+];

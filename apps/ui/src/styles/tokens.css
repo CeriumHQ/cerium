@@ -121,10 +121,33 @@
   --series-7: #9085e9;
   --series-8: #e66767;
 
-  --shadow-raised: 0 1px 0 oklch(1 0 0 / 0.045) inset, 0 8px 24px -12px oklch(0 0 0 / 0.55);
-  --shadow-overlay: 0 1px 0 oklch(1 0 0 / 0.06) inset, 0 24px 48px -16px oklch(0 0 0 / 0.7);
-  /* A film's edge catching the light, with no shadow to darken the glass around it. */
-  --shadow-film: 0 1px 0 oklch(1 0 0 / 0.07) inset;
+  /*
+   * How the glass is lit. Light falls on a pane from above (`--pane-light`, over its film), easing
+   * out down the pane so it ends without an edge, and where the glass has nothing on it yet, a new
+   * thread, it pools in the theme's own colour, as light through tinted glass does (`--glass-light`,
+   * at the strength it shows).
+   */
+  --pane-light: linear-gradient(
+    180deg,
+    oklch(1 0 0 / 0.035),
+    oklch(1 0 0 / 0.018) 6rem,
+    oklch(1 0 0 / 0.006) 13rem,
+    transparent 20rem
+  );
+  --glass-light: color-mix(in oklab, color-mix(in oklab, var(--accent) 55%, white) 7%, transparent);
+
+  /* What's raised catches that light along its top edge, and sits on the pane by a close shadow and a soft one. */
+  --shadow-raised:
+    inset 0 1px 0 oklch(1 0 0 / 0.1), inset 0 0 0 1px oklch(1 0 0 / 0.018), 0 1px 1px oklch(0 0 0 / 0.18),
+    0 12px 28px -14px oklch(0 0 0 / 0.6);
+  --shadow-overlay:
+    inset 0 1px 0 oklch(1 0 0 / 0.1), 0 2px 6px oklch(0 0 0 / 0.25), 0 28px 56px -18px oklch(0 0 0 / 0.75);
+  /* A film's edge catching the light, lifted by a shadow that falls under it and never around it. */
+  --shadow-film:
+    inset 0 1px 0 oklch(1 0 0 / 0.14), inset 0 0 0 1px oklch(1 0 0 / 0.03),
+    0 18px 40px -22px oklch(0 0 0 / 0.55);
+  /* A filled button's body: shaded along its foot, with a close shadow under it. */
+  --shadow-button: inset 0 -1px 0 oklch(0 0 0 / 0.14), 0 1px 2px oklch(0 0 0 / 0.35);
 }
 
 [data-theme="light"] {
@@ -197,9 +220,23 @@
   --series-7: #6250d6;
   --series-8: #e34948;
 
-  --shadow-raised: 0 1px 0 oklch(1 0 0 / 0.7) inset, 0 8px 24px -12px oklch(0 0 0 / 0.2);
-  --shadow-overlay: 0 1px 0 oklch(1 0 0 / 0.8) inset, 0 24px 48px -16px oklch(0 0 0 / 0.3);
-  --shadow-film: var(--shadow-raised);
+  /* White glass is nearly all light already: none pools on it, and the shadows do the work. */
+  --pane-light: linear-gradient(
+    180deg,
+    oklch(1 0 0 / 0.45),
+    oklch(1 0 0 / 0.23) 6rem,
+    oklch(1 0 0 / 0.08) 13rem,
+    transparent 20rem
+  );
+  --glass-light: transparent;
+
+  --shadow-raised:
+    inset 0 1px 0 oklch(1 0 0 / 0.8), 0 1px 1px oklch(0 0 0 / 0.04), 0 10px 24px -14px oklch(0 0 0 / 0.22);
+  --shadow-overlay:
+    inset 0 1px 0 oklch(1 0 0 / 0.85), 0 2px 6px oklch(0 0 0 / 0.06), 0 28px 56px -18px oklch(0 0 0 / 0.32);
+  --shadow-film:
+    inset 0 1px 0 oklch(1 0 0 / 0.85), 0 1px 1px oklch(0 0 0 / 0.04), 0 18px 40px -22px oklch(0 0 0 / 0.25);
+  --shadow-button: inset 0 1px 0 oklch(1 0 0 / 0.16), 0 1px 2px oklch(0 0 0 / 0.25);
 }
 
 /* Shiki's CSS-variables theme, which the file viewer highlights with, drawn in the syntax tokens. */
@@ -261,6 +298,8 @@
   --shadow-raised: var(--shadow-raised);
   --shadow-overlay: var(--shadow-overlay);
   --shadow-film: var(--shadow-film);
+  --shadow-button: var(--shadow-button);
+  --background-image-pane-light: var(--pane-light);
 
   --font-sans: "Red Hat Text Variable", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Red Hat Mono Variable", ui-monospace, "Cascadia Code", monospace;

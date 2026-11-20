@@ -69,6 +69,8 @@ export function EmptyThread({
 
   return (
     <div ref={glass} className="relative h-full overflow-hidden [container-type:size]">
+      {/* The light the empty glass holds, pooled where the message box sits. */}
+      <div aria-hidden="true" className="question-light pointer-events-none absolute inset-0" />
       {/* Seated, the question stands over the pane's middle, which the message box takes. */}
       <div
         style={{ "--seat": `${BOX_MIDDLE + SEAT_GAP}px` } as CSSProperties}
@@ -76,16 +78,18 @@ export function EmptyThread({
       >
         <div ref={said} className="flex max-w-full flex-col items-center text-center">
           {/* A heading over the box rather than a poster behind it: its longest line spans most of a phone
-              and about two thirds of the box. Each line comes into focus in turn as the pane opens. */}
+              and about two thirds of the box. Each line comes into focus in turn as the pane opens, lit
+              from above as the glass is: full at its top, fading down the letters. Each line carries its
+              own fade, with room below for its descenders, so no line reads brighter than the next. */}
           <h1
             style={{ "--measure": question.measure } as CSSProperties}
-            className="font-display text-[length:min(calc(min(76cqi,420px)/var(--measure)),9cqb)] leading-[1.08] font-light tracking-[-0.015em] text-balance text-fg-secondary font-stretch-expanded [font-size-adjust:none]"
+            className="font-display text-[length:min(calc(min(76cqi,420px)/var(--measure)),9cqb)] leading-[1.08] font-light tracking-[-0.015em] text-balance font-stretch-expanded [font-size-adjust:none]"
           >
             {question.lines.map((line, index) => (
               <span
                 key={line}
                 style={{ animationDelay: `${index * 90}ms` }}
-                className="block animate-[question-settle_640ms_cubic-bezier(0.2,0.8,0.2,1)_backwards] whitespace-nowrap motion-reduce:animate-none"
+                className="block animate-[question-settle_640ms_cubic-bezier(0.2,0.8,0.2,1)_backwards] whitespace-nowrap motion-reduce:animate-none bg-linear-to-b from-fg-primary from-25% to-fg-primary/55 bg-clip-text pb-[0.14em] -mb-[0.14em] text-transparent"
               >
                 {line}
               </span>
