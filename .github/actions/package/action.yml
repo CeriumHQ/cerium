@@ -160,8 +160,8 @@ runs:
         fi
         command -v rpmbuild > /dev/null || sudo apt-get install -y -q --no-install-recommends rpm
 
-    # makensis now and then fails with "Can't open output file" while writing the installer; seen in
-    # fresh checkouts, and a second attempt has always succeeded. On macOS, electron-builder signs with
+    # The patched Windows packager builds its uninstaller in a separate executable, so makensis
+    # can write the final installer while the first executable is still locked. On macOS it signs with
     # the certificate in CSC_LINK and notarizes with the key file APPLE_API_KEY names; without them
     # it signs ad hoc (apps/desktop/electron-builder.ts). A pull request's build (GITHUB_BASE_REF set)
     # always signs ad hoc, which takes no secret. electron-builder signs nothing for one unless
@@ -206,15 +206,14 @@ runs:
           if [ "$CERIUM_CHROMIUM_LOCALES" = both ]; then
             # electron-builder.ts reads anything but english as the full set, so each pass names its own.
             for locales in full english; do
-              pack() { CERIUM_CHROMIUM_LOCALES="$locales" package -c.directories.output="out/$locales"; }
-              pack || { sleep 10 && pack; }
+              CERIUM_CHROMIUM_LOCALES="$locales" package -c.directories.output="out/$locales"
               mkdir -p "$RUNNER_TEMP/locales/$locales"
               find "apps/desktop/out/$locales" -maxdepth 1 -type f ! -name 'builder-*' -exec mv {} "$RUNNER_TEMP/locales/$locales/" \;
             done
             node scripts/merge-update-files.ts "$RUNNER_TEMP/locales" apps/desktop/out
             exit 0
           fi
-          package || { sleep 10 && package; }
+          package
           exit 0
         fi
         targets=(AppImage deb rpm)
