@@ -84,7 +84,7 @@ const groups: ReadonlyArray<{ readonly label: string; readonly pages: ReadonlyAr
         settingsGlyphs.notifications,
         WEB || window.cerium?.testNotification !== undefined,
       ),
-      ...page("keyboard", "Keyboard", "Send key and shortcuts", settingsGlyphs.keyboard),
+      ...page("keyboard", "Keyboard", "Send key, autocomplete, shortcuts", settingsGlyphs.keyboard),
       ...page("dictation", "Dictation", "Language and speech model", settingsGlyphs.dictation, desktop),
       ...page(
         "updates",
@@ -100,7 +100,7 @@ const groups: ReadonlyArray<{ readonly label: string; readonly pages: ReadonlyAr
     pages: [
       ...page("threads", "New threads", "Model, effort and access", settingsGlyphs.threads),
       ...page("roster", "Roster", "Models a lead may start", settingsGlyphs.roster),
-      ...page("advisor", "Advisor", "Experimental second opinion", settingsGlyphs.advisor),
+      ...page("advisor", "Advisor", "A second opinion for agents", settingsGlyphs.advisor),
       ...page("prompts", "Prompts", "Text and commands on /", settingsGlyphs.prompts),
       ...page("effortRouter", "Effort router", "Effort picked per turn", settingsGlyphs.router),
       ...page("computerUse", "Computer use", "Agents using your apps", settingsGlyphs.computer),
@@ -155,7 +155,6 @@ const settingsIndex: ReadonlyArray<{ readonly name: string; readonly category: S
     ["general", "Start with Windows"],
     ["general", "Open at login"],
     ["general", "Slim old threads"],
-    ["general", "Composer autocomplete (beta)"],
     ["general", "Send crash reports"],
     ["general", "Welcome tour"],
     ["general", "Chromium third-party notices"],
@@ -170,6 +169,7 @@ const settingsIndex: ReadonlyArray<{ readonly name: string; readonly category: S
     ["notifications", "Count on the Dock icon"],
     ["notifications", "Notify me when"],
     ["keyboard", "Send messages with"],
+    ["keyboard", "Composer autocomplete"],
     ["keyboard", "Shortcuts"],
     ["dictation", "Dictation language"],
     ["dictation", "Speech model"],

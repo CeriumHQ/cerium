@@ -22,14 +22,7 @@ import { SelectItem, SelectPopup, SelectRoot, SelectTrigger } from "../../compon
 import { accessOptions, effortFor, effortLabel, modelKey, pickModel, useModels } from "../composer/models.ts";
 import type { HarnessIndicator } from "../threads/Sidebar.tsx";
 import { ModelGroups, readyProviders } from "./ModelGroups.tsx";
-import {
-  SettingsList,
-  SettingsNote,
-  SettingsPage,
-  SettingsRow,
-  SettingsSection,
-  SettingsTag,
-} from "./parts.tsx";
+import { SettingsList, SettingsNote, SettingsPage, SettingsRow, SettingsSection } from "./parts.tsx";
 import { accessAtom, effortAtom, inboxCapAtom, inboxCaps, modelAtom, workplaceAtom } from "./preferences.ts";
 import { RosterSection } from "./Roster.tsx";
 import { TitleRows } from "./Titles.tsx";
@@ -287,20 +280,11 @@ export function RosterSettings({
   );
 }
 
-/** The experimental advisor agents can ask when they're stuck. */
+/** The advisor agents can ask when they're stuck. */
 export function AdvisorSettings({ harnesses }: { harnesses: ReadonlyArray<HarnessIndicator> }) {
   const { models, model } = useLeadModel(harnesses);
   return (
-    <SettingsPage
-      perMachine
-      title={
-        <>
-          Advisor
-          <SettingsTag>Experimental</SettingsTag>
-        </>
-      }
-      description="A change applies to agents started after it."
-    >
+    <SettingsPage perMachine title="Advisor" description="A change applies to agents started after it.">
       <SettingsList>
         <AdvisorRows models={models} harnesses={harnesses} leadModel={model} />
       </SettingsList>

@@ -95,8 +95,9 @@ export const windowSolidAtom = Atom.writable(
 ).pipe(Atom.keepAlive);
 
 /**
- * Beta: the message box suggests what to send next once a turn finishes. On until turned off, which
- * also drops a suggestion that is showing or on its way.
+ * Composer autocomplete: the message box suggests what to send next once a turn finishes; Tab takes
+ * it, Esc or typing drops it. On until turned off, which also drops a suggestion that is showing or on
+ * its way.
  */
 export const autocompleteAtom = preference<"on" | "off">("cerium:autocomplete", ["on", "off"], "on");
 
