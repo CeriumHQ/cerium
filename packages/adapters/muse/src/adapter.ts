@@ -8,11 +8,14 @@ import {
 import { Context, Effect, FileSystem, Layer, Path, Stream } from "effect";
 import { ChildProcessSpawner } from "effect/process";
 
+import { forkMuseSession } from "./fork.ts";
+import { makeMuseHub } from "./hub.ts";
 import { INSTALL_HINT, LOGIN_COMMAND, museManifest } from "./manifest.ts";
 import { listMuseModels } from "./models.ts";
 import { limitInstructions, limitNotice, sandboxInstructions, sandboxNotice } from "./policy.ts";
 import { probeMuse } from "./probe.ts";
 import { listMuseSessions, readMuseSession } from "./sessions.ts";
+import { listMuseSkills } from "./skills.ts";
 import { readMuseUsage } from "./usage.ts";
 
 const SIGNED_OUT = `Muse Code is not logged in. Run \`${LOGIN_COMMAND}\`.`;
@@ -48,6 +51,15 @@ export class MuseAdapter extends Context.Service<MuseAdapter, HarnessAdapter>()(
         }
         return status;
       });
+      const installed = probes.kept.pipe(
+        Effect.flatMap((status) =>
+          status._tag === "HarnessMissing"
+            ? Effect.fail(
+                new HarnessUnavailable({ provider: "muse", reason: "notInstalled", message: INSTALL_HINT }),
+              )
+            : Effect.succeed(status.executablePath),
+        ),
+      );
 
       const startSession = Effect.fn("MuseAdapter.startSession")(function* (options: SessionOptions) {
         const { executablePath: executable, setup, limit } = yield* ready;
@@ -80,8 +92,13 @@ export class MuseAdapter extends Context.Service<MuseAdapter, HarnessAdapter>()(
       return MuseAdapter.of({
         provider: "muse",
         hubInstructions: { files: [{ path: "AGENTS.md", primary: true }] },
+        hub: makeMuseHub(installed, platform),
         manifest: museManifest,
         probe: probes.fresh,
+        listSkills: (cwd) =>
+          installed.pipe(
+            Effect.flatMap((executable) => listMuseSkills(executable, cwd).pipe(Effect.provide(platform))),
+          ),
         listModels: ready.pipe(Effect.flatMap((status) => listMuseModels(status.executablePath))),
         usage: ready.pipe(Effect.flatMap((status) => readMuseUsage(status.executablePath))),
         complete: (request) =>
@@ -95,6 +112,8 @@ export class MuseAdapter extends Context.Service<MuseAdapter, HarnessAdapter>()(
         listSessions: ready.pipe(Effect.flatMap((status) => listMuseSessions(status.executablePath))),
         readSession: (session) =>
           ready.pipe(Effect.flatMap((status) => readMuseSession(status.executablePath, session))),
+        fork: (request) =>
+          ready.pipe(Effect.flatMap((status) => forkMuseSession(status.executablePath, request))),
         startSession,
       });
     }),

@@ -22,11 +22,12 @@ import type {
   Notification,
   SessionResumeResult,
   SessionStartResult,
+  SkillListResult,
   TurnInputPart,
 } from "@muse-code/sdk/dist/src/msp.js";
 import { Cause, Data, Deferred, Effect, Queue, Schema, Stream } from "effect";
 
-import { openHost, type MuseHost } from "./host.ts";
+import { openHost, query, type MuseHost } from "./host.ts";
 import { SDK_RELEASE } from "./manifest.ts";
 import { ModelList } from "./models.ts";
 import {
@@ -59,12 +60,16 @@ export type RecordedFrame =
   | { readonly cerium: "expectTurn"; readonly turnId: string }
   | { readonly cerium: "renameTurn"; readonly from: string; readonly to: string };
 
-/**
- * A turn's parts: the text, then each image as base64. Skills stay in the text as `$name`: a `skill`
- * part with a selector Muse doesn't know fails the whole turn.
- */
-export const toTurnInput = (text: string, extras: TurnExtras | undefined): Array<TurnInputPart> => [
+/** Keep the user's prompt and add native parts for skills the live session recognizes. */
+export const toTurnInput = (
+  text: string,
+  extras: TurnExtras | undefined,
+  available?: ReadonlySet<string>,
+): Array<TurnInputPart> => [
   { type: "text", text },
+  ...[...new Set(extras?.skills?.map(({ name }) => name))].flatMap((selector): TurnInputPart[] =>
+    available?.has(selector) ? [{ type: "skill", selector }] : [],
+  ),
   ...(extras?.images ?? []).map((image): TurnInputPart => ({
     type: "image",
     base64Data: image.data,
@@ -398,14 +403,23 @@ export const startMuseSession = Effect.fn("MuseAdapter.startSession")(function* 
   return {
     events: Stream.fromQueue(events),
     send: (text, extras) =>
-      Effect.suspend(() => {
+      Effect.gen(function* () {
+        const available = extras?.skills?.length
+          ? yield* query(host, "skill/list", { sessionId }).pipe(
+              Effect.map(
+                (result) =>
+                  new Set((result as unknown as SkillListResult).skills?.map(({ selector }) => selector)),
+              ),
+              Effect.orElseSucceed(() => new Set<string>()),
+            )
+          : undefined;
         // `turnId` is the submitting `commandId` for a fresh turn, so the turn is known before its frames.
         const commandId = connection.mintCommandId();
         translator.expectTurn(commandId);
         overrides.record?.({ cerium: "expectTurn", turnId: commandId });
-        return command(
+        yield* command(
           "turn/start",
-          { sessionId, input: toTurnInput(text, extras), ifBusy: "queue" },
+          { sessionId, input: toTurnInput(text, extras, available), ifBusy: "queue" },
           commandId,
         ).pipe(
           Effect.map((ack) => {

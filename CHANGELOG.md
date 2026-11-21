@@ -8,6 +8,8 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Added
 
+- GitHub Copilot gains local session import, forks, side questions, compaction, todos, background task controls, and Hub support. Muse gains native forks and Hub support. The composer lists skills for Copilot, Muse, and Cursor. Cursor can toggle MCP servers per project, Codex can stop individual background commands, and OpenCode gains side questions and background job tracking with shell cancellation.
+
 - Nightly builds show a small superscript NIGHTLY beside the Cerium brand in the desktop titlebar only. Hovering the mark shows the exact build version.
 - Devin joins the supported harnesses through the Devin CLI's ACP server (`devin acp`), with its whole model catalog, per-model effort and speed, approvals, read-only chat, session resume and Cerium's MCP bus.
 

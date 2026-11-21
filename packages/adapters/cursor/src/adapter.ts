@@ -5,6 +5,7 @@ import type { ChildProcessSpawner } from "effect/process";
 import { makeCursorHub } from "./hub.ts";
 import { cursorManifest } from "./manifest.ts";
 import { fetchModelCatalog, toModelInfo } from "./models.ts";
+import { listCursorSkills } from "./skills.ts";
 import { readCursorUsage } from "./usage.ts";
 
 export class CursorAdapter extends Context.Service<CursorAdapter, HarnessAdapter>()(
@@ -66,6 +67,7 @@ export class CursorAdapter extends Context.Service<CursorAdapter, HarnessAdapter
             step._tag === "SignedIn" ? Cache.invalidate(catalogs, "models") : Effect.void,
           ),
         ),
+        listSkills: (cwd) => listCursorSkills(cwd).pipe(Effect.provide(platform)),
         listModels: ready.pipe(
           Effect.andThen(catalog),
           Effect.map((models) => models.map(toModelInfo)),

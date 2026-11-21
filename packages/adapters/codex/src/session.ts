@@ -297,6 +297,14 @@ export const startCodexSession = Effect.fn("CodexAdapter.startSession")(function
     setModel: (next) => Effect.sync(() => (nextModel = next)),
     setEffort: (effort) => Effect.sync(() => (nextEffort = effort)),
     setSpeed: (speed) => Effect.sync(() => (nextSpeed = speed)),
+    // The command's item then completes, which drops it from the background set.
+    stopBackgroundTask: (taskId) =>
+      Effect.gen(function* () {
+        const processId = translator.processOf(taskId);
+        // It may have exited between displaying the task and clicking Stop.
+        if (processId === undefined) return;
+        yield* server.request("thread/backgroundTerminals/terminate", { threadId, processId });
+      }).pipe(Effect.mapError(failure("Could not stop the Codex background command"))),
     // A turn of Codex's own, announced and ended like one `turn/start` begins.
     compact: Effect.gen(function* () {
       starting = true;

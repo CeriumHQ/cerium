@@ -1,5 +1,5 @@
 import { HarnessFailure, HarnessUnavailable } from "@cerium/harness";
-import { Effect } from "effect";
+import { Effect, type Duration } from "effect";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import {
   CancellationTokenSource,
@@ -90,7 +90,11 @@ export const openCopilot = Effect.fn("CopilotAdapter.openCopilot")(function* (
       stop(child, exited).pipe(Effect.ensuring(Effect.sync(() => connection.dispose()))),
   );
 
-  const request = (method: string, params: Record<string, unknown> = {}) =>
+  const request = (
+    method: string,
+    params: Record<string, unknown> = {},
+    timeout: Duration.Input = "30 seconds",
+  ) =>
     Effect.tryPromise({
       try: async (signal) => {
         const token = new CancellationTokenSource();
@@ -106,7 +110,7 @@ export const openCopilot = Effect.fn("CopilotAdapter.openCopilot")(function* (
       catch: failure(`GitHub Copilot CLI could not handle ${method}`),
     }).pipe(
       Effect.timeoutOrElse({
-        duration: "30 seconds",
+        duration: timeout,
         orElse: () => Effect.fail(failure(`GitHub Copilot CLI timed out handling ${method}`)(undefined)),
       }),
     );
