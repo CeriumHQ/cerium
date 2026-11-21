@@ -1,11 +1,11 @@
-import { HarnessUnavailable, shareProbe, type HarnessAdapter, type SessionOptions } from "@cerium/harness";
+import { usableStatus } from "@cerium/acp";
+import { shareProbe, type HarnessAdapter, type SessionOptions } from "@cerium/harness";
 import type { HarnessStatus } from "@cerium/protocol";
 import { Context, Effect, FileSystem, Layer, Path } from "effect";
 import type { ChildProcessSpawner } from "effect/process";
 
-import { inspectGrok, signedOut } from "./catalog.ts";
-import { grokManifest, INSTALL_HINT, SIGNED_OUT } from "./manifest.ts";
-import { failure } from "./rpc.ts";
+import { inspectGrok } from "./catalog.ts";
+import { PROVIDER, SIGNED_OUT, failure, grokHarness, grokManifest } from "./manifest.ts";
 import { startGrokSession } from "./session.ts";
 import { readGrokUsage } from "./usage.ts";
 
@@ -21,20 +21,9 @@ export class GrokAdapter extends Context.Service<GrokAdapter, HarnessAdapter>()(
       >();
       const inspect = inspectGrok().pipe(Effect.provide(platform));
       const probes = yield* shareProbe(inspect.pipe(Effect.map(({ status }) => status)));
-      const requireLogin = (status: HarnessStatus) =>
-        Effect.gen(function* () {
-          if (status._tag === "HarnessMissing") {
-            return yield* new HarnessUnavailable({
-              provider: "grok",
-              reason: "notInstalled",
-              message: INSTALL_HINT,
-            });
-          }
-          if (status.auth._tag === "LoggedOut") return yield* signedOut();
-          return status;
-        });
+      const requireLogin = (status: HarnessStatus) => usableStatus(grokHarness, status);
       return GrokAdapter.of({
-        provider: "grok",
+        provider: PROVIDER,
         hubInstructions: {
           files: [
             { path: "AGENTS.md", primary: true },

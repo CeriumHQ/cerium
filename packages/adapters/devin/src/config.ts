@@ -1,9 +1,9 @@
+import { array } from "@cerium/acp";
 import { isRecord, parseJsonc, readText, scratchFolder } from "@cerium/harness";
 import type { AccessMode } from "@cerium/protocol";
 import { Effect, FileSystem, Path } from "effect";
 import { homedir } from "node:os";
 
-import { array } from "./acp.ts";
 import { PROVIDER, failure } from "./manifest.ts";
 
 /** Where Devin keeps the user's configuration, which `--config` replaces for one run. */

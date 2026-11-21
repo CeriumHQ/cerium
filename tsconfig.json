@@ -11,6 +11,9 @@
       "path": "./packages/harness"
     },
     {
+      "path": "./packages/acp"
+    },
+    {
       "path": "./packages/store"
     },
     {

@@ -1,53 +1,13 @@
+import { EFFORTS, SPEEDS, configOption, type ConfigChoice, type ConfigOption } from "@cerium/acp";
 import type { ModelInfo, ModelSpeed, ReasoningEffort } from "@cerium/protocol";
 
-import { array, record, string } from "./acp.ts";
 import { PROVIDER } from "./manifest.ts";
 
-export interface ConfigChoice {
-  readonly value: string;
-  readonly name?: string;
-  readonly description?: string;
-  /** Devin's own `cognition.ai/supportsImages` for a model. */
-  readonly images?: boolean;
-}
-
-export interface ConfigOption {
-  readonly id: string;
-  readonly currentValue: string;
-  readonly options: ReadonlyArray<ConfigChoice>;
-}
-
-/** A session's select options (`mode`, `model`, `thought_level`, `speed`), as ACP reports them. */
-export const readConfigOptions = (value: unknown): ReadonlyArray<ConfigOption> =>
-  array(value).flatMap((entry) => {
-    const option = record(entry);
-    const id = string(option?.["id"]);
-    const currentValue = string(option?.["currentValue"]);
-    if (id === undefined || currentValue === undefined) return [];
-    const options = array(option?.["options"]).flatMap((item): ReadonlyArray<ConfigChoice> => {
-      const choice = record(item);
-      const value = string(choice?.["value"]);
-      if (value === undefined) return [];
-      const name = string(choice?.["name"]);
-      const description = string(choice?.["description"]);
-      const images = record(choice?.["_meta"])?.["cognition.ai/supportsImages"];
-      return [
-        {
-          value,
-          ...(name === undefined ? {} : { name }),
-          ...(description === undefined ? {} : { description }),
-          ...(typeof images === "boolean" ? { images } : {}),
-        },
-      ];
-    });
-    return [{ id, currentValue, options }];
-  });
-
-export const configOption = (config: ReadonlyArray<ConfigOption>, id: string) =>
-  config.find((option) => option.id === id);
-
-const EFFORTS: ReadonlyArray<ReasoningEffort> = ["minimal", "low", "medium", "high", "xhigh", "max"];
-const SPEEDS: ReadonlyArray<ModelSpeed> = ["standard", "fast", "ultrafast"];
+/** Devin's own `cognition.ai/supportsImages` for a model. */
+export const acceptsImages = (choice: ConfigChoice | undefined) => {
+  const images = choice?.meta?.["cognition.ai/supportsImages"];
+  return typeof images === "boolean" ? images : undefined;
+};
 
 /** What a session offers for the model it is on: Devin lists efforts and speeds per model. */
 export interface Variant {

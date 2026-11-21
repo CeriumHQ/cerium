@@ -68,8 +68,9 @@ export type DiscordSettings = typeof DiscordSettings.Type;
 const defaultDiscord: DiscordSettings = { enabled: false, showProject: false };
 
 /**
- * The experimental effort router: on agents set to Auto, a decision model (Jev, through the user's
- * own OpenRouter key) picks each turn's reasoning effort. It stays off without a saved key.
+ * The effort router: on agents set to Auto, a decision model (Jev, through the user's own OpenRouter
+ * key) picks each turn's reasoning effort. Saving a key turns it on, removing the key turns it off,
+ * and it stays off without one.
  */
 export const EffortRouterSettings = Schema.Struct({
   enabled: Schema.Boolean,
