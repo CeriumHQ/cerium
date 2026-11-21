@@ -18,6 +18,7 @@ import { probeOpenCode, readAuth } from "./probe.ts";
 import { startOpenCodeSession } from "./session.ts";
 import { listOpenCodeSessions, readOpenCodeSession } from "./sessions.ts";
 import { listOpenCodeSkills } from "./skills.ts";
+import { readOpenCodeUsage } from "./usage.ts";
 
 /** How long the shared server stays up after its last use. */
 const SHARED_IDLE = "3 minutes";
@@ -49,9 +50,9 @@ export class OpenCodeAdapter extends Context.Service<OpenCodeAdapter, HarnessAda
         ),
         idleTimeToLive: SHARED_IDLE,
       });
-      const withServer = <A, E>(
+      const withHost = <A, E>(
         executablePath: string,
-        use: (client: OpenCodeClient) => Effect.Effect<A, E>,
+        use: (host: Effect.Success<ReturnType<typeof openHost>>) => Effect.Effect<A, E>,
       ) =>
         Effect.gen(function* () {
           // A new install path (an update moved it) needs a new server.
@@ -60,12 +61,16 @@ export class OpenCodeAdapter extends Context.Service<OpenCodeAdapter, HarnessAda
             executable = executablePath;
           }
           const host = yield* RcRef.get(shared);
-          return yield* use(host.client);
+          return yield* use(host);
         }).pipe(
           // A server that failed a call may have stopped; the next call starts a fresh one.
           Effect.tapError(() => RcRef.invalidate(shared)),
           Effect.scoped,
         );
+      const withServer = <A, E>(
+        executablePath: string,
+        use: (client: OpenCodeClient) => Effect.Effect<A, E>,
+      ) => withHost(executablePath, (host) => use(host.client));
 
       const probes = yield* shareProbe(
         probeOpenCode((executablePath) => withServer(executablePath, readAuth)).pipe(
@@ -116,6 +121,7 @@ export class OpenCodeAdapter extends Context.Service<OpenCodeAdapter, HarnessAda
               withServer(executablePath, (client) => listOpenCodeSkills(client, cwd)),
             ),
           ),
+        usage: ready.pipe(Effect.flatMap((executablePath) => withHost(executablePath, readOpenCodeUsage))),
         complete: (request) =>
           ready.pipe(
             Effect.flatMap((executablePath) =>

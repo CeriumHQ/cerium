@@ -17,6 +17,7 @@ import { listCopilotModels } from "./models.ts";
 import { findCopilotExecutable, readAuth, readVersion } from "./probe.ts";
 import { failure, openCopilot } from "./rpc.ts";
 import { startCopilotSession } from "./session.ts";
+import { readCopilotUsage } from "./usage.ts";
 
 export class CopilotAdapter extends Context.Service<CopilotAdapter, HarnessAdapter>()(
   "cerium/adapters/copilot/CopilotAdapter",
@@ -96,6 +97,10 @@ export class CopilotAdapter extends Context.Service<CopilotAdapter, HarnessAdapt
         listModels: Effect.gen(function* () {
           const host = yield* openCopilot(yield* ready, yield* scratch);
           return yield* listCopilotModels(host);
+        }).pipe(Effect.scoped),
+        usage: Effect.gen(function* () {
+          const host = yield* openCopilot(yield* ready, yield* scratch);
+          return yield* readCopilotUsage(host);
         }).pipe(Effect.scoped),
         startSession: (options: SessionOptions) =>
           Effect.gen(function* () {

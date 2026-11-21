@@ -17,6 +17,7 @@ import {
 } from "./manifest.ts";
 import { discoverAntigravity, loginRequired } from "./probe.ts";
 import { startAntigravitySession } from "./session.ts";
+import { readAntigravityUsage } from "./usage.ts";
 
 /** Defaults to finding the user's `agy` on PATH. A caller may supply its absolute path instead. */
 export const makeAntigravityAdapter = (executable?: string) =>
@@ -79,6 +80,9 @@ export const makeAntigravityAdapter = (executable?: string) =>
       manifest: antigravityManifest,
       probe: fresh.pipe(Effect.map(({ status }) => status)),
       listModels: ready.pipe(Effect.map(({ models }) => models)),
+      usage: ready.pipe(
+        Effect.flatMap(({ executable }) => readAntigravityUsage(executable).pipe(Effect.provide(platform))),
+      ),
       // ACP exposes neither a tool-free, unsaved completion nor a way to delete a helper session.
       complete: () => Effect.fail(failure("Antigravity does not support private background completions")),
       startSession: (options: SessionOptions) =>

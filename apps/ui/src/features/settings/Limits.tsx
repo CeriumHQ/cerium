@@ -63,7 +63,7 @@ export function LimitsSettings({ onOpenHarnesses }: { onOpenHarnesses?: () => vo
     <SettingsPage
       perMachine
       title="Limits"
-      description="As each harness reports them; Cursor's come from its CLI. API keys have none, and OpenCode doesn't report its yet."
+      description="As each harness reports them. API keys have none."
       action={<RefreshAction updatedAt={checkedAt} checking={checking} onRefresh={refresh} />}
     >
       <div className="flex flex-col gap-2.5">

@@ -7,6 +7,7 @@ import { INSTALL_HINT, PROVIDER, SIGNED_OUT, devinManifest, failure } from "./ma
 import { modelIds, toModelInfos, type Variant } from "./models.ts";
 import { discoverDevin, loginRequired, sweepVariants } from "./probe.ts";
 import { startDevinSession } from "./session.ts";
+import { readDevinUsage } from "./usage.ts";
 
 /** How long a sweep's efforts and speeds are trusted before the next listing reads them again. */
 const SWEEP_FRESH_MS = Duration.toMillis(Duration.minutes(30));
@@ -30,15 +31,21 @@ export const makeDevinAdapter = (executable?: string, userConfig?: string) =>
     const discover = discoverDevin(executable).pipe(Effect.provide(platform));
     const probes = yield* shareProbe(discover.pipe(Effect.map(({ status }) => status)));
 
-    /** The executable of an installed, signed-in CLI, or why there is none. */
+    /** The installed, signed-in CLI status, or why there is none. */
+    const usableStatus = (status: HarnessStatus) =>
+      Effect.gen(function* () {
+        if (status._tag === "HarnessMissing") {
+          return yield* new HarnessUnavailable({
+            provider: PROVIDER,
+            reason: "notInstalled",
+            message: INSTALL_HINT,
+          });
+        }
+        if (status.auth._tag === "LoggedOut") return yield* loginRequired();
+        return status;
+      });
     const usable = (status: HarnessStatus) =>
-      status._tag === "HarnessMissing"
-        ? Effect.fail(
-            new HarnessUnavailable({ provider: PROVIDER, reason: "notInstalled", message: INSTALL_HINT }),
-          )
-        : status.auth._tag === "LoggedOut"
-          ? Effect.fail(loginRequired())
-          : Effect.succeed(status.executablePath);
+      usableStatus(status).pipe(Effect.map((installed) => installed.executablePath));
 
     // Devin reports a model's efforts and speeds only once a session switches to it, a round trip each.
     // A background sweep reads them all and keeps them, so listings stay quick after the first.
@@ -95,6 +102,10 @@ export const makeDevinAdapter = (executable?: string, userConfig?: string) =>
       manifest: devinManifest,
       probe: probes.fresh,
       listModels,
+      usage: probes.kept.pipe(
+        Effect.flatMap(usableStatus),
+        Effect.flatMap(({ version }) => readDevinUsage(version).pipe(Effect.provide(platform))),
+      ),
       // Devin's ACP sessions load the user's rules and are saved; there is no private completion.
       complete: () => Effect.fail(failure("Devin does not support private background completions")),
       startSession: (options: SessionOptions) =>

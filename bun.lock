@@ -346,8 +346,10 @@
       "version": "0.0.0",
       "dependencies": {
         "@cerium/protocol": "workspace:*",
+        "@xterm/headless": "6.0.0",
         "effect": "4.0.5",
         "jsonc-parser": "3.3.1",
+        "node-pty": "1.2.0-beta.15",
         "yaml": "2.9.1",
       },
       "devDependencies": {

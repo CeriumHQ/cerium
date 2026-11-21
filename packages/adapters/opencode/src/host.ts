@@ -26,6 +26,8 @@ export interface OpenCodeClient extends ReturnType<typeof OpenCode.make> {}
 
 export interface OpenCodeHost {
   readonly client: OpenCodeClient;
+  /** Performs an authenticated GET against the private server, keeping its lease password inside host.ts. */
+  readonly get: (path: string, signal?: AbortSignal) => Promise<Response>;
   /** Resolves once the server has exited. */
   readonly exited: Effect.Effect<void>;
   /** The server's last words on stderr, which explain an unexpected exit. */
@@ -149,11 +151,18 @@ export const openHost = Effect.fn("OpenCodeAdapter.openHost")(function* (
       orElse: () => Effect.fail(failure("`opencode serve` did not start in time")(stderr.join("\n"))),
     }),
   );
+  const headers = { authorization: `Basic ${Buffer.from(`opencode:${password}`).toString("base64")}` };
   const host: OpenCodeHost = {
     client: (yield* Effect.promise(() => import("@opencode/client"))).OpenCode.make({
       baseUrl,
-      headers: { authorization: `Basic ${Buffer.from(`opencode:${password}`).toString("base64")}` },
+      headers,
     }),
+    get: (path: string, signal?: AbortSignal) =>
+      fetch(new URL(path, baseUrl), {
+        method: "GET",
+        headers,
+        ...(signal === undefined ? {} : { signal }),
+      }),
     exited: Deferred.await(exited),
     stderr: lastWords,
   };

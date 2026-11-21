@@ -7,6 +7,7 @@ import { inspectGrok, signedOut } from "./catalog.ts";
 import { grokManifest, INSTALL_HINT, SIGNED_OUT } from "./manifest.ts";
 import { failure } from "./rpc.ts";
 import { startGrokSession } from "./session.ts";
+import { readGrokUsage } from "./usage.ts";
 
 export class GrokAdapter extends Context.Service<GrokAdapter, HarnessAdapter>()(
   "cerium/adapters/grok/GrokAdapter",
@@ -48,6 +49,14 @@ export class GrokAdapter extends Context.Service<GrokAdapter, HarnessAdapter>()(
         listModels: inspect.pipe(
           Effect.tap(({ status }) => requireLogin(status)),
           Effect.map(({ models }) => models),
+        ),
+        usage: probes.kept.pipe(
+          Effect.flatMap(requireLogin),
+          Effect.flatMap((status) =>
+            status.auth._tag === "LoggedIn" && status.auth.method === "apiKey"
+              ? Effect.succeedNone
+              : readGrokUsage(status.executablePath).pipe(Effect.provide(platform)),
+          ),
         ),
         startSession: (options: SessionOptions) =>
           probes.kept.pipe(

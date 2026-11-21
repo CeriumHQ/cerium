@@ -55,6 +55,8 @@ export const resetMoment = (resetsAt: number, dayOnly = false): string =>
 
 /** Plans whose ids don't read as their names. */
 const planNames: Record<string, string> = {
+  go: "Go",
+  supergrok: "SuperGrok",
   prolite: "Pro Lite",
   promax: "Pro Max",
   ent26: "Enterprise",
