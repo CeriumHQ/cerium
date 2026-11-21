@@ -63,7 +63,7 @@ jobs:
           HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
       # Commits that only change documentation, which no build reads, are linted but neither tested
       # nor packaged.
-      # CHANGELOG.md belongs to the app: What's new shows it.
+      # Only known GitHub documentation is exempt. The desktop app ships its notices and license.
       - id: changes
         name: Find what changed
         run: |
@@ -72,24 +72,14 @@ jobs:
           everywhere=true
           if [ "$GITHUB_EVENT_NAME" != merge_group ] && [ "$GITHUB_EVENT_NAME" != workflow_dispatch ] && git cat-file -e "$BASE^{commit}" 2>/dev/null; then
             changed=$(git diff --no-renames --name-only "$BASE...$HEAD")
-            app=$(grep -vE '\.md$|^LICENSE$|^\.github/(media|ISSUE_TEMPLATE)/' <<<"$changed" || true)
-            changelog=$(grep -xF CHANGELOG.md <<<"$changed" || true)
-            if [ -n "$changed" ] && [ -z "$app$changelog" ]; then
+            app=$(grep -vE '^(README|SECURITY)\.md$|^\.github/(ci-test-failures\.md$|pull_request_template\.md$|media/|ISSUE_TEMPLATE/)' <<<"$changed" || true)
+            if [ -n "$changed" ] && [ -z "$app" ]; then
               package=false
               echo "Only documentation changed, so nothing is packaged or published."
             fi
-            # A pull request packages only for Windows x64, the main platform, unless it changes the
-            # desktop shell, the dependencies packages carry or how packages are built; main packages
-            # everywhere before its nightly ships. The web UI bundles its dependencies into the same
-            # JavaScript on every platform and the website's and the relay's aren't packaged, so a
-            # lockfile that changed along with only their manifests leaves the packages as they were.
-            packaging=$(grep -E '^apps/desktop/|^\.github/(actions/(setup|package|react-compiler-cache)/|workflows/ci\.yml$)' <<<"$changed" || true)
-            manifests=$(grep -E '(^|/)package\.json$' <<<"$changed" || true)
-            carried=$(grep -vE '^apps/(ui|site|relay)/package\.json$' <<<"$manifests" || true)
-            lockfile=$(grep -xF bun.lock <<<"$changed" || true)
-            if [ -n "$carried" ] || { [ -n "$lockfile" ] && [ -z "$manifests" ]; }; then
-              packaging+="$carried$lockfile"
-            fi
+            # Lockfile resolution, patches, repository build configuration, release tooling
+            # and the license files copied by electron-builder can affect every target.
+            packaging=$(grep -E '^apps/desktop/|^patches/|^scripts/|^(bun\.lock|bunfig\.toml|vite\.config\.ts|tsconfig[^/]*\.json|LICENSE|THIRD_PARTY_NOTICES\.md|CHANGELOG\.md)$|(^|/)package\.json$|^\.github/(actions|workflows)/' <<<"$changed" || true)
             if [ "$GITHUB_EVENT_NAME" = pull_request ] && [ -z "$packaging" ]; then
               everywhere=false
               # Site and relay code is built and checked in the web job. Neither workspace is
