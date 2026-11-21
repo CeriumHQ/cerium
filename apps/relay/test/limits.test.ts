@@ -1,3 +1,4 @@
+// Timing fixture for a relay-only pull request.
 import { formatCredential, relayProtocols, type AccountId, type DeviceId } from "@cerium/protocol";
 import { describe, expect, it } from "@effect/vitest";
 
