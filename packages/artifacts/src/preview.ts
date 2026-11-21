@@ -77,7 +77,8 @@ const readLocalFiles = async (html: string, folder: string | undefined) => {
       if (size > MAX_DATA_BYTES) throw new Error("larger than 2 MB");
       urls.set(path, dataFileUrl(type.mediaType, await readFile(path, "utf8")));
     } catch (cause) {
-      const reason = cause instanceof Error && "code" in cause ? String(cause.code) : String(cause);
+      const reason =
+        typeof cause === "object" && cause !== null && "code" in cause ? String(cause.code) : String(cause);
       missing.push({ level: "error", text: `Couldn't embed the local file ${path}: ${reason}` });
     }
   }
