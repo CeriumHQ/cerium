@@ -186,7 +186,7 @@ runs:
             exit 1
             ;;
         esac
-        if [ "$RUNNER_OS" = macOS ] && [ -n "${GITHUB_BASE_REF:-}" ]; then
+        if [ "$RUNNER_OS" = macOS ] && { [ -n "${GITHUB_BASE_REF:-}" ] || [ "$GITHUB_EVENT_NAME" = merge_group ]; }; then
           export CSC_FOR_PULL_REQUEST=true
         elif [ "$RUNNER_OS" = macOS ] && [ -n "$MAC_CERTIFICATE" ]; then
           export CSC_LINK="$MAC_CERTIFICATE" CSC_KEY_PASSWORD="$MAC_CERTIFICATE_PASSWORD"
