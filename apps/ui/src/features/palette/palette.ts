@@ -1,5 +1,7 @@
 import type { ComponentType } from "react";
+import type { WorkspaceEntry } from "@cerium/protocol";
 
+import { primaryHeldFor } from "../../lib/keys.ts";
 import type { GlyphProps } from "../settings/glyphs.tsx";
 import { hasWords, queryWords, type SearchResult } from "../threads/threadSearch.ts";
 
@@ -11,9 +13,10 @@ export interface PaletteCommand {
   /** Unique in the list. */
   readonly id: string;
   readonly label: string;
+  readonly detail?: string;
   readonly icon: ComponentType<GlyphProps>;
-  /** Where it's listed: "Actions" are always offered, "Settings" pages only once something is typed. */
-  readonly group: "Actions" | "Settings";
+  /** Actions are always offered. Settings and projects are shown for matching queries. */
+  readonly group: "Actions" | "Settings" | "Projects";
   /** The key it already has, as the shortcuts list spells it ("Ctrl Shift 1"). */
   readonly keys?: string;
   /** Other words that find it, besides its label. */
@@ -26,7 +29,15 @@ export interface PaletteCommand {
 /** A row of the palette. */
 export type PaletteEntry =
   | { readonly kind: "thread"; readonly key: string; readonly result: SearchResult }
+  | { readonly kind: "file"; readonly key: string; readonly path: string }
   | { readonly kind: "command"; readonly key: string; readonly command: PaletteCommand };
+
+export type PaletteOpen = "default" | "tab" | "split";
+
+export const paletteOpen = (
+  event: { readonly ctrlKey: boolean; readonly metaKey: boolean; readonly altKey: boolean },
+  mac: boolean,
+): PaletteOpen => (event.altKey ? "split" : primaryHeldFor(event, mac) ? "tab" : "default");
 
 /** A headed section of the palette. */
 export interface PaletteGroup {
@@ -62,7 +73,7 @@ export const paletteGroups = (
   threads: ReadonlyArray<SearchResult>,
   commands: ReadonlyArray<PaletteCommand>,
   typed: string,
-  threadsHeading: string,
+  files: ReadonlyArray<WorkspaceEntry> = [],
 ): ReadonlyArray<PaletteGroup> => {
   const words = queryWords(typed);
   const matched = matchCommands(commands, words);
@@ -73,12 +84,19 @@ export const paletteGroups = (
       .map((command) => ({ kind: "command", key: `command:${command.id}`, command })),
   });
   const threadGroup: PaletteGroup = {
-    value: words.length === 0 ? "Recent" : threadsHeading,
+    value: words.length === 0 ? "Recent" : "Threads and chats",
     items: threads.map((result) => ({ kind: "thread", key: `thread:${result.thread.id}`, result })),
+  };
+  const fileGroup: PaletteGroup = {
+    value: "Files",
+    items: files
+      .filter(({ folder }) => !folder)
+      .slice(0, 12)
+      .map(({ path }) => ({ kind: "file", key: `file:${path}`, path })),
   };
   const groups =
     words.length === 0
       ? [threadGroup, commandGroup("Actions")]
-      : [commandGroup("Actions"), commandGroup("Settings"), threadGroup];
+      : [commandGroup("Actions"), commandGroup("Settings"), commandGroup("Projects"), fileGroup, threadGroup];
   return groups.filter(({ items }) => items.length > 0);
 };

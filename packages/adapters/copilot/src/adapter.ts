@@ -76,6 +76,19 @@ export class CopilotAdapter extends Context.Service<CopilotAdapter, HarnessAdapt
 
       return CopilotAdapter.of({
         provider: "copilot",
+        hubInstructions: {
+          files: [
+            { path: ".github/copilot-instructions.md", primary: true, imports: true },
+            { path: "AGENTS.md" },
+            { path: "CLAUDE.md", imports: true },
+            { path: ".claude/CLAUDE.md", imports: true },
+            { path: "GEMINI.md" },
+          ],
+          folders: [
+            { path: ".github/instructions", suffix: ".instructions.md", recursive: true },
+            { path: ".claude/rules", suffix: ".md", recursive: true },
+          ],
+        },
         manifest: copilotManifest,
         probe: probes.fresh.pipe(
           Effect.catchTag("HarnessUnavailable", (error) => Effect.fail(failure(error.message)(undefined))),

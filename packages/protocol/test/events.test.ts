@@ -1,7 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Exit, Schema } from "effect";
 
-import { AgentEvent, answerText } from "../src/index.ts";
+import { AgentEvent, TurnFilesReverted, answerText } from "../src/index.ts";
 
 const decodeEvent = Schema.decodeUnknownEffect(AgentEvent);
 
@@ -12,6 +12,22 @@ const envelope = {
   sequence: 0,
   at: 1_760_000_000_000,
 };
+
+describe("TurnFilesReverted", () => {
+  it("round-trips whole-turn and per-file outcomes with the restored and kept paths intact", () => {
+    const codec = Schema.toCodecJson(TurnFilesReverted);
+    const whole = {
+      _tag: "TurnFilesReverted",
+      turnId: "t1",
+      direction: "undone",
+      paths: ["a.ts"],
+      kept: ["b.ts"],
+    } as const;
+    for (const event of [whole, { ...whole, partial: true } as const]) {
+      assert.deepStrictEqual(Schema.decodeSync(codec)(Schema.encodeSync(codec)(event)), event);
+    }
+  });
+});
 
 describe("AgentEvent", () => {
   it.effect("rejects a turn input with no items", () =>

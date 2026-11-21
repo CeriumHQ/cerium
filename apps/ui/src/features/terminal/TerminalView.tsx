@@ -2,12 +2,16 @@ import { Button } from "@base-ui/react/button";
 import type { TerminalInfo } from "@cerium/rpc";
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
-import { ClipboardPaste, Copy, Eraser, Globe, RotateCcw, TextSelect } from "lucide-react";
+import { ClipboardPaste, Copy, Eraser, Globe, MessageSquareShare, RotateCcw, TextSelect } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { restartTerminal, terminalSessionAtom } from "../../backend/terminals.ts";
 import { ContextMenuArea, MenuItem, MenuSeparator } from "../../components/ui/Menu.tsx";
-import { usesCommandKey } from "../../lib/keys.ts";
+import { primaryHeld, usesCommandKey } from "../../lib/keys.ts";
+import { isCapturingBinding } from "../../lib/shortcuts.ts";
+import { appendAgentText, terminalSnippet, type AskAgentFix } from "../composer/agentFix.ts";
+import { AskAgentToFix } from "../composer/AskAgentToFix.tsx";
+import type { MessageBox } from "../composer/messageBox.ts";
 import { canOpenLocally, openLocally, shortUrl } from "../preview/model.ts";
 import { exitNote, messageOf } from "./model.ts";
 import type { TerminalSession } from "./session.ts";
@@ -20,17 +24,23 @@ export function TerminalView({
   terminal,
   focus,
   onError,
+  messageBox,
+  onAskFix,
 }: {
   terminal: TerminalInfo;
   focus: number;
   onError: (message: string) => void;
+  messageBox?: Pick<MessageBox, "append"> | undefined;
+  onAskFix?: AskAgentFix | undefined;
 }) {
   const result = useAtomValue(terminalSessionAtom(`${terminal.id}:${terminal.run}`));
   const session = AsyncResult.isSuccess(result) ? result.value : undefined;
   const container = useRef<HTMLDivElement>(null);
-  const [selected, setSelected] = useState(false);
+  const [selection, setSelection] = useState({ copy: false, send: false });
+  const [completed, setCompleted] = useState<TerminalSession>();
   const restart = useAtomSet(restartTerminal, { mode: "promise" });
   const ended = terminal.exitCode !== undefined;
+  const canAskFix = ended && terminal.exitCode !== 0 && onAskFix !== undefined;
 
   useLayoutEffect(() => {
     const element = container.current;
@@ -51,8 +61,15 @@ export function TerminalView({
   }, [session]);
 
   useEffect(() => {
-    if (session !== undefined && ended) session.end();
-  }, [session, ended]);
+    if (session === undefined || !canAskFix) return;
+    let current = true;
+    void session.ended.then((code) => {
+      if (current && code !== undefined) setCompleted(session);
+    });
+    return () => {
+      current = false;
+    };
+  }, [session, canAskFix]);
 
   // A dev server's local address, once the terminal prints one, is offered to the thread's preview.
   const localUrl = useSyncExternalStore(
@@ -71,6 +88,18 @@ export function TerminalView({
     };
   }, [session, focus]);
 
+  const sendSelection = () => {
+    if (session === undefined || messageBox === undefined) return false;
+    const snippet = terminalSnippet(session.getSelection());
+    if (snippet === "") return false;
+    try {
+      appendAgentText(messageBox, snippet);
+    } catch (error) {
+      onError(messageOf(error));
+    }
+    return true;
+  };
+
   return (
     <div className="relative flex h-full min-h-0 flex-col">
       {localUrl !== undefined && !ended && canOpenLocally() ? (
@@ -82,16 +111,40 @@ export function TerminalView({
           <span>Preview {shortUrl(localUrl)}</span>
         </Button>
       ) : null}
-      <ContextMenuArea menu={<TerminalMenu session={session} selected={selected} />}>
+      <ContextMenuArea
+        menu={
+          <TerminalMenu
+            session={session}
+            selected={selection.copy}
+            onSendSelection={session && messageBox && selection.send ? sendSelection : undefined}
+          />
+        }
+      >
         <div
           ref={container}
-          onContextMenu={() => setSelected(session?.hasSelection() ?? false)}
+          onContextMenu={() =>
+            setSelection({ copy: session?.hasSelection() ?? false, send: !!session?.getSelection() })
+          }
+          onKeyDownCapture={(event) => {
+            if (
+              event.nativeEvent.isComposing ||
+              isCapturingBinding() ||
+              !event.shiftKey ||
+              event.altKey ||
+              !primaryHeld(event) ||
+              event.key.toLowerCase() !== "l"
+            )
+              return;
+            if (event.repeat || !sendSelection()) return;
+            event.preventDefault();
+            event.stopPropagation();
+          }}
           className="min-h-0 flex-1 px-3 pt-1 pb-2"
         />
       </ContextMenuArea>
       {ended ? (
-        <div className="flex h-8 shrink-0 items-center gap-1.5 px-3 text-meta text-fg-tertiary">
-          <span>{exitNote(terminal.exitCode)}</span>
+        <div className="flex h-8 min-w-0 shrink-0 items-center gap-1.5 px-3 text-meta text-fg-tertiary">
+          <span className="shrink-0">{exitNote(terminal.exitCode)}</span>
           <Button
             onClick={() => {
               restart({
@@ -103,6 +156,18 @@ export function TerminalView({
             <RotateCcw size={12} strokeWidth={1.75} />
             Restart
           </Button>
+          {canAskFix ? (
+            <AskAgentToFix
+              key={terminal.run}
+              disabled={session === undefined || completed !== session}
+              onAskFix={onAskFix}
+              failure={() => ({
+                context: `${terminal.script ?? terminal.shell} in ${terminal.cwd}`,
+                exitCode: terminal.exitCode,
+                output: session?.tailText(),
+              })}
+            />
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -110,7 +175,15 @@ export function TerminalView({
 }
 
 /** Right-clicking the terminal: what a text field's menu offers, over the emulator's selection. */
-function TerminalMenu({ session, selected }: { session: TerminalSession | undefined; selected: boolean }) {
+function TerminalMenu({
+  session,
+  selected,
+  onSendSelection,
+}: {
+  session: TerminalSession | undefined;
+  selected: boolean;
+  onSendSelection: (() => void) | undefined;
+}) {
   const act = (run: (session: TerminalSession) => void) => () => {
     if (session === undefined) return;
     run(session);
@@ -125,6 +198,14 @@ function TerminalMenu({ session, selected }: { session: TerminalSession | undefi
         onClick={act((each) => each.copySelection())}
       >
         Copy
+      </MenuItem>
+      <MenuItem
+        icon={MessageSquareShare}
+        shortcut="Ctrl Shift L"
+        disabled={onSendSelection === undefined}
+        onClick={() => onSendSelection?.()}
+      >
+        Send to message box
       </MenuItem>
       <MenuItem
         icon={ClipboardPaste}

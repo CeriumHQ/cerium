@@ -9,7 +9,24 @@ import {
 import { assert, describe, it } from "@effect/vitest";
 import { Schema } from "effect";
 
-import { UiEvent } from "../src/index.ts";
+import { MachineRpcs, PER_FILE_TURN_REVERT_RPC_VERSION, RPC_VERSION, UiEvent } from "../src/index.ts";
+
+describe("RevertTurnFiles", () => {
+  it("accepts the legacy payload and optional paths, rejecting empty path strings", () => {
+    const request = MachineRpcs.requests.get("RevertTurnFiles");
+    if (request?._tag !== "RevertTurnFiles") throw new Error("Missing RevertTurnFiles RPC");
+    const decode = Schema.decodeUnknownSync(Schema.toCodecJson(request.payloadSchema));
+    const legacy = { agentId: "agt_1", turnId: "t1", direction: "undone" } as const;
+    const decoded = decode(legacy);
+    assert.strictEqual(String(decoded.agentId), legacy.agentId);
+    assert.strictEqual(decoded.turnId, legacy.turnId);
+    assert.strictEqual(decoded.direction, legacy.direction);
+    assert.notProperty(decoded, "paths");
+    assert.deepStrictEqual(decode({ ...legacy, paths: ["src/a.ts"] }).paths, ["src/a.ts"]);
+    assert.throws(() => decode({ ...legacy, paths: [""] }));
+    assert.isAtLeast(RPC_VERSION, PER_FILE_TURN_REVERT_RPC_VERSION);
+  });
+});
 
 describe("UiEvent", () => {
   it("leaves out the provider's original message, even when it isn't strict JSON", () => {

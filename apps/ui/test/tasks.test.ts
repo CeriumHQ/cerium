@@ -1,15 +1,32 @@
 import { describe, expect, it } from "@effect/vitest";
+import {
+  MAX_TASK_NOTE,
+  MAX_TASK_TITLE,
+  type AgentEvent,
+  type AgentId,
+  type EventId,
+  type EventPayload,
+  type ThreadId,
+} from "@cerium/protocol";
 
 import {
   addTask,
   applyTaken,
   deleteTask,
   editTask,
+  leadFinished,
+  linkedTasks,
+  linkTaskThreads,
   listTasks,
   parseTasks,
   reconcileTasks,
   splitTasks,
+  taskFromIssue,
+  taskFromMessage,
+  tasksInProject,
   tickTask,
+  unlinkDeletedThread,
+  unlinkTaskThread,
 } from "../src/features/tasks/tasks.ts";
 
 const DAY = 86_400_000;
@@ -70,6 +87,122 @@ describe("the user's tasks", () => {
       b: { id: "b", updatedAt: 2 },
     });
     expect(parseTasks("not json")).toEqual({});
+  });
+});
+
+describe("links between tasks and threads", () => {
+  it("uses the persisted relationship for both directions and syncs it with an account", () => {
+    const tasks = addTask({}, "Fix login", 1, "a");
+    const linked = linkTaskThreads(tasks, "a", ["thread-1", "thread-2", "thread-1"], 2, "/projects/app");
+    expect(linkTaskThreads(linked, "a", ["thread-2"], 3)).toBe(linked);
+    const { send } = reconcileTasks(linked, [tasks["a"]!]);
+    const remote = applyTaken({}, send);
+    const restored = parseTasks(JSON.stringify(remote));
+    expect(listTasks(restored)).toEqual([
+      {
+        id: "a",
+        title: "Fix login",
+        createdAt: 1,
+        folder: "/projects/app",
+        threadIds: ["thread-1", "thread-2"],
+      },
+    ]);
+    expect(linkedTasks(listTasks(restored), "thread-2").map(({ id }) => id)).toEqual(["a"]);
+    expect(linkedTasks(listTasks(restored), "thread-3")).toEqual([]);
+  });
+
+  it("removes one relationship without losing others and unlinks a deleted thread from every task", () => {
+    const a = addTask({}, { title: "One", threadIds: ["first", "second"] }, 1, "a");
+    const both = addTask(a, { title: "Two", threadIds: ["first"] }, 2, "b");
+    const unlinked = unlinkTaskThread(both, "a", "first", 3);
+    expect(linkedTasks(listTasks(unlinked), "first").map(({ id }) => id)).toEqual(["b"]);
+    expect(unlinkTaskThread(unlinked, "a", "first", 4)).toBe(unlinked);
+    const deleted = unlinkDeletedThread(both, "first", 5);
+    expect(listTasks(deleted).map(({ threadIds }) => threadIds)).toEqual([["second"], undefined]);
+    expect(linkedTasks(listTasks(deleted), "first")).toEqual([]);
+  });
+
+  it("keeps links and the chosen project when marking done, and never revives a deleted task", () => {
+    const task = addTask({}, { title: "Task", folder: "/original", threadIds: ["first"] }, 1, "a");
+    const linked = linkTaskThreads(task, "a", ["second"], 2, "/new");
+    const done = tickTask(linked, "a", true, 3);
+    expect(linkedTasks(listTasks(done), "second")[0]).toMatchObject({ folder: "/original", doneAt: 3 });
+    const deleted = deleteTask(done, "a", 4);
+    expect(linkTaskThreads(deleted, "a", ["third"], 5)).toBe(deleted);
+    expect(unlinkTaskThread(deleted, "a", "second", 5)).toBe(deleted);
+    expect(linkedTasks(listTasks(deleted), "second")).toEqual([]);
+  });
+
+  it("filters open and completed tasks by the full project path or no project", () => {
+    const a = addTask({}, "Unassigned", 1, "a");
+    const both = addTask(a, { title: "Same name", folder: "/second/app" }, 2, "b");
+    const third = addTask(both, { title: "Different project", folder: "/first/app" }, 3, "c");
+    const tasks = listTasks(tickTask(third, "b", true, 4));
+    expect(tasksInProject(tasks, undefined)).toEqual(tasks);
+    expect(tasksInProject(tasks, null).map(({ id }) => id)).toEqual(["a"]);
+    expect(splitTasks(tasksInProject(tasks, "/second/app")).done.map(({ id }) => id)).toEqual(["b"]);
+    expect(tasksInProject(tasks, "/missing")).toEqual([]);
+  });
+});
+
+describe("task capture", () => {
+  it("uses the first line as the message's title and stores the conversation and project", () => {
+    expect(taskFromMessage("  Fix login\r\nDetails to follow.  ", "thread", "/project")).toEqual({
+      title: "Fix login",
+      note: "Fix login\r\nDetails to follow.",
+      folder: "/project",
+      threadIds: ["thread"],
+    });
+    const long = taskFromMessage("x".repeat(MAX_TASK_NOTE + 30), "chat");
+    expect(long.title).toHaveLength(MAX_TASK_TITLE);
+    expect(long.note).toHaveLength(MAX_TASK_NOTE);
+    expect(long.folder).toBeUndefined();
+  });
+
+  it("keeps the issue number, URL, description, and project", () => {
+    const issue = {
+      number: 42,
+      title: "Reduce startup time",
+      url: "https://github.com/org/repo/issues/42",
+      body: "Details",
+    };
+    expect(taskFromIssue(issue, "/project")).toEqual({
+      title: "#42 Reduce startup time",
+      note: `${issue.url}\n\nDetails`,
+      folder: "/project",
+    });
+    expect(taskFromIssue({ ...issue, body: " " }, "/project").note).toBe(issue.url);
+  });
+
+  it("keeps escape-heavy captures small enough to sync", () => {
+    const captured = taskFromMessage('"'.repeat(MAX_TASK_NOTE), "thread", "/project");
+    const task = addTask({}, captured, Date.now(), "a");
+    expect(captured.note!.length).toBeLessThan(MAX_TASK_NOTE);
+    expect(reconcileTasks(task, []).send).toEqual([task["a"]]);
+  });
+});
+
+describe("offering to complete linked tasks", () => {
+  const input = { _tag: "TurnInput", items: [{ _tag: "FromUser", text: "Do the task" }] } as const;
+  const completed = { _tag: "TurnCompleted", stopReason: "completed" } as const;
+  const events = (...payloads: ReadonlyArray<EventPayload>): ReadonlyArray<AgentEvent> =>
+    payloads.map((payload, sequence) => ({
+      agentId: "lead" as AgentId,
+      threadId: "thread" as ThreadId,
+      id: `event-${sequence}` as EventId,
+      sequence,
+      at: sequence,
+      payload,
+    }));
+
+  it("requires the lead's latest turn to have completed successfully", () => {
+    expect(leadFinished([], "lead")).toBe(false);
+    expect(leadFinished(events(input, completed), "lead")).toBe(true);
+    expect(leadFinished(events(input, completed), "child")).toBe(false);
+    expect(leadFinished(events(input, completed, input), "lead")).toBe(false);
+    for (const stopReason of ["interrupted", "error", "maxTurns", "steered"] as const) {
+      expect(leadFinished(events(input, completed, input, { ...completed, stopReason }), "lead")).toBe(false);
+    }
   });
 });
 

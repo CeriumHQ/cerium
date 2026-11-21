@@ -1,5 +1,13 @@
 import { Button } from "@base-ui/react/button";
-import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import {
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type Ref,
+  type RefObject,
+} from "react";
 
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { HISTORY_EVENT } from "./HistoryWindow.tsx";
@@ -13,6 +21,21 @@ export interface Prompt {
   /** What the prompt said, on one line, or the files it sent when it said nothing. */
   readonly label: string;
 }
+
+export type PromptDirection = -1 | 1;
+export interface PromptSteps {
+  readonly step: (direction: PromptDirection) => boolean;
+}
+
+/** Continue from the prompt being read, or the latest one if the viewport hasn't been measured. */
+export const adjacentPrompt = (
+  prompts: ReadonlyArray<Prompt>,
+  reading: string | undefined,
+  direction: PromptDirection,
+): Prompt | undefined => {
+  const index = prompts.findIndex((prompt) => prompt.id === reading);
+  return prompts[(index < 0 ? prompts.length - 1 : index) + direction];
+};
 
 /** The user's prompts in order, one per message they sent (a version a rewind replaced has none). */
 export const promptsOf = (items: ReadonlyArray<Item>): ReadonlyArray<Prompt> =>
@@ -47,12 +70,17 @@ const promptElement = (viewport: HTMLElement, id: string) =>
  * Brings a prompt to the viewport's top. Reading back stops the conversation following its end, and
  * brings in history the window hasn't drawn yet, which can take a frame or two.
  */
-const bringToTop = (viewport: HTMLElement, id: string) => {
+const bringToTop = (
+  viewport: HTMLElement,
+  id: string,
+  step?: { readonly active: () => boolean; readonly arrived: () => void },
+) => {
   viewport.dispatchEvent(new Event(REVEAL_EVENT, { bubbles: true }));
   const drawn = promptElement(viewport, id) !== null;
   if (!drawn) window.dispatchEvent(new CustomEvent(HISTORY_EVENT, { detail: { id } }));
   const deadline = performance.now() + JUMP_WAIT_MS;
   const go = () => {
+    if (step && !step.active()) return;
     const target = promptElement(viewport, id);
     if (target === null) {
       if (performance.now() < deadline) requestAnimationFrame(go);
@@ -60,8 +88,9 @@ const bringToTop = (viewport: HTMLElement, id: string) => {
     }
     const top =
       viewport.scrollTop + target.getBoundingClientRect().top - viewport.getBoundingClientRect().top - 16;
-    const smooth = drawn && !matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const smooth = step === undefined && drawn && !matchMedia("(prefers-reduced-motion: reduce)").matches;
     viewport.scrollTo({ top, behavior: smooth ? "smooth" : "instant" });
+    step?.arrived();
   };
   go();
 };
@@ -74,12 +103,15 @@ export function PromptStepper({
   prompts,
   viewport,
   onReveal,
+  steps,
 }: {
   prompts: ReadonlyArray<Prompt>;
   viewport: RefObject<HTMLDivElement | null>;
   onReveal?: (() => void) | undefined;
+  steps?: Ref<PromptSteps> | undefined;
 }) {
   const [reading, setReading] = useState<string>();
+  const keyboard = useRef<{ readonly id: string; top: number; pending: boolean }>(undefined);
   const strip = useRef<HTMLDivElement>(null);
   const ids = prompts.map((prompt) => prompt.id).join(" ");
   const [first, setFirst] = useState(() => Math.max(0, prompts.length - MOUNTED_MARKS));
@@ -87,6 +119,29 @@ export function PromptStepper({
   const end = Math.min(prompts.length, start + MOUNTED_MARKS);
   const readingIndex =
     reading === undefined ? prompts.length - 1 : prompts.findIndex((prompt) => prompt.id === reading);
+
+  useImperativeHandle(steps, () => ({
+    step: (direction) => {
+      const element = viewport.current;
+      if (!element) return false;
+      const last = keyboard.current;
+      const from = last && last.top === element.scrollTop ? last.id : reading;
+      const target = adjacentPrompt(prompts, from, direction);
+      if (target === undefined) return false;
+      const jump = { id: target.id, top: element.scrollTop, pending: true };
+      keyboard.current = jump;
+      onReveal?.();
+      bringToTop(element, target.id, {
+        active: () => keyboard.current === jump && viewport.current === element,
+        arrived: () => {
+          jump.top = element.scrollTop;
+          jump.pending = false;
+          setReading(target.id);
+        },
+      });
+      return true;
+    },
+  }));
 
   // Which prompt is being read follows the scroll: the last one above the reading line, or at the
   // end, the last one in view.
@@ -97,6 +152,12 @@ export function PromptStepper({
     let frame = 0;
     const measure = () => {
       frame = 0;
+      const jump = keyboard.current;
+      if (jump && jump.top === element.scrollTop && order.includes(jump.id)) {
+        if (!jump.pending) setReading(jump.id);
+        return;
+      }
+      keyboard.current = undefined;
       const box = element.getBoundingClientRect();
       const atEnd = element.scrollHeight - element.scrollTop - element.clientHeight <= 2;
       const line = atEnd ? box.bottom : box.top + box.height * READING_LINE;
@@ -162,6 +223,7 @@ export function PromptStepper({
                 aria-label={prompt.label}
                 aria-current={current ? "location" : undefined}
                 onClick={() => {
+                  keyboard.current = undefined;
                   onReveal?.();
                   if (viewport.current) bringToTop(viewport.current, prompt.id);
                 }}

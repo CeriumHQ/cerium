@@ -782,6 +782,7 @@ const relevantTo = (view: ThreadStateView, event: AgentEvent) => {
     case "run":
       return (
         event.payload._tag === "TurnCompleted" ||
+        event.payload._tag === "UsageReported" ||
         event.payload._tag === "TurnFilesChanged" ||
         event.payload._tag === "TurnFilesReverted"
       );

@@ -1,4 +1,5 @@
 import { Collapsible } from "@base-ui/react/collapsible";
+import { useAtomValue } from "@effect/atom-react";
 import { ChevronRight } from "lucide-react";
 import {
   createContext,
@@ -6,6 +7,7 @@ import {
   useEffect,
   useEffectEvent,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -16,12 +18,35 @@ import { HISTORY_EVENT } from "./HistoryWindow.tsx";
 import { Took } from "./Trace.tsx";
 import { summarizeTools, type ToolBlock } from "./tools.ts";
 import type { Timing } from "./ToolGroup.tsx";
+import { isWorkOpen, workedChoiceAtom, type WorkedChoice } from "./workToggles.ts";
 
 /**
  * The reader's choice to open or close a run or work. Work remembers by its last step, which stays
  * the same when loading history changes its first step.
  */
 export const WorkToggles = createContext(new Map<string, boolean>());
+
+const WorkedSections = createContext<{
+  readonly bulk: WorkedChoice | undefined;
+  readonly toggles: Map<string, boolean>;
+}>({ bulk: undefined, toggles: new Map() });
+
+export function WorkDisclosures({
+  threadId,
+  children,
+}: {
+  threadId: string | undefined;
+  children: ReactNode;
+}) {
+  const [runs] = useState(() => new Map<string, boolean>());
+  const bulk = useAtomValue(workedChoiceAtom(threadId ?? ""));
+  const worked = useMemo(() => ({ bulk, toggles: new Map<string, boolean>() }), [bulk]);
+  return (
+    <WorkToggles value={runs}>
+      <WorkedSections value={worked}>{children}</WorkedSections>
+    </WorkToggles>
+  );
+}
 
 /** If a folding section holds focus, return it to the section's trigger. */
 export function useWorkFocus(open: boolean) {
@@ -65,17 +90,17 @@ export function WorkSection({
   contains: (id: string) => boolean;
   children: ReactNode;
 }) {
-  const remembered = use(WorkToggles);
-  const [toggled, setToggledState] = useState(() => {
-    const id = stepIds.findLast((each) => remembered.has(each));
-    return id === undefined ? undefined : remembered.get(id);
-  });
+  const scope = use(WorkedSections);
+  const [choice, setChoice] = useState<{ scope: typeof scope; open: boolean }>();
+  const id = stepIds.findLast((each) => scope.toggles.has(each));
+  const toggled =
+    choice?.scope === scope ? choice.open : id === undefined ? undefined : scope.toggles.get(id);
   const setToggled = (value: boolean) => {
-    setToggledState(value);
+    setChoice({ scope, open: value });
     const id = stepIds.at(-1);
-    if (id !== undefined) remembered.set(id, value);
+    if (id !== undefined) scope.toggles.set(id, value);
   };
-  const open = toggled ?? live;
+  const open = isWorkOpen(toggled, scope.bulk, live);
   const { trigger, panel } = useWorkFocus(open);
   const reveal = useEffectEvent((event: Event) => {
     const id = (event as CustomEvent<{ id?: string }>).detail?.id;

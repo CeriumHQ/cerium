@@ -3,6 +3,7 @@ import { Deferred, Effect, Fiber, FileSystem, Layer, Option, Path, Scope, Stream
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { createHash, randomUUID } from "node:crypto";
 import { statSync, watch as watchFolder } from "node:fs";
+import { lstat, readdir } from "node:fs/promises";
 
 import { DIFF_BYTES } from "./files.ts";
 
@@ -544,6 +545,15 @@ export const checkpointsLayer = (options: { readonly directory: string }) =>
         return entry;
       };
 
+      // Stop watching before restores that can replace a directory with a file (Linux's recursive
+      // watcher throws ENOTDIR when a watched directory becomes a file) and drop any cached snapshot.
+      const dropWatcher = (store: string) => {
+        const entry = watched.get(store);
+        if (entry === undefined) return;
+        watched.delete(store);
+        entry.close();
+      };
+
       /** `folder`'s watcher, started on its first save; none while the OS can't watch it. */
       const watchedFolder = (store: string, folder: string): Watched | undefined => {
         const existing = recentWatcher(store);
@@ -810,13 +820,18 @@ export const checkpointsLayer = (options: { readonly directory: string }) =>
         );
       });
 
-      const changes = Effect.fn("Checkpoints.changes")(function* (folder: string, from: string, to: string) {
-        if (from === to) return [];
+      const changes = Effect.fn("Checkpoints.changes")(function* (
+        folder: string,
+        from: string,
+        to: string,
+        paths?: ReadonlyArray<string>,
+      ) {
+        if (from === to || paths?.length === 0) return [];
         const store = storeOf(folder);
         const output = yield* gitOk(
           store,
           folder,
-          ["diff-tree", "-r", "-z", "--no-renames", "--name-status", from, to],
+          ["diff-tree", "-r", "-z", "--no-renames", "--name-status", from, to, "--", ...(paths ?? [])],
           "Couldn't compare the folder's snapshots.",
         );
         return parseNameStatus(output);
@@ -866,10 +881,11 @@ export const checkpointsLayer = (options: { readonly directory: string }) =>
         folder: string,
         snapshot: string,
         paths: ReadonlyArray<string>,
+        { protectOtherPaths = false }: { readonly protectOtherPaths?: boolean } = {},
       ) {
-        if (paths.length === 0) return;
+        if (paths.length === 0) return [];
         const store = storeOf(folder);
-        yield* withScratchIndex(
+        return yield* withScratchIndex(
           store,
           (index) =>
             Effect.gen(function* () {
@@ -883,9 +899,64 @@ export const checkpointsLayer = (options: { readonly directory: string }) =>
                   .split("\0")
                   .filter((name) => name !== ""),
               );
-              const back = paths.filter((file) => held.has(file));
               const gone = paths.filter((file) => !held.has(file));
-              if (back.length > 0) {
+              const removing = new Set(gone);
+              const hasOtherFiles = async (dir: string): Promise<boolean> => {
+                for (const entry of await readdir(path.join(folder, dir), { withFileTypes: true })) {
+                  const child = `${dir}/${entry.name}`;
+                  if (entry.isDirectory() ? await hasOtherFiles(child) : !removing.has(child)) return true;
+                }
+                return false;
+              };
+              // Git can replace a directory or a file in an ancestor while restoring one path.
+              const blocked = async (file: string): Promise<boolean> => {
+                const parts = file.split("/");
+                for (let length = 1; length <= parts.length; length++) {
+                  const part = parts.slice(0, length).join("/");
+                  const stat = await lstat(path.join(folder, part)).catch((error: unknown) => {
+                    if (
+                      typeof error === "object" &&
+                      error !== null &&
+                      "code" in error &&
+                      error.code === "ENOENT"
+                    ) {
+                      return undefined;
+                    }
+                    throw error;
+                  });
+                  if (stat === undefined) return false;
+                  if (part === file) return stat.isDirectory() && hasOtherFiles(file);
+                  if (!stat.isDirectory()) return !removing.has(part);
+                }
+                return false;
+              };
+              const back = paths.filter((file) => held.has(file));
+              const kept = protectOtherPaths
+                ? yield* Effect.filter(back, (file) =>
+                    Effect.tryPromise({
+                      try: () => blocked(file),
+                      catch: () => new CheckpointError({ message: `Couldn't check paths around ${file}.` }),
+                    }),
+                  )
+                : [];
+              const writing = back.filter((file) => !kept.includes(file));
+              const related = (file: string) =>
+                protectOtherPaths &&
+                writing.some((target) => file.startsWith(`${target}/`) || target.startsWith(`${file}/`));
+              const remove = (files: ReadonlyArray<string>) =>
+                Effect.forEach(
+                  files,
+                  (file) =>
+                    fs
+                      .remove(path.join(folder, file), { force: true })
+                      .pipe(
+                        Effect.mapError(() => new CheckpointError({ message: `Couldn't remove ${file}.` })),
+                      ),
+                  { discard: true },
+                );
+              if (writing.length > 0 || gone.length > 0) dropWatcher(store);
+              yield* remove(gone.filter(related));
+              if (writing.length > 0) {
                 yield* gitOk(
                   store,
                   folder,
@@ -898,19 +969,11 @@ export const checkpointsLayer = (options: { readonly directory: string }) =>
                     "--pathspec-file-nul",
                   ],
                   "Couldn't put the files back.",
-                  { stdin: `${back.join("\0")}\0`, index },
+                  { stdin: `${writing.join("\0")}\0`, index },
                 );
               }
-              yield* Effect.forEach(
-                gone,
-                (file) =>
-                  fs
-                    .remove(path.join(folder, file), { force: true })
-                    .pipe(
-                      Effect.mapError(() => new CheckpointError({ message: `Couldn't remove ${file}.` })),
-                    ),
-                { discard: true },
-              );
+              yield* remove(gone.filter((file) => !related(file)));
+              return kept;
             }),
           // What the restore staged is dropped with its copy: the next save reads the files afresh.
           false,
@@ -925,6 +988,7 @@ export const checkpointsLayer = (options: { readonly directory: string }) =>
         const sourceStore = storeOf(source);
         const destinationStore = storeOf(destination);
         yield* save(destination);
+        dropWatcher(destinationStore);
         // Seed the temporary index with the new checkout so git removes files absent from the
         // snapshot and handles file/directory replacements, without staging changes in the worktree.
         yield* withScratchIndex(
@@ -939,8 +1003,6 @@ export const checkpointsLayer = (options: { readonly directory: string }) =>
             ),
           false,
         );
-        const entry = recentWatcher(destinationStore);
-        if (entry !== undefined) entry.dirty = true;
       });
 
       return Checkpoints.of({ save, changes, lines, diff, restore, restoreInto });

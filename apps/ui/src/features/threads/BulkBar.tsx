@@ -1,10 +1,14 @@
 import { Checkbox } from "@base-ui/react/checkbox";
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
+import { Button } from "@base-ui/react/button";
 import { Archive, ArchiveRestore, Check, Clock, MailOpen, Minus, Pin, PinOff, Trash2, X } from "lucide-react";
 import { useLayoutEffect, useRef, useState } from "react";
 
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog.tsx";
 import { IconButton } from "../../components/ui/IconButton.tsx";
+import { MenuPopup, MenuRoot, MenuTrigger } from "../../components/ui/Menu.tsx";
+import { Tooltip } from "../../components/ui/Tooltip.tsx";
+import { LaterDateDialog, LaterMenuItems } from "./LaterMenu.tsx";
 import { pinnedAtom, togglePin } from "./pins.ts";
 import {
   planBulk,
@@ -14,7 +18,7 @@ import {
   type BulkAction,
   type BulkSkip,
 } from "./bulk.ts";
-import { laterTime, type InboxBox, type ThreadSummary } from "./model.ts";
+import type { InboxBox, ThreadSummary } from "./model.ts";
 
 /** How the row toggles: alone, or a run of the list from the last one touched. */
 export type SelectMode = "toggle" | "range";
@@ -187,6 +191,7 @@ export function BulkBar({
   const pins = useAtomValue(pinnedAtom);
   const setPins = useAtomSet(pinnedAtom);
   const [confirming, setConfirming] = useState(false);
+  const [customLater, setCustomLater] = useState(false);
   const byId = new Map(threads.map((thread) => [thread.id, thread]));
   const ids = threads.map((thread) => thread.id);
 
@@ -236,6 +241,10 @@ export function BulkBar({
         });
       }
     : undefined;
+  const later =
+    box === "inbox" && onLater
+      ? (until: number) => void run("later", (thread) => onLater(thread.id, until))
+      : undefined;
 
   const buttons = [
     box === "archive" && onRestore
@@ -251,18 +260,6 @@ export function BulkBar({
             label: "Archive",
             run: () => void run("archive", (thread) => onArchive(thread.id)),
           },
-    ...(box === "inbox" && onLater
-      ? [
-          {
-            icon: Clock,
-            label: "Later",
-            run: () => {
-              const until = laterTime(Date.now());
-              return void run("later", (thread) => onLater(thread.id, until));
-            },
-          },
-        ]
-      : []),
     ...(pin ? [{ icon: Pin, label: "Pin", run: pin }] : []),
     ...(unpin ? [{ icon: PinOff, label: "Unpin", run: unpin }] : []),
     ...(threads.some((thread) => thread.unread)
@@ -309,6 +306,23 @@ export function BulkBar({
         {buttons.map((button) => (
           <IconButton key={button.label} icon={button.icon} label={button.label} onClick={button.run} />
         ))}
+        {later ? (
+          <MenuRoot>
+            <Tooltip label="Later">
+              <MenuTrigger>
+                <Button
+                  aria-label="Later"
+                  className="grid size-7 place-items-center rounded-md text-fg-secondary transition-colors duration-150 hover:bg-surface-hover hover:text-fg-primary active:bg-surface-active data-popup-open:bg-surface-active data-popup-open:text-fg-primary max-md:size-10 pointer-coarse:size-10"
+                >
+                  <Clock size={15} strokeWidth={1.75} />
+                </Button>
+              </MenuTrigger>
+            </Tooltip>
+            <MenuPopup side="top">
+              <LaterMenuItems onPick={later} onCustom={() => setCustomLater(true)} />
+            </MenuPopup>
+          </MenuRoot>
+        ) : null}
         <IconButton
           icon={Trash2}
           label="Delete"
@@ -322,6 +336,7 @@ export function BulkBar({
           }}
         />
       </div>
+      {later && customLater ? <LaterDateDialog onPick={later} onClose={() => setCustomLater(false)} /> : null}
       <ConfirmDialog
         open={confirming}
         onOpenChange={setConfirming}

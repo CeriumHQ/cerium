@@ -78,6 +78,10 @@ export class CursorAdapter extends Context.Service<CursorAdapter, HarnessAdapter
           ),
         startSession,
         hub: makeCursorHub(platform),
+        hubInstructions: {
+          files: [{ path: "AGENTS.md", primary: true }, { path: "CLAUDE.md" }, { path: ".cursorrules" }],
+          folders: [{ path: ".cursor/rules", suffix: ".mdc", recursive: true }],
+        },
         usage: readyForCompletion.pipe(Effect.andThen(readCursorUsage()), Effect.provide(platform)),
       });
     }),

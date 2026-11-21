@@ -109,7 +109,9 @@ export * from "./terminal.ts";
  */
 export const FORK_THREAD_RPC_VERSION = 53;
 export const MEDIA_RANGE_RPC_VERSION = 54;
-export const RPC_VERSION = MEDIA_RANGE_RPC_VERSION;
+export const PER_FILE_TURN_REVERT_RPC_VERSION = 55;
+export const HUB_INSTRUCTIONS_RPC_VERSION = 56;
+export const RPC_VERSION = HUB_INSTRUCTIONS_RPC_VERSION;
 export const SCOPED_EVENTS_RPC_VERSION = 50;
 
 /** Status readers send the provider ids their schema can decode. */
@@ -361,6 +363,8 @@ export const MachineRpcs = RpcGroup.make(
       agentId: AgentId,
       turnId: Schema.NonEmptyString,
       direction: Schema.Literals(["undone", "redone"]),
+      /** When present, limits the request to these turn files. Since RPC_VERSION 55. */
+      paths: Schema.optionalKey(Schema.Array(Schema.NonEmptyString)),
     },
     success: TurnFilesReverted,
     error: CeriumError,

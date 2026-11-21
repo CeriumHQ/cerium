@@ -121,6 +121,23 @@ export const CONTINUE_VERSION = 41;
 export const needsYou = (thread: ThreadSummary): boolean =>
   thread.status === "awaitingApproval" || (thread.status === "failed" && thread.unread);
 
+/** Advance through one list ordered by activity across both modes, wrapping at its end. */
+export const nextWaitingThread = (
+  threads: ReadonlyArray<ThreadSummary>,
+  current: string | undefined,
+): ThreadSummary | undefined => {
+  const listed = threads
+    .filter(isListed)
+    .toSorted((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id));
+  // An open thread can be the only remaining match. In that case, look for other unread threads.
+  for (const matches of [listed.filter(needsYou), listed.filter((thread) => thread.unread)]) {
+    const index = matches.findIndex((thread) => thread.id === current);
+    const next = matches[index + 1] ?? matches[0];
+    if (next !== undefined && next.id !== current) return next;
+  }
+  return undefined;
+};
+
 /** Put off and not due back yet; one that needs the user comes back early. */
 export const isPutOff = (thread: ThreadSummary, now: number): boolean =>
   thread.archivedAt === undefined &&
@@ -144,11 +161,47 @@ export const inboxAt = (thread: ThreadSummary, now: number): number =>
     ? Math.max(thread.updatedAt, thread.laterUntil)
     : thread.updatedAt;
 
-/** When "Later" brings a thread back: tomorrow morning. */
-export const laterTime = (now: number): number => {
+const HOUR = 3_600_000;
+
+export const laterInHour = (now: number): number => now + HOUR;
+
+/** Five in the afternoon before 4 PM, or two hours from now after that. */
+export const laterToday = (now: number): number => {
+  const today = new Date(now);
+  return today.getHours() < 16 ? today.setHours(17, 0, 0, 0) : now + 2 * HOUR;
+};
+
+export const laterTomorrow = (now: number): number => {
   const tomorrow = new Date(now);
   tomorrow.setDate(tomorrow.getDate() + 1);
   return tomorrow.setHours(8, 0, 0, 0);
+};
+
+/** The next Monday morning, one full week away when today is Monday. */
+export const laterNextWeek = (now: number): number => {
+  const monday = new Date(now);
+  monday.setDate(monday.getDate() + (7 - ((monday.getDay() + 6) % 7)));
+  return monday.setHours(8, 0, 0, 0);
+};
+
+/** The default for the card's instant Later shortcut. */
+export const laterTime = laterTomorrow;
+
+/** Parses a local date and time, rejecting missing, adjusted, or past wall-clock times. */
+export const customLaterTime = (value: string, now: number): number | undefined => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(value);
+  if (!match) return undefined;
+  const [year, month, day, hour, minute] = match.slice(1).map(Number);
+  const date = new Date(value);
+  const time = date.getTime();
+  return time > now &&
+    date.getFullYear() === year &&
+    date.getMonth() + 1 === month &&
+    date.getDate() === day &&
+    date.getHours() === hour &&
+    date.getMinutes() === minute
+    ? time
+    : undefined;
 };
 
 const DAY = 86_400_000;
@@ -207,6 +260,7 @@ export const overflow = (
   now: number,
   cap = INBOX_CAP,
 ): ReadonlyArray<ThreadSummary> => {
+  if (cap <= 0) return [];
   const entries = groupRuns(inbox);
   const excess = entries.length - cap;
   if (excess <= 0) return [];

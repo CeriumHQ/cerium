@@ -123,6 +123,50 @@ describe("Store", () => {
     },
   );
 
+  it.effect("includes compact usage and completions alongside file changes in run state", () =>
+    withStore(
+      Effect.gen(function* () {
+        const store = yield* Store;
+        yield* store.createThread(thread);
+        yield* store.createAgent(lead);
+        const usage: AgentEvent = {
+          ...event(1),
+          payload: {
+            _tag: "UsageReported",
+            inputTokens: 5,
+            cachedInputTokens: 4,
+            outputTokens: 2,
+            costUsd: 0.25,
+          },
+        };
+        const next: AgentEvent = {
+          ...event(2),
+          payload: { _tag: "UsageReported", inputTokens: 2, outputTokens: 1, costUsd: 0.125 },
+        };
+        const complete: AgentEvent = {
+          ...event(3),
+          payload: { _tag: "TurnCompleted", stopReason: "completed" },
+        };
+        const changes: AgentEvent = {
+          ...event(4),
+          payload: {
+            _tag: "TurnFilesChanged",
+            turnId: "turn",
+            before: "a",
+            after: "b",
+            files: [{ path: "index.ts", change: "modified", added: 2, removed: 1, via: "edit" }],
+          },
+        };
+        yield* store.appendEvents([usage, next, complete, changes, event(5)]);
+        assert.deepStrictEqual(yield* store.threadState(thread.id, "run"), [
+          { ...next, payload: { _tag: "UsageReported", inputTokens: 11, outputTokens: 3, costUsd: 0.375 } },
+          complete,
+          changes,
+        ]);
+      }),
+    ),
+  );
+
   it.effect("pages search text without reading screenshot or tool payloads", () =>
     withStore(
       Effect.gen(function* () {

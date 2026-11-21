@@ -48,3 +48,18 @@ export const setHubTool = Backend.mutation("SetHubTool");
 export const setHubSkill = Backend.mutation("SetHubSkill");
 export const copyHubServer = Backend.mutation("CopyHubServer");
 export const copyHubSkill = Backend.mutation("CopyHubSkill");
+
+export const hubInstructionsAtom = Atom.family((key: `${string}\u0000${string}`) => {
+  const project = key.slice(key.indexOf("\u0000") + 1);
+  return Backend.runtime
+    .atom((get) => {
+      get(connectionEpochAtom);
+      return Backend.use((client) => client("ReadHubInstructions", { project }));
+    })
+    .pipe(Atom.setIdleTTL("5 minutes"));
+});
+
+export const hubInstructionsKey = (machine: string | undefined, project: string) =>
+  `${machine ?? ""}\u0000${project}` as const;
+
+export const syncHubInstructions = Backend.mutation("SyncHubInstructions");

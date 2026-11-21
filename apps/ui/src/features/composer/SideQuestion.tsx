@@ -1,7 +1,7 @@
 import { Button } from "@base-ui/react/button";
 import { Popover } from "@base-ui/react/popover";
 import { ArrowUp, MessageCircleQuestionMark, X } from "lucide-react";
-import { useEffect, useRef, useState, type KeyboardEvent, type RefObject } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { Markdown } from "../transcript/Markdown.tsx";
@@ -19,6 +19,7 @@ export type AskSide = (
 interface Entry {
   readonly id: number;
   readonly question: string;
+  readonly request: string;
   readonly answer?: string;
   readonly failure?: string;
 }
@@ -32,6 +33,7 @@ export function SideQuestion({
   open,
   anchor,
   initial,
+  quote,
   ask,
   onClose,
   finalFocus,
@@ -40,7 +42,9 @@ export function SideQuestion({
   /** The message box, which the pop-over sits above. */
   anchor: RefObject<HTMLElement | null>;
   /** A question to ask as soon as it opens. */
-  initial: string;
+  initial?: string | undefined;
+  /** The response passage the first question refers to. */
+  quote?: string | undefined;
   ask: AskSide;
   onClose: () => void;
   /** Where the cursor goes back to when it closes. */
@@ -49,6 +53,7 @@ export function SideQuestion({
   const [entries, setEntries] = useState<ReadonlyArray<Entry>>([]);
   const [text, setText] = useState("");
   const field = useRef<HTMLTextAreaElement>(null);
+  const quoteId = useId();
   const count = useRef(0);
   const started = useRef(false);
   const pending = entries.some((entry) => entry.answer === undefined && entry.failure === undefined);
@@ -57,14 +62,18 @@ export function SideQuestion({
     const question = raw.trim();
     if (question === "" || pending) return;
     const id = count.current++;
+    const request =
+      id === 0 && quote !== undefined
+        ? `About this passage:\n\n${quote.replace(/^/gm, "> ")}\n\n${question}`
+        : question;
     const earlier = entries.flatMap((entry) =>
-      entry.answer === undefined ? [] : [{ question: entry.question, answer: entry.answer }],
+      entry.answer === undefined ? [] : [{ question: entry.request, answer: entry.answer }],
     );
     const settle = (change: Partial<Entry>) =>
       setEntries((current) => current.map((entry) => (entry.id === id ? { ...entry, ...change } : entry)));
-    setEntries((current) => [...current, { id, question }]);
+    setEntries((current) => [...current, { id, question, request }]);
     setText("");
-    ask(question, earlier).then(
+    ask(request, earlier).then(
       (answer) => settle({ answer }),
       (error: unknown) => settle({ failure: messageOf(error) }),
     );
@@ -73,7 +82,7 @@ export function SideQuestion({
   useEffect(() => {
     if (started.current) return;
     started.current = true;
-    put(initial);
+    if (initial !== undefined) put(initial);
     // Once, when it opens; `put` reads state that is empty then.
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -120,6 +129,15 @@ export function SideQuestion({
                 <X size={13} strokeWidth={1.75} />
               </Popover.Close>
             </div>
+            {quote === undefined ? null : (
+              <blockquote
+                id={quoteId}
+                title={quote}
+                className="mx-3 mb-2 line-clamp-3 border-l-2 border-accent/60 pl-2 text-meta leading-relaxed whitespace-pre-line text-fg-tertiary max-md:text-[13px]"
+              >
+                {quote}
+              </blockquote>
+            )}
             {entries.length > 0 ? (
               <ScrollArea viewportRef={viewport} viewportClassName="max-h-[min(22rem,45vh)]">
                 <div className="flex flex-col gap-3 px-3 pb-2">
@@ -145,6 +163,7 @@ export function SideQuestion({
               <textarea
                 ref={field}
                 aria-label={entries.length === 0 ? "Question" : "Follow-up"}
+                aria-describedby={quote === undefined ? undefined : quoteId}
                 value={text}
                 rows={1}
                 placeholder={entries.length === 0 ? "Ask about this thread" : "Ask a follow-up"}

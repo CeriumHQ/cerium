@@ -4,7 +4,8 @@ import { describe, expect, it } from "@effect/vitest";
 import { transcriptFixture } from "../src/dev/transcriptFixture.ts";
 import { editCounts } from "../src/features/transcript/EditDiff.tsx";
 import { layout, runTimings } from "../src/features/transcript/layout.ts";
-import { buildTranscript, queuedMessages } from "../src/features/transcript/model.ts";
+import { buildTranscript, createTranscriptFold, queuedMessages } from "../src/features/transcript/model.ts";
+import { isWorkOpen } from "../src/features/transcript/workToggles.ts";
 
 const events = (...payloads: ReadonlyArray<EventPayload>): ReadonlyArray<AgentEvent> =>
   payloads.map((payload, sequence) => ({
@@ -15,6 +16,16 @@ const events = (...payloads: ReadonlyArray<EventPayload>): ReadonlyArray<AgentEv
     at: sequence,
     payload,
   }));
+
+describe("Worked disclosures", () => {
+  it("keeps live Working sections open by default and allows manual overrides", () => {
+    expect(isWorkOpen(undefined, undefined, false)).toBe(false);
+    expect(isWorkOpen(undefined, { open: true }, false)).toBe(true);
+    expect(isWorkOpen(undefined, { open: false }, true)).toBe(true);
+    expect(isWorkOpen(false, { open: true }, false)).toBe(false);
+    expect(isWorkOpen(true, { open: false }, false)).toBe(true);
+  });
+});
 
 describe("buildTranscript", () => {
   it("times tool calls, thoughts and turns by their events", () => {
@@ -131,10 +142,114 @@ describe("buildTranscript", () => {
       paths: [],
       kept: ["a.ts"],
     });
-    expect(ends([...turn("t1"), changed, undo("undone")])[0]?.changes?.undone).toEqual({ kept: ["a.ts"] });
+    const legacyUndo = ends([...turn("t1"), changed, undo("undone")])[0]?.changes;
+    expect(legacyUndo?.status).toBe("undone");
+    expect(legacyUndo?.fileStates?.get("a.ts")).toEqual({ undone: false, kept: true, turnUndone: true });
     expect(
-      ends([...turn("t1"), changed, undo("undone"), undo("redone")])[0]?.changes?.undone,
+      ends([...turn("t1"), changed, undo("undone"), undo("redone")])[0]?.changes?.status,
     ).toBeUndefined();
+  });
+
+  it("replays each file's undo, redo and kept state across partial and whole-turn events", () => {
+    const files = ["a.ts", "b.ts", "c.ts"];
+    const revert = (
+      direction: "undone" | "redone",
+      paths: ReadonlyArray<string>,
+      kept: ReadonlyArray<string> = [],
+      partial = true,
+    ): EventPayload => ({
+      _tag: "TurnFilesReverted",
+      turnId: "t1",
+      direction,
+      paths,
+      kept,
+      ...(partial ? { partial: true } : {}),
+    });
+    const history = events(
+      { _tag: "TurnInput", turnId: "t1", items: [{ _tag: "FromUser", text: "change files" }] },
+      { _tag: "TurnCompleted", stopReason: "completed" },
+      {
+        _tag: "TurnFilesChanged",
+        turnId: "t1",
+        before: "before",
+        after: "after",
+        files: [
+          { path: "a.ts", change: "modified", via: "edit" },
+          { path: "b.ts", change: "deleted", via: "edit" },
+          { path: "c.ts", change: "added", via: "edit" },
+        ],
+      },
+      revert("undone", ["b.ts"], ["a.ts"]),
+      revert("redone", [], ["b.ts"]),
+      revert("undone", ["a.ts", "c.ts"], [], false),
+      revert("redone", ["a.ts"]),
+      revert("undone", ["a.ts"]),
+      revert("redone", files, [], false),
+    );
+    const fold = createTranscriptFold();
+    fold.add(history.slice(0, 3));
+    const expected = [
+      {
+        status: "partial",
+        states: [
+          [false, true],
+          [true, false],
+          [false, false],
+        ],
+      },
+      {
+        status: "partial",
+        states: [
+          [false, true],
+          [true, true],
+          [false, false],
+        ],
+      },
+      {
+        status: "undone",
+        states: [
+          [true, false],
+          [true, true],
+          [true, false],
+        ],
+      },
+      {
+        status: "partial",
+        states: [
+          [false, false],
+          [true, true],
+          [true, false],
+        ],
+      },
+      {
+        status: "undone",
+        states: [
+          [true, false],
+          [true, true],
+          [true, false],
+        ],
+      },
+      {
+        status: undefined,
+        states: [
+          [false, false],
+          [false, false],
+          [false, false],
+        ],
+      },
+    ];
+    for (const [index, event] of history.slice(3).entries()) {
+      fold.add([event]);
+      const end = fold.snapshot().find((block) => block.kind === "turnEnd");
+      const replayed = buildTranscript(history.slice(0, index + 4));
+      expect(replayed).toEqual(fold.snapshot());
+      const changes = end?.changes;
+      const states = files.map((path) => {
+        const state = changes?.fileStates?.get(path);
+        return [state?.undone ?? false, state?.kept ?? false];
+      });
+      expect({ status: changes?.status, states }).toEqual(expected[index]);
+    }
   });
 
   it("completes tool calls and attributes file changes to them", () => {

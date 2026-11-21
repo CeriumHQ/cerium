@@ -876,11 +876,12 @@ export class Store extends Context.Service<
                         .onConflictDoUpdate({ target: threadStates.threadId, set: { checkpoint: state } });
                     }
                     if (view === "main") return state.events;
-                    const completions = state.events.filter(
-                      (event) => event.payload._tag === "TurnCompleted",
+                    const outcomes = state.events.filter(
+                      (event) =>
+                        event.payload._tag === "TurnCompleted" || event.payload._tag === "UsageReported",
                     );
                     const files = yield* stateEvents(threadId, ["TurnFilesChanged", "TurnFilesReverted"]);
-                    return [...completions, ...files].sort(compareHistory);
+                    return [...outcomes, ...files].sort(compareHistory);
                   }),
                 );
               }),

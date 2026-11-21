@@ -154,12 +154,14 @@ export function MenuCheckboxItem({
   checked,
   onCheckedChange,
   icon: Icon,
+  shortcut,
   closeOnClick = false,
   children,
 }: {
   checked: boolean;
   onCheckedChange: (checked: boolean) => void;
   icon?: LucideIcon;
+  shortcut?: string;
   closeOnClick?: boolean;
   children: ReactNode;
 }) {
@@ -172,6 +174,11 @@ export function MenuCheckboxItem({
     >
       {Icon ? <Icon size={14} strokeWidth={1.75} /> : null}
       {children}
+      {shortcut ? (
+        <kbd className="ml-auto pl-6 font-sans text-caption text-fg-tertiary max-md:hidden">
+          {keyLabel(shortcut)}
+        </kbd>
+      ) : null}
       <BaseMenu.CheckboxItemIndicator className="absolute right-2 text-fg-secondary">
         <Check size={14} strokeWidth={2} />
       </BaseMenu.CheckboxItemIndicator>

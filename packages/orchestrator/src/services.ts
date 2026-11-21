@@ -164,11 +164,12 @@ export class Checkpoints extends Context.Service<
      * last snapshot serves when nothing in the folder is known to have changed since it was taken.
      */
     save(folder: string, options?: { readonly reuse?: boolean }): Effect.Effect<string, CheckpointError>;
-    /** The files that differ between two snapshots of `folder`. */
+    /** The files that differ between two snapshots of `folder`, optionally limited to `paths`. */
     changes(
       folder: string,
       from: string,
       to: string,
+      paths?: ReadonlyArray<string>,
     ): Effect.Effect<ReadonlyArray<SnapshotChange>, CheckpointError>;
     /** The lines each file that differs between two snapshots of `folder` gained and lost. */
     lines(
@@ -184,12 +185,13 @@ export class Checkpoints extends Context.Service<
       path: string,
       context: number,
     ): Effect.Effect<string, CheckpointError>;
-    /** Puts `paths` back as `snapshot` holds them, removing those it doesn't hold. */
+    /** Puts `paths` back as `snapshot` holds them, removing those it doesn't hold. Returns blocked paths. */
     restore(
       folder: string,
       snapshot: string,
       paths: ReadonlyArray<string>,
-    ): Effect.Effect<void, CheckpointError>;
+      options?: { readonly protectOtherPaths?: boolean },
+    ): Effect.Effect<ReadonlyArray<string>, CheckpointError>;
     /** Applies a snapshot from another folder to a newly checked out workspace. */
     restoreInto(source: string, snapshot: string, destination: string): Effect.Effect<void, CheckpointError>;
   }

@@ -30,7 +30,7 @@ import {
   SettingsSection,
   SettingsTag,
 } from "./parts.tsx";
-import { accessAtom, effortAtom, modelAtom, workplaceAtom } from "./preferences.ts";
+import { accessAtom, effortAtom, inboxCapAtom, inboxCaps, modelAtom, workplaceAtom } from "./preferences.ts";
 import { RosterSection } from "./Roster.tsx";
 import { TitleRows } from "./Titles.tsx";
 import { AdvisorRows } from "./Advisor.tsx";
@@ -191,7 +191,49 @@ export function ThreadSettings({
           <TitleRows models={models} harnesses={harnesses} />
         </SettingsList>
       </SettingsSection>
+      <SettingsSection title="Inbox">
+        <SettingsList>
+          <InboxCapRow />
+        </SettingsList>
+      </SettingsSection>
     </SettingsPage>
+  );
+}
+
+const capLabel = (cap: number) => (cap === 0 ? "Off" : `${cap} threads`);
+
+function InboxCapRow() {
+  const [cap, setCap] = useAtom(inboxCapAtom);
+  return (
+    <SettingsRow
+      label="Inbox auto-archive cap"
+      hint={
+        cap === 0
+          ? "The Inbox keeps every thread until you archive it."
+          : "When a new thread arrives, archive the oldest eligible threads above this limit. Pinned and open threads stay."
+      }
+      className="pr-2.5"
+      control={() => (
+        <SelectRoot
+          value={String(cap)}
+          onValueChange={(next) => {
+            const picked = inboxCaps.find((value) => String(value) === next);
+            if (picked !== undefined) setCap(picked);
+          }}
+        >
+          <SelectTrigger label="Inbox auto-archive cap">
+            <span className="tabular-nums">{capLabel(cap)}</span>
+          </SelectTrigger>
+          <SelectPopup>
+            {inboxCaps.map((value) => (
+              <SelectItem key={value} value={String(value)}>
+                <span className="tabular-nums">{capLabel(value)}</span>
+              </SelectItem>
+            ))}
+          </SelectPopup>
+        </SelectRoot>
+      )}
+    />
   );
 }
 

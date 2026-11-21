@@ -1,9 +1,11 @@
 import { localUrlsIn } from "@cerium/browser/url";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
-import { Terminal, type ITheme } from "@xterm/xterm";
+import { Terminal, type IBuffer, type ITheme } from "@xterm/xterm";
 
 import { usesCommandKey } from "../../lib/keys.ts";
+import { currentBinding, matchesBinding } from "../../lib/shortcuts.ts";
+import { lastText, OUTPUT_TAIL_CHARS, OUTPUT_TAIL_LINES } from "../composer/agentFix.ts";
 import { openLocally } from "../preview/model.ts";
 import { isOpenableLink } from "../transcript/menus.ts";
 import { readTheme } from "./theme.ts";
@@ -69,6 +71,36 @@ export const copyToClipboard = (text: string): void => {
   void navigator.clipboard?.writeText(text).catch(() => undefined);
 };
 
+/** Reads logical lines from the bottom of a buffer, including scrollback beyond the viewport. */
+function bufferTailText(buffer: IBuffer, cols: number, maxLines: number, maxChars: number): string {
+  const lines: string[] = [];
+  let remaining = Math.floor(maxChars);
+  let current = "";
+  let nextWraps = false;
+  let nextStartsWide = false;
+  for (let row = buffer.length - 1; row >= 0 && lines.length < Math.floor(maxLines) && remaining > 0; row--) {
+    const line = buffer.getLine(row);
+    if (line === undefined) continue;
+    // A wide character that didn't fit leaves an unused cell at the right edge before wrapping.
+    const gap = nextWraps && nextStartsWide && line.getCell(cols - 1)?.getChars() === "";
+    const text = line.translateToString(current === "", 0, cols - Number(gap));
+    current = (text + current).trimEnd();
+    if (current.length > remaining) {
+      const tail = lastText(current, remaining);
+      if (tail !== "") lines.push(tail);
+      break;
+    }
+    if ((!line.isWrapped || row === 0) && current !== "") {
+      lines.push(current);
+      remaining -= current.length + 1;
+      current = "";
+    }
+    nextWraps = line.isWrapped;
+    nextStartsWide = line.isWrapped && line.getCell(0)?.getWidth() === 2;
+  }
+  return lines.reverse().join("\n");
+}
+
 export class TerminalSession {
   readonly terminal: Terminal;
   /** What the emulator draws into; moved between containers as the drawer shows this terminal. */
@@ -81,7 +113,7 @@ export class TerminalSession {
   #onFirstFit: (() => void) | undefined;
   /** Settles when the emulator first has a size from a container, so output can be drawn at it. */
   readonly sized: Promise<void>;
-  /** Settles when the shell ends, with its exit code, or the terminal closes (no code). */
+  /** Settles once the shell's final output is drawn, or when the terminal closes (no code). */
   readonly ended: Promise<number | undefined>;
   #onEnded: ((code: number | undefined) => void) | undefined;
   /** The font is loaded: the emulator measures its cells with it, so it opens only then. */
@@ -124,10 +156,11 @@ export class TerminalSession {
     this.terminal.attachCustomKeyEventHandler((event) => this.#keyHandled(event));
 
     // The window's own shortcuts (Ctrl K, Ctrl N, …) are keys the shell uses too: inside the terminal
-    // they are the shell's, but for the one that shows and hides the terminal. On a Mac they take ⌘,
-    // which no shell reads, so they stay the window's.
+    // they are the shell's, but for the one that shows and hides the terminal and returning focus to
+    // the message box. On a Mac they take ⌘, which no shell reads, so they stay the window's.
     this.host.addEventListener("keydown", (event) => {
       if (event.ctrlKey && event.code === "Backquote") return;
+      if (matchesBinding(event, currentBinding("focus-composer"), usesCommandKey())) return;
       if (usesCommandKey() && event.metaKey) return;
       event.stopPropagation();
     });
@@ -153,6 +186,7 @@ export class TerminalSession {
     // ⌘ keys on a Mac are the app's: ⌘C and ⌘V copy and paste through the Edit menu, and the rest
     // are the window's shortcuts.
     if (usesCommandKey() && event.metaKey) return false;
+    if (matchesBinding(event, currentBinding("focus-composer"), usesCommandKey())) return false;
     const ctrl = event.ctrlKey && !event.metaKey && !event.altKey;
     const key = event.key.toLowerCase();
     // The window shows and hides the terminal with it.
@@ -283,8 +317,10 @@ export class TerminalSession {
   end(code?: number) {
     if (this.#ended || this.#disposed) return;
     this.#ended = true;
-    this.terminal.write("\x1b[?25l");
-    this.#onEnded?.(code);
+    this.terminal.write("\x1b[?25l", () => {
+      this.#onEnded?.(code);
+      this.#onEnded = undefined;
+    });
   }
 
   setTheme(theme: ITheme = readTheme()) {
@@ -301,6 +337,14 @@ export class TerminalSession {
 
   hasSelection(): boolean {
     return this.terminal.hasSelection();
+  }
+
+  getSelection(): string {
+    return this.terminal.getSelection().trim();
+  }
+
+  tailText(maxLines = OUTPUT_TAIL_LINES, maxChars = OUTPUT_TAIL_CHARS): string {
+    return bufferTailText(this.terminal.buffer.active, this.terminal.cols, maxLines, maxChars);
   }
 
   copySelection() {
@@ -323,6 +367,8 @@ export class TerminalSession {
   dispose() {
     if (this.#disposed) return;
     this.#disposed = true;
+    this.#onEnded?.(undefined);
+    this.#onEnded = undefined;
     this.host.remove();
     this.terminal.dispose();
   }

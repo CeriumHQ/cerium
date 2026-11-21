@@ -13,6 +13,12 @@ const MAC_MODIFIERS: ReadonlyArray<readonly [string, string]> = [
 ];
 
 const MAC_KEYS: Readonly<Record<string, string>> = { Enter: "↩", Esc: "⎋", Backspace: "⌫" };
+const ARROW_KEYS: Readonly<Record<string, string>> = {
+  ArrowUp: "↑",
+  ArrowDown: "↓",
+  ArrowLeft: "←",
+  ArrowRight: "→",
+};
 
 /** Whether the shortcuts take ⌘ where they say "Ctrl": the desktop app on a Mac (main.tsx). */
 export const usesCommandKey = (): boolean =>
@@ -24,11 +30,11 @@ export const usesCommandKey = (): boolean =>
  */
 export const keyCapsFor = (keys: string, mac: boolean): ReadonlyArray<string> => {
   const parts = keys.split(" ");
-  if (!mac) return parts.map((part) => (part === "Control" ? "Ctrl" : part));
+  if (!mac) return parts.map((part) => (part === "Control" ? "Ctrl" : (ARROW_KEYS[part] ?? part)));
   const modifiers = MAC_MODIFIERS.filter(([name]) => parts.includes(name)).map(([, symbol]) => symbol);
   const rest = parts
     .filter((part) => !MAC_MODIFIERS.some(([name]) => name === part))
-    .map((part) => MAC_KEYS[part] ?? part);
+    .map((part) => MAC_KEYS[part] ?? ARROW_KEYS[part] ?? part);
   return [...modifiers, ...rest];
 };
 

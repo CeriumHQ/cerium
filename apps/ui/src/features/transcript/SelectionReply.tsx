@@ -1,6 +1,6 @@
 import { Button, buttonClass } from "../../components/ui/Button.tsx";
 import { Popover } from "@base-ui/react/popover";
-import { MessageSquareReply } from "lucide-react";
+import { MessageCircleQuestionMark, MessageSquareReply } from "lucide-react";
 import { useEffect, useEffectEvent, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 
 import { useCoarsePointer } from "../composer/pointer.ts";
@@ -34,7 +34,13 @@ const passageOf = (within: Element): Passage | undefined => {
  * A Reply button by the text the user selects in one of the agent's responses, which opens a box to
  * comment on that passage. The comment joins the message box's draft, to send with the next message.
  */
-export function SelectionReply({ within }: { within: RefObject<HTMLElement | null> }) {
+export function SelectionReply({
+  within,
+  onOpenSideQuestion,
+}: {
+  within: RefObject<HTMLElement | null>;
+  onOpenSideQuestion?: ((quote: string) => void) | undefined;
+}) {
   const messageBox = useMessageBox();
   const [passage, setPassage] = useState<Passage>();
   const [writing, setWriting] = useState(false);
@@ -149,16 +155,37 @@ export function SelectionReply({ within }: { within: RefObject<HTMLElement | nul
                 </div>
               </div>
             ) : (
-              <Button
-                tone="quiet"
-                size="sm"
-                onClick={() => setWriting(true)}
-                // Pressing it would otherwise clear the selection before the click lands.
-                onPointerDown={(event) => event.preventDefault()}
-              >
-                <MessageSquareReply size={13} strokeWidth={1.75} />
-                Reply
-              </Button>
+              <div className="flex items-center gap-0.5 p-1">
+                <Button
+                  tone="quiet"
+                  size="sm"
+                  onClick={() => setWriting(true)}
+                  // Pressing it would otherwise clear the selection before the click lands.
+                  onPointerDown={(event) => event.preventDefault()}
+                >
+                  <MessageSquareReply size={13} strokeWidth={1.75} />
+                  Reply
+                </Button>
+                {onOpenSideQuestion && passage ? (
+                  <>
+                    <span aria-hidden className="mx-0.5 h-4 w-px bg-line-subtle" />
+                    <Button
+                      tone="quiet"
+                      size="sm"
+                      aria-label="Ask /btw about the selected passage"
+                      onPointerDown={(event) => event.preventDefault()}
+                      onClick={() => {
+                        document.getSelection()?.removeAllRanges();
+                        close();
+                        onOpenSideQuestion(passage.quote);
+                      }}
+                    >
+                      <MessageCircleQuestionMark size={13} strokeWidth={1.75} />
+                      Ask <span className="font-mono text-[0.95em] text-fg-tertiary">/btw</span>
+                    </Button>
+                  </>
+                ) : null}
+              </div>
             )}
           </Popover.Popup>
         </Popover.Positioner>

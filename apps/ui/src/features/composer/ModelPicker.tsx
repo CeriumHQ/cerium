@@ -3,7 +3,7 @@ import { Toggle } from "@base-ui/react/toggle";
 import { ToggleGroup } from "@base-ui/react/toggle-group";
 import type { ModelInfo, ModelSpeed, ProviderId } from "@cerium/protocol";
 import { useAtom } from "@effect/atom-react";
-import { Check, Search, Star } from "lucide-react";
+import { Check, GitFork, Search, Star } from "lucide-react";
 import { useState, type KeyboardEvent, type ReactNode } from "react";
 
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
@@ -12,6 +12,7 @@ import type { AgentContext } from "../agents/model.ts";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { keyLabel, primaryHeld } from "../../lib/keys.ts";
+import { useShortcut } from "../../lib/shortcuts.ts";
 import { providerName } from "../threads/model.ts";
 import { favoriteModelsAtom, toggleFavorite } from "./favorites.ts";
 import { findModels, modelKey } from "./models.ts";
@@ -63,6 +64,7 @@ interface MenuProps {
   readonly available: ReadonlySet<ProviderId>;
   /** Said above the menu's foot. */
   readonly note?: string;
+  readonly onUseWorktrees?: () => void;
   /** The effort the menu's foot picks; absent where there's none to pick. */
   readonly effort?: EffortChoice | undefined;
   /** The effort the trigger names after the model, whether it's picked here or not. */
@@ -173,6 +175,7 @@ export function ModelPicker({
   readonly onCompact?: (() => void) | undefined;
 }) {
   const browse = useBrowse(menu, shown);
+  const modelShortcut = useShortcut("open-model-picker");
   const pick = (key: string | null) => {
     const picked = key === null ? undefined : browse.byKey.get(key);
     if (picked === undefined) return;
@@ -206,7 +209,12 @@ export function ModelPicker({
       autoHighlight
     >
       {/* The same tree with or without a reading, so the menu keeps its anchor as one arrives. */}
-      <Tooltip label={context ? contextLabel(context) : ""} side="top" disabled={!context || browse.open}>
+      <Tooltip
+        label={context ? contextLabel(context) : "Open model picker"}
+        shortcut={modelShortcut}
+        side="top"
+        disabled={browse.open}
+      >
         <Combobox.Trigger
           aria-label={shown ? `Model: ${shown.label}` : "Model"}
           className={`${chipClass} min-w-0`}
@@ -278,6 +286,7 @@ export function ModelsPicker({
 }) {
   const keys = chosen.map(modelKey);
   const browse = useBrowse(menu, chosen[0] && { provider: chosen[0].provider, key: keys[0] });
+  const modelShortcut = useShortcut("open-model-picker");
   const label =
     chosen.length === 1 ? chosen[0]!.label : chosen.length === 0 ? "Pick models" : `${chosen.length} models`;
   const pick = (next: ReadonlyArray<string>) => {
@@ -307,21 +316,23 @@ export function ModelsPicker({
       }}
       autoHighlight
     >
-      <Combobox.Trigger aria-label="Models" className={`${chipClass} min-w-0`}>
-        {chosen.length > 0 ? (
-          // Each harness among them once.
-          <span className="flex items-center gap-1">
-            {[...new Set(chosen.map((model) => model.provider))].map((provider) => (
-              <ProviderLogo key={provider} provider={provider} size={13} />
-            ))}
+      <Tooltip label="Open model picker" shortcut={modelShortcut} side="top" disabled={browse.open}>
+        <Combobox.Trigger aria-label="Models" className={`${chipClass} min-w-0`}>
+          {chosen.length > 0 ? (
+            // Each harness among them once.
+            <span className="flex items-center gap-1">
+              {[...new Set(chosen.map((model) => model.provider))].map((provider) => (
+                <ProviderLogo key={provider} provider={provider} size={13} />
+              ))}
+            </span>
+          ) : null}
+          <span className="truncate font-medium text-fg-primary">{label}</span>
+          <span className="contents max-md:hidden">
+            <EffortTrail effort={menu.effortShown} />
+            <SpeedMark speed={menu.speedShown} />
           </span>
-        ) : null}
-        <span className="truncate font-medium text-fg-primary">{label}</span>
-        <span className="contents max-md:hidden">
-          <EffortTrail effort={menu.effortShown} />
-          <SpeedMark speed={menu.speedShown} />
-        </span>
-      </Combobox.Trigger>
+        </Combobox.Trigger>
+      </Tooltip>
       <MenuPopup
         {...menu}
         browse={browse}
@@ -345,6 +356,7 @@ function MenuPopup({
   providers,
   available,
   note,
+  onUseWorktrees,
   effort,
   speed,
   limit,
@@ -465,8 +477,24 @@ function MenuPopup({
                 </Combobox.List>
               </ScrollArea>
               {note ? (
-                <p className="border-t border-line-subtle px-3 py-1.5 text-caption text-fg-tertiary">
+                <p className="border-t border-line-subtle px-3 py-1.5 text-caption leading-relaxed text-fg-tertiary max-md:text-[13px]">
                   {note}
+                  {onUseWorktrees ? (
+                    <>
+                      {" "}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          browse.setOpen(false);
+                          onUseWorktrees();
+                        }}
+                        className="inline-flex items-center gap-1 rounded font-medium whitespace-nowrap text-fg-primary underline decoration-fg-tertiary underline-offset-2 transition-colors hover:decoration-fg-primary focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:outline-none"
+                      >
+                        <GitFork size={11} strokeWidth={2} aria-hidden className="shrink-0" />
+                        Use worktrees
+                      </button>
+                    </>
+                  ) : null}
                 </p>
               ) : null}
               {count ? (

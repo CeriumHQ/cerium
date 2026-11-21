@@ -1,5 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 
+import { keyLabelFor } from "../src/lib/keys.ts";
 import {
   conflictsFor,
   defaultBindings,
@@ -8,8 +9,10 @@ import {
   matchesFamily,
   normalizeBinding,
   parseBinding,
+  SHORTCUTS,
   typesInField,
 } from "../src/lib/shortcuts.ts";
+import { isSendKey } from "../src/features/settings/preferences.ts";
 
 const press = (
   key: string,
@@ -130,6 +133,22 @@ describe("eventToBinding", () => {
     expect(eventToBinding(press("0", "Numpad0", { ctrl: true }), false)).toBe("Ctrl Num0");
   });
 
+  it("captures and matches a modified arrow on both platforms", () => {
+    for (const mac of [false, true]) {
+      for (const arrow of ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]) {
+        const event = press(arrow, arrow, { alt: true });
+        expect(eventToBinding(event, mac)).toBe(`Alt ${arrow}`);
+        expect(matchesBinding(event, `Alt ${arrow}`, mac)).toBe(true);
+        expect(matchesBinding(press(arrow, arrow), `Alt ${arrow}`, mac)).toBe(false);
+        expect(eventToBinding(press(arrow, arrow), mac)).toBeUndefined();
+      }
+    }
+    expect(keyLabelFor("Alt ArrowUp", false)).toBe("Alt ↑");
+    expect(keyLabelFor("Alt ArrowUp", true)).toBe("⌥↑");
+    expect(keyLabelFor("Alt ArrowDown", false)).toBe("Alt ↓");
+    expect(keyLabelFor("Alt ArrowDown", true)).toBe("⌥↓");
+  });
+
   it("refuses bare keys, modifiers alone and the OS's own chords", () => {
     expect(eventToBinding(press("g", "KeyG", {}), false)).toBeUndefined();
     expect(eventToBinding(press("Control", "ControlLeft", { ctrl: true }), false)).toBeUndefined();
@@ -157,9 +176,62 @@ describe("defaultBindings", () => {
     expect(windows["open-tasks"]).toBe("Ctrl Shift 3");
     expect(mac["open-tasks"]).toBe("Ctrl Alt 3");
     expect(mac["new-thread"]).toBe(windows["new-thread"]);
-    for (const id of Object.keys(mac) as ReadonlyArray<keyof typeof mac>) {
-      expect(conflictsFor(mac, id, true)).toEqual([]);
+  });
+
+  it.each([false, true])("has no normalized or physical default conflicts (Mac %s)", (mac) => {
+    const bindings = defaultBindings(mac);
+    const keys = new Map<string, string>([
+      ...Array.from("ABCDEFGHIJKLMNOPQRSTUVWXYZ", (key) => [`Key${key}`, key.toLowerCase()] as const),
+      ...Array.from("0123456789", (key) => [`Digit${key}`, key] as const),
+      ...["Enter", "Tab", "Escape", "PageUp", "PageDown", "ArrowUp", "ArrowDown"].map(
+        (key) => [key, key] as const,
+      ),
+      ["Comma", ","],
+      ["Slash", "/"],
+      ["Period", "."],
+      ["Backslash", "\\"],
+      ["Backquote", "`"],
+      ["Equal", "="],
+      ["Minus", "-"],
+      ["NumpadAdd", "+"],
+      ["NumpadSubtract", "-"],
+      ["Numpad0", "0"],
+    ]);
+    const seen = new Set<string>();
+    const conflicts: Array<{ code: string; mask: number; ids: ReadonlyArray<string> }> = [];
+    for (const [code, key] of keys) {
+      for (let mask = 0; mask < 16; mask++) {
+        const event = press(key, code, {
+          ctrl: (mask & 1) !== 0,
+          meta: (mask & 2) !== 0,
+          alt: (mask & 4) !== 0,
+          shift: (mask & 8) !== 0,
+        });
+        const matched = SHORTCUTS.filter(({ id, family }) =>
+          family === undefined
+            ? matchesBinding(event, bindings[id]!, mac)
+            : (family === "digit" || code !== "Digit0") && matchesFamily(event, bindings[id]!, mac),
+        );
+        if (matched.length > 1) conflicts.push({ code, mask, ids: matched.map(({ id }) => id) });
+        for (const { id } of matched) seen.add(id);
+      }
     }
+    expect(conflicts).toEqual([]);
+    expect(seen).toEqual(new Set(SHORTCUTS.filter(({ id }) => id !== "open-in-tab").map(({ id }) => id)));
+    for (const { id } of SHORTCUTS) {
+      expect(conflictsFor(bindings, id, mac)).toEqual([]);
+    }
+    expect(Object.keys(bindings)).toHaveLength(SHORTCUTS.length);
+  });
+
+  it.each([false, true])("keeps steer-now apart from both send preferences (Mac %s)", (mac) => {
+    const event = {
+      ...press("Enter", "Enter", { ctrl: !mac, meta: mac, shift: true }),
+      nativeEvent: { isComposing: false },
+    };
+    expect(matchesBinding(event, defaultBindings(mac)["steer-now"]!, mac)).toBe(true);
+    expect(isSendKey(event, "enter")).toBe(false);
+    expect(isSendKey(event, "ctrlEnter")).toBe(false);
   });
 });
 

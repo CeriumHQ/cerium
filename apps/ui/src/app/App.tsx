@@ -10,7 +10,13 @@ import {
   type ThreadId,
   type WorktreeChanges,
 } from "@cerium/protocol";
-import { FORK_THREAD_RPC_VERSION, RPC_VERSION, type TeardownReport, type ThreadOverview } from "@cerium/rpc";
+import {
+  FORK_THREAD_RPC_VERSION,
+  PER_FILE_TURN_REVERT_RPC_VERSION,
+  RPC_VERSION,
+  type TeardownReport,
+  type ThreadOverview,
+} from "@cerium/rpc";
 import {
   RegistryContext,
   RegistryProvider,
@@ -23,6 +29,9 @@ import { Cause, Option } from "effect";
 import { AsyncResult, Atom } from "effect/reactivity";
 import {
   AppWindow,
+  ArrowDown,
+  ArrowRightLeft,
+  ArrowUp,
   ArchiveRestore,
   Bot,
   Columns2,
@@ -32,10 +41,12 @@ import {
   FileDown,
   FoldVertical,
   FolderTree,
+  GalleryVerticalEnd,
   GitBranch,
   GitPullRequestArrow,
   Globe,
   History,
+  Inbox as InboxIcon,
   Link,
   MessagesSquare,
   OctagonX,
@@ -45,10 +56,12 @@ import {
   Rows2,
   ScrollText,
   Search,
+  TextCursor,
   Settings,
   Square,
   SquarePen,
   SquareTerminal,
+  UnfoldVertical,
   Wrench,
   X,
 } from "lucide-react";
@@ -107,7 +120,7 @@ import {
 import { connectionAtom } from "../backend/client.ts";
 import { refreshIssueList } from "../backend/issues.ts";
 import { driveMachine, machineAtom, machineKey, machineToDrive } from "../backend/machine.ts";
-import { saveProject, worktreeChanges } from "../backend/projects.ts";
+import { saveProject, savedProjectsAtom, worktreeChanges } from "../backend/projects.ts";
 import {
   noProjectScripts,
   projectScriptsAtom,
@@ -149,9 +162,9 @@ import {
   withoutDraft,
   type NewThreadDraft,
 } from "../features/composer/drafts.ts";
+import { appendAgentText, type AskAgentFix } from "../features/composer/agentFix.ts";
 import type { MessageBox } from "../features/composer/messageBox.ts";
 import { HANDOFF_VERSION, LIMIT_POLICY_VERSION, useModels } from "../features/composer/models.ts";
-import { useLatestProject } from "../features/composer/ProjectPicker.tsx";
 import { DraftSync } from "../features/composer/useDraftSync.ts";
 import { ScrollArea } from "../components/ui/ScrollArea.tsx";
 import { AUTOMATIONS_VERSION, GITHUB_AUTOMATIONS_VERSION } from "../backend/automations.ts";
@@ -162,8 +175,18 @@ import {
 } from "../features/automations/AutomationsPage.tsx";
 import { TaskSync } from "../features/tasks/TaskSync.ts";
 import { TaskDetail, TaskList, TasksPage, type HandOff } from "../features/tasks/TasksPage.tsx";
+import {
+  captureTask,
+  linkTaskThreads,
+  taskFromIssue,
+  tasksAtom,
+  unlinkDeletedThread,
+  type NewTask,
+} from "../features/tasks/tasks.ts";
 import { FILES_VERSION, type OpenFile } from "../features/files/model.ts";
-import type { PaletteCommand } from "../features/palette/palette.ts";
+import { CommandPalette } from "../features/palette/CommandPalette.tsx";
+import type { PaletteCommand, PaletteOpen } from "../features/palette/palette.ts";
+import { appearanceCommands, projectCommands } from "../features/palette/workspaceCommands.ts";
 import { useFilesExplorer } from "../features/files/useFilesExplorer.tsx";
 import { GIT_VERSION } from "../features/git/model.ts";
 import { useSourceControl } from "../features/git/useSourceControl.tsx";
@@ -203,6 +226,8 @@ import { fittedSize } from "../features/terminal/session.ts";
 import { closeTerminal, terminalsAtom } from "../backend/terminals.ts";
 import { useTerminalDrawer } from "../features/terminal/useTerminalDrawer.tsx";
 import { autocompleteAtom, scaleAtom, stepScale, themeAtom } from "../features/settings/preferences.ts";
+import { paletteAtom } from "../features/settings/palettes.ts";
+import { useDesktopColors } from "../features/settings/desktopColors.ts";
 import { canScale, useScale, useWindowSolid } from "../features/settings/scale.ts";
 import {
   settingsLabel,
@@ -211,23 +236,27 @@ import {
   SettingsView,
   type SettingsCategory,
 } from "../features/settings/Settings.tsx";
-import { useTheme } from "../features/settings/theme.ts";
+import { useShownTheme, useTheme } from "../features/settings/theme.ts";
+import { workedChoiceAtom } from "../features/transcript/workToggles.ts";
 import { exportFailureAtom, useThreadExport } from "../features/export/useThreadExport.ts";
 import { ThreadTabs } from "../features/tabs/ThreadTabs.tsx";
 import { useThreadTabs } from "../features/tabs/useThreadTabs.ts";
 import { CloudThreadBar, LoadingThreadBar, NoComputerBar } from "../features/threads/CloudThread.tsx";
 import { useReadState } from "../features/threads/readState.ts";
 import { ArchiveWorktreeDialog } from "../features/threads/ArchiveWorktree.tsx";
+import { archiveRunSiblings, planKeepRun } from "../features/threads/runs.ts";
 import {
   canArchive,
   CONTINUE_VERSION,
   LATER_VERSION,
+  nextWaitingThread,
   type ThreadSummary,
 } from "../features/threads/model.ts";
 import { WORKTREE_VERSION } from "../features/threads/worktree.ts";
 import { Sidebar, type HarnessIndicator } from "../features/threads/Sidebar.tsx";
 import { THREAD_SEARCH_VERSION } from "../features/threads/threadSearch.ts";
 import { openFind } from "../features/transcript/find.ts";
+import type { PromptDirection } from "../features/transcript/PromptStepper.tsx";
 import {
   EDIT_VERSION,
   SIDE_QUESTION_VERSION,
@@ -364,6 +393,12 @@ const SOLO_SHORTCUTS: ReadonlyArray<ShortcutId> = [
   "toggle-files",
   "toggle-source-control",
   "toggle-github-panel",
+  "toggle-artifacts",
+  "focus-composer",
+  "open-model-picker",
+  "steer-now",
+  "prev-prompt",
+  "next-prompt",
   "find-in-thread",
   "stop-all",
 ];
@@ -447,14 +482,18 @@ function Workspace() {
   // Switching machines starts afresh there: its last folder, and no thread open from the other one.
   const [shownFolderKey, setShownFolderKey] = useState(folderKey);
   /** A thread on another machine the user opened, which opens once the window drives that machine. */
-  const [openAfterSwitch, setOpenAfterSwitch] = useState<{ readonly mode: AppMode; readonly id: string }>();
+  const [openAfterSwitch, setOpenAfterSwitch] = useState<{
+    readonly mode: AppMode;
+    readonly id: string;
+    readonly panes?: Panes;
+  }>();
   if (shownFolderKey !== folderKey) {
     const back = resumePending ? resumed : undefined;
     setShownFolderKey(folderKey);
     setFolder(stored(folderKey));
     setOpenThread(openAfterSwitch ? { [openAfterSwitch.mode]: openAfterSwitch.id } : (back?.open ?? {}));
     setBlank(back?.blank ?? freshBlank());
-    setPanesByMode(openAfterSwitch ? {} : (back?.panes ?? {}));
+    setPanesByMode(openAfterSwitch ? { [openAfterSwitch.mode]: openAfterSwitch.panes } : (back?.panes ?? {}));
     if (back) setPane(back.pane);
     setOpenAfterSwitch(undefined);
     setResumePending(false);
@@ -473,6 +512,7 @@ function Workspace() {
   const [automationsPane, setAutomationsPane] = useState<"list" | "main">("list");
   /** The task the Tasks page shows beside its list. */
   const [taskPick, setTaskPick] = useState<string>();
+  const [taskProject, setTaskProject] = useState<string | null>();
   /** The narrow window's Tasks pane: the list, or the task picked in it. */
   const [tasksPane, setTasksPane] = useState<"list" | "main">("list");
   /** The pull request or issue the GitHub page shows. */
@@ -484,6 +524,18 @@ function Workspace() {
     setSettingsOpen(false);
     setPlace(undefined);
   };
+  const openTask = (id: string) => {
+    setTaskPick(id);
+    setTaskProject(undefined);
+    setTasksPane("main");
+    setSettingsOpen(false);
+    setPlace("tasks");
+  };
+  const closeTaskDetail = () => {
+    setTaskPick(undefined);
+    if (solo) showThreads();
+  };
+  const openCapturedTask = (task: NewTask) => openTask(captureTask(registry, task));
   const [searchOpen, setSearchOpen] = useState(false);
   const compact = useCompact();
   /** Its settings pane: the categories, or the open category's page. */
@@ -492,6 +544,7 @@ function Workspace() {
   const [settingsCategory, setSettingsCategory] = useState<SettingsCategory>("appearance");
   /** Each pane's message box, by the thread it shows; the window reaches the open thread's. */
   const paneHandles = useRef(new Map<string, PaneHandles>());
+  const [composerPanes, setComposerPanes] = useState<ReadonlySet<string>>(() => new Set());
   /** The open tab, as the window's handlers find it after each render. */
   const openKey = useRef<string>(undefined);
   /** The thread open last, which a file open since still writes to. */
@@ -552,12 +605,21 @@ function Workspace() {
       mention: (mention) => box()?.mention(mention),
       append: (content) => box()?.append(content),
       comment: (content) => putComment(content),
+      openSide: (draft) => box()?.openSide(draft),
       key: () => box()?.key(),
     };
   });
   const [onPaneHandles] = useState(() => (key: string, handles: PaneHandles | undefined) => {
     if (handles) paneHandles.current.set(key, handles);
     else paneHandles.current.delete(key);
+    const available = handles?.hasComposer === true;
+    setComposerPanes((current) => {
+      if (current.has(key) === available) return current;
+      const next = new Set(current);
+      if (available) next.add(key);
+      else next.delete(key);
+      return next;
+    });
   });
 
   const connection = useAtomValue(connectionAtom);
@@ -623,7 +685,13 @@ function Workspace() {
   const { listed: selected, cloud: cloudSelected, shown: viewed } = resolve(solo?.id ?? openThread[mode]);
   /** The thread not started yet the new-thread view shows: one opened from the sidebar, or the blank one. */
   const openDraft = isNewDraftKey(openThread[mode]) ? openThread[mode] : blank[mode];
-  const latestProject = useLatestProject();
+  const savedProjects = AsyncResult.getOrElse(useAtomValue(savedProjectsAtom), () => []);
+  const refreshProjects = useAtomRefresh(savedProjectsAtom);
+  useEffect(() => {
+    if (searchOpen) refreshProjects();
+  }, [refreshProjects, searchOpen]);
+  const projects = savedProjects.filter((project) => project.missing !== true).map(({ path }) => path);
+  const latestProject = projects[0];
   /** The folder a new thread starts in, unless its draft chose one: the last one, else the project used most recently. */
   const defaultFolder = folder ?? latestProject;
   /** What the window shows: the open thread, or the draft of one not started yet. */
@@ -803,18 +871,25 @@ function Workspace() {
         : noEvents;
   const fileEvents = AsyncResult.getOrElse(useAtomValue(fileEventsAtom), (): ReadonlyArray<AgentEvent> => []);
   /** Opens another machine's thread there: the window drives that machine, then shows it. */
-  const openOn = (device: DeviceInfo, threadId: string, threadMode: AppMode = mode) => {
-    setOpenAfterSwitch({ mode: threadMode, id: threadId });
+  const openOn = (device: DeviceInfo, threadId: string, threadMode: AppMode = mode, next?: Panes) => {
+    setOpenAfterSwitch({ mode: threadMode, id: threadId, ...(next === undefined ? {} : { panes: next }) });
     setPane("main");
     driveMachine(registry, device.id === thisComputer ? undefined : { id: device.id, name: device.name });
   };
   /** Opens a thread of the inbox: another machine's there when it can, else here (read-only when it's another's). */
-  const openSummary = (summary: ThreadSummary) => {
-    showThreads();
-    setHeldUnread(summary.unread ? summary.id : undefined);
+  const reachableHome = (summary: ThreadSummary) => {
     const home = summary.elsewhere ? deviceOf(summary.elsewhere.machine) : undefined;
-    if (home && home.id !== drivenId && (home.id === thisComputer || reachOf(home).kind === "reachable")) {
-      openOn(home, summary.id, summary.mode);
+    return home && home.id !== drivenId && (home.id === thisComputer || reachOf(home).kind === "reachable")
+      ? home
+      : undefined;
+  };
+  const openSummary = (summary: ThreadSummary, next?: Panes) => {
+    showThreads();
+    setMode(summary.mode);
+    setHeldUnread(summary.unread ? summary.id : undefined);
+    const home = reachableHome(summary);
+    if (home) {
+      openOn(home, summary.id, summary.mode, next);
       return;
     }
     setOpenThread((current) => ({ ...current, [summary.mode]: summary.id }));
@@ -837,12 +912,12 @@ function Workspace() {
       setOpenThread((current) => ({ ...current, [mode]: key }));
       setPane("main");
     },
-    onFresh: (key) => {
+    onFresh: (key, focus) => {
       showThreads();
       setBlank((current) => ({ ...current, [mode]: key }));
       setOpenThread((current) => ({ ...current, [mode]: undefined }));
       setPane("main");
-      focusComposer();
+      if (focus) focusComposer();
     },
     // A closed tab's new thread that has nothing in it is forgotten, with what was picked in it.
     onClosed: (keys) => {
@@ -856,6 +931,10 @@ function Workspace() {
       setPanesByMode((all) => ({ ...all, [mode]: left }));
       return keys.includes(current) ? focusedKey(left) : undefined;
     },
+  });
+  const comparisonView = useRef({ drivenId, mode, dropMany: tabs.dropMany });
+  useLayoutEffect(() => {
+    comparisonView.current = { drivenId, mode, dropMany: tabs.dropMany };
   });
   useEffect(() => {
     // A thread's own window comes back to its thread from its address.
@@ -872,14 +951,7 @@ function Workspace() {
   }, [resumePending, solo, driven, mode, openThread, blank, pane, tabs.strips, panesByMode]);
 
   // A tapped notification opens its thread, once the inbox lists it.
-  useNotificationOpens(
-    (threadId) => summaries.find((summary) => summary.id === threadId),
-    (summary) => {
-      showThreads();
-      setMode(summary.mode);
-      openSummary(summary);
-    },
-  );
+  useNotificationOpens((threadId) => summaries.find((summary) => summary.id === threadId), openSummary);
   useRenewPush(account);
   const threadShown = viewed !== undefined && !settingsOpen && (!compact || pane === "main");
   // Nobody is told about the thread this window shows, unless settings or the narrow
@@ -975,19 +1047,83 @@ function Workspace() {
    * Archives a thread and closes its tab; resolves whether it went.
    * `discardWork` once the user confirmed losing its worktree's work.
    */
-  const archive = (threadId: string, discardWork = false): Promise<boolean> => {
-    putAway(threadId, false);
+  const archive = (threadId: string, { discardWork = false, closeTab = true } = {}): Promise<boolean> => {
+    if (closeTab) putAway(threadId, false);
     return attempt(
       setArchived({
         payload: { threadId: threadId as ThreadId, archived: true, ...(discardWork ? { discardWork } : {}) },
       }).then(({ title, teardown }) => reportTeardown(title, teardown)),
     ).then((archived) => {
-      settlePutAway(threadId, archived);
+      if (closeTab) settlePutAway(threadId, archived);
       if (!archived) return false;
+      if (!closeTab) {
+        setPuttingAway((all) => new Map(all).set(threadId, { deleting: false, at: Date.now(), done: true }));
+      }
       previewDocks.retire(threadId);
       refreshThreads();
       return true;
     });
+  };
+
+  /** Checks the worktree for both archive actions. A comparison leaves changed worktrees in place. */
+  const archiveFromSidebar = async (threadId: string, comparison = false): Promise<string | undefined> => {
+    const thread = summaries.find((summary) => summary.id === threadId);
+    if (thread?.worktree !== undefined) {
+      try {
+        const changes = await changesOf({ payload: { threadId: threadId as ThreadId } });
+        if (changes.uncommitted + changes.unmerged > 0) {
+          if (!comparison) setArchiving({ thread, changes });
+          return "its worktree has uncommitted or unmerged changes";
+        }
+      } catch (error: unknown) {
+        setActionError(messageOf(error));
+        return "its worktree could not be checked";
+      }
+    }
+    if (comparison && comparisonView.current.drivenId !== drivenId) return "the selected machine changed";
+    return (await archive(threadId, { closeTab: !comparison })) ? undefined : "the archive failed";
+  };
+
+  const keepComparison = async (winnerId: string) => {
+    const winner = summaries.find((thread) => thread.id === winnerId);
+    if (
+      !winner ||
+      winner.runId === undefined ||
+      winner.elsewhere !== undefined ||
+      winner.archivedAt !== undefined
+    ) {
+      return { act: [], skipped: [] };
+    }
+    tabs.openAs(winnerId, "tab");
+    tabs.keep(winnerId);
+    openSummary(winner);
+    const siblings = summaries.filter((thread) => thread.runId === winner.runId);
+    const result = await archiveRunSiblings(planKeepRun(siblings, winnerId), (id) =>
+      comparisonView.current.drivenId === drivenId
+        ? archiveFromSidebar(id, true)
+        : Promise.resolve("the selected machine changed"),
+    );
+    const archived = result.act.map((thread) => thread.id);
+    if (archived.length === 0) return result;
+    const view = comparisonView.current;
+    if (view.drivenId === drivenId && view.mode === winner.mode) {
+      view.dropMany(archived, winnerId);
+    } else {
+      tabs.dropMany(archived, winnerId, true);
+      if (view.drivenId === drivenId) {
+        setPanesByMode((all) => {
+          const previous = all[winner.mode];
+          if (previous === undefined) return all;
+          const left = closeKeys(previous, archived);
+          if (left === undefined) return { ...all, [winner.mode]: singlePane(MAIN_PANE, winnerId) };
+          return { ...all, [winner.mode]: left };
+        });
+        setOpenThread((all) =>
+          archived.includes(all[winner.mode] ?? "") ? { ...all, [winner.mode]: winnerId } : all,
+        );
+      }
+    }
+    return result;
   };
 
   /**
@@ -1061,6 +1197,9 @@ function Workspace() {
         : (openFile?.root ?? openCommitRoot ?? newProject);
   /** Its files open in Cerium's viewer, when the machine can serve them. */
   const viewerOk = drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= VIEWER_VERSION;
+  const fileRoots = viewerOk
+    ? [...new Set([filesRoot ?? defaultFolder, ...projects])].filter((path) => path !== undefined)
+    : [];
   /** New threads there can have worktrees of their own. */
   const worktreesOk = drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= WORKTREE_VERSION;
   /**
@@ -1102,6 +1241,62 @@ function Workspace() {
   /** The open work thread's repository, which Source control shows where its machine can. */
   const gitRoot =
     drivenDevice !== undefined && (drivenDevice.rpcVersion ?? 0) < GIT_VERSION ? undefined : filesRoot;
+  // Terminal output goes to the open thread or project draft; commit failures also reach the last
+  // thread in the same repository when the user opened a file or commit diff tab to inspect changes.
+  const fixPaneKey = selected?.thread.id ?? (newProject === undefined ? undefined : current);
+  const hasFixComposer = fixPaneKey !== undefined && composerPanes.has(fixPaneKey);
+  const appendDraftTo =
+    (paneKey: string | undefined): MessageBox["append"] =>
+    (content) => {
+      const box = handlesOf(paneKey)?.box;
+      if (box?.key() === undefined) throw new Error("The thread's message box is unavailable.");
+      box.append(content);
+    };
+  const appendFixDraft = appendDraftTo(fixPaneKey);
+  const fixLead = selected === undefined || cloudSelected !== undefined ? undefined : leadOf(selected.agents);
+  const canAskFix = fixLead !== undefined || hasFixComposer;
+  const askFixFor =
+    (lead: ReturnType<typeof leadOf>, paneKey: string | undefined): AskAgentFix =>
+    async (text) => {
+      if (registry.get(machineAtom)?.id !== driven?.id) throw new Error("The thread's machine has changed.");
+      if (lead !== undefined) {
+        await send({ payload: { agentId: lead.id, text } });
+        return "sent";
+      }
+      appendAgentText({ append: appendDraftTo(paneKey) }, text);
+      return "draft";
+    };
+  const askFix = askFixFor(fixLead, fixPaneKey);
+  const commitFixThread =
+    selected ??
+    (gitRoot !== undefined && isNonThreadKey(current) && lastThreadKey !== undefined
+      ? (() => {
+          const { listed, cloud } = resolve(lastThreadKey);
+          return listed !== undefined &&
+            cloud === undefined &&
+            listed.thread.mode === "work" &&
+            listed.thread.cwd === gitRoot
+            ? listed
+            : undefined;
+        })()
+      : undefined);
+  const commitFixLead =
+    commitFixThread === undefined || (commitFixThread === selected && cloudSelected !== undefined)
+      ? undefined
+      : leadOf(commitFixThread.agents);
+  const commitFixPaneKey =
+    commitFixThread?.thread.id ??
+    (newProject !== undefined
+      ? current
+      : gitRoot !== undefined &&
+          isNonThreadKey(current) &&
+          lastThreadKey !== undefined &&
+          isNewDraftKey(lastThreadKey)
+        ? lastThreadKey
+        : undefined);
+  const hasCommitFixComposer = commitFixPaneKey !== undefined && composerPanes.has(commitFixPaneKey);
+  const canAskCommitFix = commitFixLead !== undefined || hasCommitFixComposer;
+  const askCommitFix = askFixFor(commitFixLead, commitFixPaneKey);
   // Its shells run on the same machine, in the same folder; a new work thread's, in its project.
   const terminalsOk = drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= TERMINAL_VERSION;
   const projectTerminalsOk =
@@ -1117,6 +1312,8 @@ function Workspace() {
             : undefined,
     suspended: settingsOpen || searchOpen,
     compact,
+    messageBox: hasFixComposer ? { append: appendFixDraft } : undefined,
+    onAskFix: canAskFix ? askFix : undefined,
   });
   /** This machine can run a project's scripts, in the thread's terminal drawer. */
   const scriptsOk = drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= SCRIPT_VERSION;
@@ -1219,6 +1416,16 @@ function Workspace() {
     openCommitFile: openCommitFileIn,
     activeFile: openFile,
     review: selected === undefined ? undefined : { threadId: selected.thread.id, messageBox },
+    onAskFix: canAskCommitFix
+      ? async (text) => {
+          const delivered = await askCommitFix(text);
+          if (compact && delivered === "draft") {
+            if (terminal.open) terminal.hide();
+            closePanel("git");
+          }
+          return delivered;
+        }
+      : undefined,
     onClose: () => closePanel("git"),
   });
   /** The pull request or issue the open tab shows, when it shows one. */
@@ -1259,6 +1466,7 @@ function Workspace() {
     text,
     worktree,
     workspace,
+    taskId,
   }: {
     /** None leaves the project to the message box's own choice. */
     folder: string | undefined;
@@ -1266,12 +1474,13 @@ function Workspace() {
     /** Runs in a worktree of its own; left to the message box's own choice when absent. */
     worktree?: boolean;
     workspace?: import("@cerium/protocol").WorkspaceChoice;
+    taskId?: string;
   }) => {
     const key = newDraftKey();
     registry.set(
       draftsAtom,
       withDraft(registry.get(draftsAtom), key, () => ({
-        segments: [{ kind: "text", text }],
+        segments: text === "" ? [] : [{ kind: "text", text }],
         attachments: [],
         start: startedNow({
           mode: "work",
@@ -1279,6 +1488,7 @@ function Workspace() {
           ...(driven ? { machine: driven.id } : {}),
           ...(worktree === undefined || !worktreesOk ? {} : { worktree }),
           ...(workspace === undefined ? {} : { workspace }),
+          ...(taskId === undefined ? {} : { taskId }),
         }),
       })),
     );
@@ -1448,25 +1658,49 @@ function Workspace() {
    * Lays the panes out as `next` and shows the focused pane's thread. The thread the focused pane
    * showed before stays in a tab of its own, so no later preview takes its tab while it shows.
    */
-  const applyPanes = (next: Panes) => {
-    setPanesByMode((all) => ({ ...all, [mode]: next }));
+  const applyPanes = (next: Panes, targetMode: AppMode = mode) => {
+    setPanesByMode((all) => ({ ...all, [targetMode]: next }));
     const shown = focusedKey(next);
-    if (shown === current) return;
-    tabs.keep(current);
+    if (shown === current && targetMode === mode) return;
+    tabs.keep(openThread[targetMode] ?? blank[targetMode], targetMode);
     tabs.openAs(shown, "tab");
     showThreads();
-    setOpenThread((open) => ({ ...open, [mode]: shown }));
+    setMode(targetMode);
+    setOpenThread((open) => ({ ...open, [targetMode]: shown }));
     setPane("main");
   };
   /** Asks for the cursor in the focused pane's message box, once it has rendered. */
   const [composerFocus, setComposerFocus] = useState(0);
   useEffect(() => {
-    if (composerFocus > 0) focusComposer();
+    if (composerFocus === 0) return;
+    const frame = requestAnimationFrame(focusComposer);
+    return () => cancelAnimationFrame(frame);
   }, [composerFocus]);
+  const returnToComposer = () => {
+    showThreads();
+    setSearchOpen(false);
+    setPane("main");
+    setInspectedAgent(undefined);
+    if (compact) {
+      setSidePanel(undefined);
+      if (terminal.open) terminal.hide();
+    }
+    if (isNonThreadKey(current)) {
+      const thread = summaries.find((summary) => summary.id === routedDraftKey);
+      if (thread) {
+        setMode(thread.mode);
+        openSummary(thread);
+      } else {
+        const key = solo?.id ?? routedDraftKey ?? blank[mode];
+        setOpenThread((open) => ({ ...open, [mode]: key }));
+      }
+    }
+    setComposerFocus((count) => count + 1);
+  };
   /** The room the panes have, in pixels, which a split needs enough of. */
   const panesArea = useRef<HTMLDivElement>(null);
-  const paneSize = (id: string) => {
-    const box = layoutOf(panes.root).panes.find(({ leaf }) => leaf.id === id)?.box;
+  const paneSize = (id: string, layout: Panes = panes) => {
+    const box = layoutOf(layout.root).panes.find(({ leaf }) => leaf.id === id)?.box;
     const rect = panesArea.current?.getBoundingClientRect();
     return box === undefined || rect === undefined
       ? { width: 0, height: 0 }
@@ -1477,6 +1711,40 @@ function Workspace() {
     if (compact || !canSplit(paneSize(target), side, MIN_PANE)) return false;
     applyPanes(splitPane(panes, target, side, key, newPaneId()));
     return true;
+  };
+  const openPaletteThread = (id: string, as: PaletteOpen) => {
+    const summary = summaries.find((thread) => thread.id === id);
+    if (summary === undefined) return;
+    const home = reachableHome(summary);
+    if (as === "split" && !compact) {
+      const targetMode = summary.mode;
+      const target =
+        home !== undefined
+          ? singlePane(MAIN_PANE, newDraftKey())
+          : targetMode === mode
+            ? panes
+            : (panesByMode[targetMode] ?? singlePane(MAIN_PANE, openThread[targetMode] ?? blank[targetMode]));
+      if (focusedKey(target) !== id && canSplit(paneSize(target.focused, target), "right", MIN_PANE)) {
+        const next = splitPane(target, target.focused, "right", id, newPaneId());
+        setHeldUnread(summary.unread ? id : undefined);
+        if (home === undefined) applyPanes(next, targetMode);
+        else {
+          tabs.openAs(id, "tab");
+          openSummary(summary, next);
+        }
+        return;
+      }
+    }
+    if (as !== "default") {
+      if (home === undefined && openThread[summary.mode] === id) tabs.keep(id, summary.mode);
+      else tabs.openAs(id, "tab");
+    }
+    openSummary(summary);
+  };
+  const openPaletteFile = (root: string, path: string, as: PaletteOpen) => {
+    const key = fileKey(root, path);
+    if (as === "split" && key !== current && splitWith(panes.focused, "right", key)) return;
+    showTab(key);
   };
   /** A new thread on `side` of the pane `target`, ready to write in. */
   const splitNew = (target: string, side: Side) => {
@@ -1535,6 +1803,20 @@ function Workspace() {
     if (previewOpen) previewDocks.hide(previewThread);
     else previewDocks.show(previewThread);
   };
+  const toggleArtifacts = () => togglePanel("artifacts");
+  const openModels = () => handlesOf(openKey.current)?.composer.current?.openModels() ?? false;
+  const steerNow = () => handlesOf(openKey.current)?.composer.current?.steerNow() ?? false;
+  const stepPrompt = (direction: PromptDirection) =>
+    handlesOf(openKey.current)?.prompts.current?.step(direction) ?? false;
+  const jumpNextWaiting = () => {
+    const next = nextWaitingThread(summaries, current);
+    if (next === undefined) return false;
+    setMode(next.mode);
+    openSummary(next);
+    if (compact) setSidePanel(undefined);
+    return true;
+  };
+  const canSteer = drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= STEER_VERSION;
   // A local address a terminal links or prints opens in the open thread's preview.
   const openLink = useEffectEvent((url: string) => {
     if (previewThread === undefined) return;
@@ -1624,8 +1906,38 @@ function Workspace() {
     keys: keys("open-settings"),
     run: () => openSettings(),
   };
+  const shownTheme = useShownTheme();
+  const desktopColors = useDesktopColors();
+  const activeProject = filesRoot === undefined ? defaultFolder : projectOf(filesRoot);
+  const projectChoices = [...new Set([activeProject, ...projects])]
+    .filter((path) => path !== undefined)
+    .filter((path) => !savedProjects.some((project) => project.path === path && project.missing === true));
   const paletteCommands: ReadonlyArray<PaletteCommand> = [
     newThreadCommand,
+    ...projectCommands(projectChoices).map(({ folder, ...command }) => ({
+      ...command,
+      run: () => {
+        chooseFolder(folder);
+        startThreadFrom({ folder, text: "" });
+      },
+    })),
+    ...appearanceCommands({
+      shown: shownTheme,
+      desktop: desktopColors !== undefined,
+      setTheme: (theme) => registry.set(themeAtom, theme),
+      setPalette: (palette) => registry.set(paletteAtom, palette),
+    }),
+    ...([true, false] as const).map((open): PaletteCommand => ({
+      id: open ? "expand-worked" : "collapse-worked",
+      group: "Actions",
+      label: `${open ? "Expand" : "Collapse"} all Worked sections`,
+      icon: open ? UnfoldVertical : FoldVertical,
+      keywords: "worked tools steps open close fold unfold transcript",
+      when: viewed !== undefined,
+      run: () => {
+        if (viewed !== undefined) registry.set(workedChoiceAtom(viewed.thread.id), { open });
+      },
+    })),
     {
       id: "sidebar",
       group: "Actions",
@@ -1645,6 +1957,63 @@ function Workspace() {
       run: toggleInspector,
     },
     findCommand,
+    {
+      id: "open-model-picker",
+      group: "Actions",
+      label: "Open model picker",
+      icon: ArrowRightLeft,
+      keys: keys("open-model-picker"),
+      keywords: "switch model effort speed",
+      when: !isNonThreadKey(current) && !inspectedAgent && (viewed === undefined || selected !== undefined),
+      run: () => requestAnimationFrame(openModels),
+    },
+    {
+      id: "steer-now",
+      group: "Actions",
+      label: "Steer now",
+      icon: CornerDownRight,
+      keys: keys("steer-now"),
+      keywords: "send queued interrupt",
+      when:
+        canSteer &&
+        selected !== undefined &&
+        !inspectedAgent &&
+        (viewedLead?.state === "running" || viewedLead?.state === "queued"),
+      run: steerNow,
+    },
+    {
+      id: "focus-composer",
+      group: "Actions",
+      label: "Focus message box",
+      icon: TextCursor,
+      keys: keys("focus-composer"),
+      keywords: "composer prompt input type",
+      run: returnToComposer,
+    },
+    ...(
+      [
+        { id: "prev-prompt", label: "Go to previous prompt", icon: ArrowUp, direction: -1 },
+        { id: "next-prompt", label: "Go to next prompt", icon: ArrowDown, direction: 1 },
+      ] as const
+    ).map(({ id, label, icon, direction }): PaletteCommand => ({
+      id,
+      group: "Actions",
+      label,
+      icon,
+      keys: keys(id),
+      when: viewed !== undefined,
+      run: () => stepPrompt(direction),
+    })),
+    {
+      id: "jump-next-waiting",
+      group: "Actions",
+      label: "Go to next waiting or unread thread",
+      icon: InboxIcon,
+      keys: keys("jump-next-waiting"),
+      keywords: "inbox attention approval failure",
+      when: !solo,
+      run: jumpNextWaiting,
+    },
     compactCommand,
     continueCommand,
     {
@@ -1773,9 +2142,19 @@ function Workspace() {
       group: "Actions",
       label: previewOpen ? "Hide preview" : "Show preview",
       icon: Globe,
+      keys: keys("toggle-preview"),
       keywords: "browser web page localhost dev server",
       when: previewThread !== undefined,
       run: togglePreview,
+    },
+    {
+      id: "artifacts",
+      group: "Actions",
+      label: artifactsOpen ? "Hide artifacts" : "Show artifacts",
+      icon: GalleryVerticalEnd,
+      keys: keys("toggle-artifacts"),
+      when: artifactsAvailable,
+      run: toggleArtifacts,
     },
     {
       id: "mode",
@@ -1943,6 +2322,11 @@ function Workspace() {
     // Settings → Keyboard is listening for a rebind: the press being learned must not also run.
     if (isCapturingBinding()) return;
     const mac = usesCommandKey();
+    const appChord = (id: ShortcutId) =>
+      !event.defaultPrevented &&
+      !event.isComposing &&
+      !typesInField(event, isField(event.target)) &&
+      matchesBinding(event, keys(id), mac);
     // A thread's own window takes its thread's keys alone, with no tabs, sidebar, places or
     // settings of its own; closing a tab closes the window.
     if (solo) {
@@ -1953,6 +2337,20 @@ function Workspace() {
       }
       if (!SOLO_SHORTCUTS.some((id) => matchesBinding(event, keys(id), mac))) return;
     }
+    // Returning to the composer works even from the command palette, while respecting modal dialogs
+    // and letting a terminal selection claim Ctrl Shift L first during capture.
+    if (
+      !settingsOpen &&
+      appChord("focus-composer") &&
+      (searchOpen ||
+        !(event.target instanceof Element && event.target.closest('[role="dialog"], [role="alertdialog"]')))
+    ) {
+      event.preventDefault();
+      if (!event.repeat) returnToComposer();
+      return;
+    }
+    // Let the palette handle its keys before the workspace views it covers.
+    if (searchOpen && !matchesBinding(event, keys("command-palette"), mac)) return;
     // Esc backs out of settings, unless something inside them (an open menu) already used it.
     if (event.key === "Escape" && settingsOpen && !event.defaultPrevented) {
       setSettingsOpen(false);
@@ -1989,8 +2387,6 @@ function Workspace() {
         return;
       }
     }
-    // Search has the keys while it's open, but for the palette's own binding, which closes it.
-    if (searchOpen && !matchesBinding(event, keys("command-palette"), mac)) return;
     if (!settingsOpen && !compact && tabShortcut(event)) {
       event.preventDefault();
       return;
@@ -2039,14 +2435,28 @@ function Workspace() {
       askStopAll();
     } else if (matchesBinding(event, keys("open-settings"), mac)) {
       setSettingsOpen(!settingsOpen);
+    } else if (matchesBinding(event, keys("command-palette"), mac)) {
+      setSearchOpen((open) => !open);
     } else if (settingsOpen) {
       return;
+    } else if (appChord("open-model-picker")) {
+      if (!event.repeat && !openModels()) return;
+    } else if (appChord("steer-now")) {
+      if (!event.repeat && !steerNow()) return;
+    } else if (appChord("prev-prompt")) {
+      if (!stepPrompt(-1)) return;
+    } else if (appChord("next-prompt")) {
+      if (!stepPrompt(1)) return;
+    } else if (appChord("jump-next-waiting")) {
+      if (!event.repeat && !jumpNextWaiting()) return;
+    } else if (appChord("toggle-preview") && previewThread !== undefined) {
+      if (!event.repeat) togglePreview();
+    } else if (appChord("toggle-artifacts") && artifactsAvailable) {
+      if (!event.repeat) toggleArtifacts();
     } else if (matchesBinding(event, keys("toggle-sidebar"), mac)) {
       toggleSidebar();
     } else if (matchesBinding(event, keys("new-thread"), mac)) {
       newThread();
-    } else if (matchesBinding(event, keys("command-palette"), mac)) {
-      setSearchOpen((open) => !open);
     } else if (matchesBinding(event, keys("toggle-agents"), mac)) {
       if (selected === undefined) return;
       toggleInspector();
@@ -2085,6 +2495,7 @@ function Workspace() {
     message: OutgoingMessage,
     setups: readonly [ThreadSetup, ...Array<ThreadSetup>],
     newFolder: string | undefined,
+    taskId: string | undefined,
   ) => {
     const title = (message.text.split("\n")[0] || message.attachments[0]?.name || "New thread").slice(0, 80);
     // The threads of one multi-agent run share an id, so the sidebar shows them as one.
@@ -2105,6 +2516,17 @@ function Workspace() {
     const started = created.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []));
     const [first, ...others] = started;
     if (first === undefined) throw (created[0] as PromiseRejectedResult).reason;
+    if (taskId !== undefined) {
+      const taskStore = registry.get(tasksAtom);
+      const linked = linkTaskThreads(
+        taskStore,
+        taskId,
+        started.map(({ thread }) => thread.id),
+        Date.now(),
+        newFolder,
+      );
+      if (linked !== taskStore) registry.set(tasksAtom, linked);
+    }
     const beside = others.map(({ thread }) => thread.id as string);
     tabs.started(draft, first.thread.id, beside);
     const shownBefore = openKey.current ?? draft;
@@ -2201,15 +2623,21 @@ function Workspace() {
       drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= TURN_FILES_VERSION
         ? {
             open: openTurnFile,
-            revert: (agentId, turnId, direction) => revertTurn({ payload: { agentId, turnId, direction } }),
+            perFile:
+              drivenDevice === undefined ||
+              (drivenDevice.rpcVersion ?? 0) >= PER_FILE_TURN_REVERT_RPC_VERSION,
+            revert: (agentId, turnId, direction, paths) =>
+              revertTurn({
+                payload: { agentId, turnId, direction, ...(paths === undefined ? {} : { paths }) },
+              }),
           }
         : undefined,
     start: startThread,
     interrupt: (agentId) => interrupt({ payload: { agentId } }),
-    steer:
-      drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= STEER_VERSION
-        ? (agentId) => steer({ payload: { agentId } })
-        : undefined,
+    steer: canSteer
+      ? (agentId) =>
+          registry.get(machineAtom)?.id === driven?.id ? steer({ payload: { agentId } }) : Promise.resolve()
+      : undefined,
     withdraw:
       drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= WITHDRAW_VERSION
         ? (agentId, messageId) => withdraw({ payload: { agentId, messageId } })
@@ -2354,6 +2782,8 @@ function Workspace() {
       <ThreadPane
         inspectedAgent={inspectedAgent}
         onLeaveAgent={() => setInspectedAgent(undefined)}
+        onOpenTask={openTask}
+        onAddTask={openCapturedTask}
         mode={mode}
         selected={resolved.listed}
         cloud={
@@ -2411,7 +2841,17 @@ function Workspace() {
 
   /** Hands a task to an agent: a new work thread with the task in its message box. */
   const handOff: HandOff = (task) =>
-    startThreadFrom({ folder: task.folder, text: task.note ? `${task.title}\n\n${task.note}` : task.title });
+    startThreadFrom({
+      taskId: task.id,
+      folder: task.folder,
+      text: task.note ? `${task.title}\n\n${task.note}` : task.title,
+    });
+  const taskThreads = {
+    threads: new Map(
+      summaries.toSorted((a, b) => b.updatedAt - a.updatedAt).map((thread) => [thread.id, thread]),
+    ),
+    onOpenThread: openThreadById,
+  };
   const taskList = (
     <TaskList
       selected={taskPick}
@@ -2420,6 +2860,9 @@ function Workspace() {
         setTasksPane("main");
       }}
       onHandOff={handOff}
+      project={taskProject}
+      onProjectChange={setTaskProject}
+      {...taskThreads}
     />
   );
   /** Opens a thread an automation started, from its runs. */
@@ -2488,7 +2931,12 @@ function Workspace() {
         list: <ScrollArea className="h-full">{taskList}</ScrollArea>,
         main:
           taskPick === undefined ? null : (
-            <TaskDetail id={taskPick} onDeleted={() => setTasksPane("list")} onHandOff={handOff} />
+            <TaskDetail
+              id={taskPick}
+              onDeleted={() => setTasksPane("list")}
+              onHandOff={handOff}
+              {...taskThreads}
+            />
           ),
         pane: tasksPane,
         onBackToList: () => setTasksPane("list"),
@@ -2502,16 +2950,17 @@ function Workspace() {
               taskPick === undefined ? null : (
                 <TaskDetail
                   id={taskPick}
-                  onClose={() => setTaskPick(undefined)}
-                  onDeleted={() => setTaskPick(undefined)}
+                  onClose={closeTaskDetail}
+                  onDeleted={closeTaskDetail}
                   onHandOff={handOff}
+                  {...taskThreads}
                 />
               )
             }
           />
         ),
         pane: "main" as const,
-        onBackToList: () => setTaskPick(undefined),
+        onBackToList: closeTaskDetail,
       };
 
   /** The GitHub page's main area: the pull request or issue picked in its list, in a card of its own. */
@@ -2538,6 +2987,7 @@ function Workspace() {
                     number={tab.number}
                     onClose={() => setGithubPick(undefined)}
                     onStartThread={(text) => startThreadFrom({ folder: tab.root, text })}
+                    onAddTask={(issue) => openCapturedTask(taskFromIssue(issue, projectOf(tab.root)))}
                     onOpenPull={(number) => setGithubPick({ root: tab.root, kind: "pr", number })}
                   />
                 ),
@@ -2581,6 +3031,7 @@ function Workspace() {
                     number={tab.number}
                     onClose={() => tabs.actions.onClose([key])}
                     onStartThread={(text) => startThreadFrom({ folder: tab.root, text })}
+                    onAddTask={(issue) => openCapturedTask(taskFromIssue(issue, projectOf(tab.root)))}
                     onOpenPull={(number) => openGitHubIn(tab.root, "pr", number)}
                     pane={pane}
                   />
@@ -2679,7 +3130,7 @@ function Workspace() {
       : [],
   );
 
-  return (
+  const frame = (
     <AppFrame
       {...(viewed
         ? {
@@ -2794,21 +3245,8 @@ function Workspace() {
           }
           // A thread whose worktree holds work its base doesn't asks first.
           // Each resolves whether the thread went, so the sidebar's bulk bar reports what worked.
-          onArchive={(threadId): Promise<boolean> => {
-            const thread = summaries.find((summary) => summary.id === threadId);
-            if (thread?.worktree === undefined) return archive(threadId);
-            return changesOf({ payload: { threadId: threadId as ThreadId } }).then(
-              (changes) => {
-                if (changes.uncommitted + changes.unmerged === 0) return archive(threadId);
-                setArchiving({ thread, changes });
-                return false;
-              },
-              (error: unknown) => {
-                setActionError(messageOf(error));
-                return false;
-              },
-            );
-          }}
+          onArchive={(threadId) => archiveFromSidebar(threadId).then((reason) => reason === undefined)}
+          onKeepRun={keepComparison}
           onRestore={(threadId): Promise<boolean> => {
             const away = puttingAway.get(threadId);
             return attempt(
@@ -2845,6 +3283,9 @@ function Workspace() {
               const rest = withoutDraft(held, threadId);
               revokeLostPreviews(held, rest);
               registry.set(draftsAtom, rest);
+              const taskStore = registry.get(tasksAtom);
+              const unlinked = unlinkDeletedThread(taskStore, threadId, Date.now());
+              if (unlinked !== taskStore) registry.set(tasksAtom, unlinked);
               previewDocks.close(threadId);
               refreshThreads();
               return true;
@@ -2868,10 +3309,6 @@ function Workspace() {
           open={tabs.tabs.map((tab) => tab.key)}
           searchOpen={searchOpen}
           onSearchOpenChange={setSearchOpen}
-          commands={paletteCommands}
-          messageSearch={
-            drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= THREAD_SEARCH_VERSION
-          }
         />
       }
       machinePicker={<MachinePicker account={account} />}
@@ -3054,9 +3491,30 @@ function Workspace() {
           onOpenChange={(open) => {
             if (!open) setArchiving(undefined);
           }}
-          onConfirm={() => void archive(archiving.thread.id, true)}
+          onConfirm={() => void archive(archiving.thread.id, { discardWork: true })}
         />
       ) : null}
     </AppFrame>
+  );
+  return (
+    <>
+      {frame}
+      {solo ? null : (
+        <CommandPalette
+          open={searchOpen}
+          onOpenChange={setSearchOpen}
+          mode={mode}
+          threads={summaries}
+          messageSearch={
+            drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= THREAD_SEARCH_VERSION
+          }
+          onOpenThread={openPaletteThread}
+          fileRoots={fileRoots}
+          onOpenFile={openPaletteFile}
+          modifierShortcuts={!compact}
+          commands={paletteCommands}
+        />
+      )}
+    </>
   );
 }

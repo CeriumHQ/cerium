@@ -4,7 +4,12 @@ import {
   archivedWork,
   backLabel,
   boxOf,
+  customLaterTime,
   isPutOff,
+  laterInHour,
+  laterToday,
+  laterTomorrow,
+  laterNextWeek,
   laterTime,
   laterWork,
   overflow,
@@ -30,6 +35,45 @@ const thread = (id: string, patch: Partial<ThreadSummary> = {}): ThreadSummary =
 describe("Later", () => {
   it("puts a thread off until tomorrow morning", () => {
     expect(laterTime(now)).toBe(new Date(2026, 9, 22, 8, 0).getTime());
+    expect(laterTomorrow(new Date(2026, 11, 31, 23, 30).getTime())).toBe(new Date(2027, 0, 1, 8).getTime());
+  });
+
+  it("adds one elapsed hour, including across midnight", () => {
+    const late = new Date(2026, 9, 21, 23, 45).getTime();
+    expect(laterInHour(now)).toBe(new Date(2026, 9, 21, 16).getTime());
+    expect(laterInHour(late)).toBe(new Date(2026, 9, 22, 0, 45).getTime());
+  });
+
+  it("uses 5 PM before 4 PM and two elapsed hours from 4 PM onward", () => {
+    const today = (hour: number, minute = 0) => new Date(2026, 9, 21, hour, minute).getTime();
+    expect(laterToday(today(8))).toBe(today(17));
+    expect(laterToday(today(15, 59))).toBe(today(17));
+    expect(laterToday(today(16))).toBe(today(18));
+    expect(laterToday(today(20, 30))).toBe(today(22, 30));
+    expect(laterToday(today(23, 15))).toBe(new Date(2026, 9, 22, 1, 15).getTime());
+  });
+
+  it("uses the upcoming Monday at 8 AM even on Sunday, and skips to the following week on Monday", () => {
+    const sunday = new Date(2026, 9, 25, 23, 59).getTime();
+    const monday = new Date(2026, 9, 26, 7).getTime();
+    expect(laterNextWeek(now)).toBe(new Date(2026, 9, 26, 8).getTime());
+    expect(laterNextWeek(sunday)).toBe(new Date(2026, 9, 26, 8).getTime());
+    expect(laterNextWeek(monday)).toBe(new Date(2026, 10, 2, 8).getTime());
+  });
+
+  it("accepts future local times and rejects empty, malformed, adjusted, and past values", () => {
+    expect(customLaterTime("2026-10-21T15:01", now)).toBe(new Date(2026, 9, 21, 15, 1).getTime());
+    for (const value of [
+      "",
+      "2026-10-21",
+      "2026-10-21T15:00",
+      "2026-10-21T14:59",
+      "2027-02-30T12:00",
+      "2027-01-01T24:00",
+      "2027-01-01T12:00Z",
+    ]) {
+      expect(customLaterTime(value, now)).toBeUndefined();
+    }
   });
 
   it("keeps a thread off until it's due, unless it needs the user sooner", () => {
@@ -89,6 +133,14 @@ describe("the inbox's cap", () => {
   it("archives the oldest quiet threads beyond the cap", () => {
     const inbox = [quiet("a", 1), quiet("b", 5), quiet("c", 3), quiet("d", 2)];
     expect(overflow(inbox, () => false, now, 2).map(({ id }) => id)).toEqual(["b", "c"]);
+  });
+
+  it("uses the configured cap and keeps everything when auto-archive is off", () => {
+    const inbox = Array.from({ length: 16 }, (_, index) => quiet(String(index), index + 1));
+    expect(overflow(inbox, () => false, now, 12).map(({ id }) => id)).toEqual(["15", "14", "13", "12"]);
+    expect(overflow(inbox, () => false, now, 20)).toEqual([]);
+    expect(overflow(inbox, () => false, now, 0)).toEqual([]);
+    expect(overflow(inbox, () => false, now, -1)).toEqual([]);
   });
 
   it("leaves alone what's live, unread, kept, in a worktree or on another machine", () => {

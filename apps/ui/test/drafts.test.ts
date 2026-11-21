@@ -57,6 +57,16 @@ describe("serializeDrafts and parseDrafts", () => {
     expect(restored["thread"]?.comments).toEqual(comments);
   });
 
+  it("keeps the originating task through draft edits and a reload before send", () => {
+    const drafts = { "new:1": { ...work, start: { mode: "work" as const, createdAt: 2, taskId: "task-1" } } };
+    const restored = parseDrafts(serializeDrafts(drafts));
+    const edited = withDraft(restored, "new:1", (draft) => ({
+      ...draft,
+      segments: [text("Revised task brief")],
+    }));
+    expect(parseDrafts(serializeDrafts(edited))["new:1"]?.start?.taskId).toBe("task-1");
+  });
+
   it("leaves out drafts with nothing to send", () => {
     const blank: Draft = { segments: [text("  ")], attachments: [], start: { mode: "chat", createdAt: 1 } };
     expect(JSON.parse(serializeDrafts({ "new:1": blank }))).toEqual({});

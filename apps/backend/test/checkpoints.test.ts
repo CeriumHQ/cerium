@@ -88,6 +88,37 @@ const ownObjects = (store: string) =>
   });
 
 describe("Checkpoints", () => {
+  it.effect("only replaces a file with a directory or vice versa when every affected file is selected", () =>
+    Effect.gen(function* () {
+      const { folder, write, read, checkpoints, fs, path } = yield* setup;
+      const options = { protectOtherPaths: true };
+      yield* write("entry", "original file\n");
+      const before = yield* checkpoints.save(folder);
+      yield* fs.remove(path.join(folder, "entry"));
+      yield* write("entry/child.ts", "moved into a directory\n");
+      yield* write("entry/secret.txt", "ignored and protected\n");
+      const after = yield* checkpoints.save(folder);
+
+      assert.deepStrictEqual(yield* checkpoints.restore(folder, before, ["entry"], options), ["entry"]);
+      assert.strictEqual(yield* read("entry/child.ts"), "moved into a directory\n");
+      yield* fs.remove(path.join(folder, "entry/child.ts"));
+      assert.deepStrictEqual(yield* checkpoints.restore(folder, before, ["entry"], options), ["entry"]);
+      assert.strictEqual(yield* read("entry/secret.txt"), "ignored and protected\n");
+
+      yield* fs.remove(path.join(folder, "entry/secret.txt"));
+      yield* write("entry/child.ts", "moved into a directory\n");
+      assert.isEmpty(yield* checkpoints.restore(folder, before, ["entry", "entry/child.ts"], options));
+      assert.strictEqual(yield* read("entry"), "original file\n");
+
+      assert.deepStrictEqual(yield* checkpoints.restore(folder, after, ["entry/child.ts"], options), [
+        "entry/child.ts",
+      ]);
+      assert.strictEqual(yield* read("entry"), "original file\n");
+      assert.isEmpty(yield* checkpoints.restore(folder, after, ["entry", "entry/child.ts"], options));
+      assert.strictEqual(yield* read("entry/child.ts"), "moved into a directory\n");
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
+
   it.effect("puts back the files it is asked to, as a snapshot held them, and no others", () =>
     Effect.gen(function* () {
       const { folder, write, read, exists, checkpoints, fs, path } = yield* setup;
@@ -127,6 +158,11 @@ describe("Checkpoints", () => {
           { path: "src/c.ts", change: "added" },
         ],
       );
+      assert.deepStrictEqual(yield* checkpoints.changes(folder, before, after, ["src/b.ts"]), [
+        { path: "src/b.ts", change: "deleted" },
+      ]);
+      assert.deepStrictEqual(yield* checkpoints.changes(folder, before, after, ["src/*.ts"]), []);
+      assert.deepStrictEqual(yield* checkpoints.changes(folder, before, after, []), []);
 
       yield* checkpoints.restore(folder, before, ["src/a.ts", "src/b.ts", "src/c.ts"]);
       // Byte for byte, line endings included.

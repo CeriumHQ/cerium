@@ -1,13 +1,17 @@
 import { Button } from "@base-ui/react/button";
 import {
   OFFERED_PROVIDERS,
+  expandPromptTemplate,
   matchPrompts,
+  parsePromptTemplate,
   visiblePrompts,
   type AccessMode,
   type Attachment,
   type Mention,
   type ModelInfo,
   type ModelSpeed,
+  type PromptContext,
+  type PromptTemplate,
   type ProviderId,
   type ReasoningEffort,
   type UsageSnapshot,
@@ -77,6 +81,7 @@ import {
   type Draft,
   type DraftAttachment,
   type DraftStart,
+  type Segment,
   type Trigger,
 } from "./draft.ts";
 import {
@@ -89,7 +94,7 @@ import {
   withoutDraft,
 } from "./drafts.ts";
 import { MentionMenu, useMentionOptions } from "./MentionMenu.tsx";
-import type { MessageBox } from "./messageBox.ts";
+import type { MessageBox, SideQuestionDraft } from "./messageBox.ts";
 import {
   accessLimit,
   allowedAccess,
@@ -125,6 +130,9 @@ import {
 import { useCoarsePointer } from "./pointer.ts";
 import { ProjectPicker } from "./ProjectPicker.tsx";
 import { PromptEditor, type PromptEditorHandle } from "./PromptEditor.tsx";
+import { PromptParameters } from "./PromptParameters.tsx";
+import { recalledPrompt, stepPromptHistory, type BrowsingHistory } from "./promptHistory.ts";
+import { projectName } from "./projectList.ts";
 import { sideQuestionOf } from "./btw.ts";
 import { SideQuestion, type AskSide } from "./SideQuestion.tsx";
 import { SlashMenu, slashGroups, type SlashEntry } from "./SlashMenu.tsx";
@@ -209,7 +217,14 @@ export type ComposerTarget =
       /** The thread's folder, which `@` tags files from; absent for chats. */
       readonly folder?: string | undefined;
       /** The thread's own worktree's branch, and the branch it was made from. */
-      readonly worktree?: { readonly branch: string; readonly base: string } | undefined;
+      readonly worktree?:
+        | {
+            readonly branch: string;
+            readonly base: string;
+            readonly root: string;
+            readonly project: string;
+          }
+        | undefined;
       /** The lead stopped or failed; the next message picks the thread back up. */
       readonly ended?: "stopped" | "failed";
       /**
@@ -262,6 +277,12 @@ export type ComposerTarget =
 
 /** The `/` list's entry that writes `/btw `. */
 const SIDE_QUESTION_COMMAND = "slash-side-question";
+const SWITCH_MODEL_COMMAND = "slash-switch-model";
+
+export interface ComposerCommands {
+  readonly openModels: () => boolean;
+  readonly steerNow: () => boolean;
+}
 
 interface ComposerProps {
   readonly target: ComposerTarget;
@@ -273,6 +294,8 @@ interface ComposerProps {
   readonly inputRef?: RefObject<HTMLDivElement | null>;
   /** Filled with what others can put into the box; null while it takes no messages. */
   readonly messageBox?: Ref<MessageBox | null>;
+  readonly commands?: Ref<ComposerCommands | null>;
+  readonly promptHistory?: () => ReadonlyArray<ReadonlyArray<Segment>>;
   /** A turn is in progress: the send button becomes stop. */
   readonly running: boolean;
   /**
@@ -282,6 +305,7 @@ interface ComposerProps {
   readonly onSend: (
     message: OutgoingMessage,
     setups: readonly [ThreadSetup, ...Array<ThreadSetup>],
+    taskId: string | undefined,
   ) => Promise<boolean>;
   readonly onStop: () => void;
   /** Shown just above the box, such as requests waiting on the user. */
@@ -294,6 +318,8 @@ interface ComposerProps {
   readonly activity?: ReactNode;
   /** The user's messages waiting for the lead, listed at the top of the box. */
   readonly queue?: Queue | undefined;
+  /** Hands the lead its queued messages after a successful send. */
+  readonly onSteer?: (() => void) | undefined;
   /** The work the thread's agents run in the background, above the queue. */
   readonly background?: Background | undefined;
   /** The thread's agents using the user's computer, above everything else in the box. */
@@ -317,6 +343,8 @@ export function Composer({
   connecting = false,
   inputRef,
   messageBox,
+  commands,
+  promptHistory,
   running,
   onSend,
   onStop,
@@ -325,6 +353,7 @@ export function Composer({
   takesFocus = true,
   activity,
   queue,
+  onSteer,
   background,
   computer,
   slashCommands = [],
@@ -353,7 +382,12 @@ export function Composer({
   const [focused, setFocused] = useState(takesFocus);
   const focusMoves = useRef(0);
   const registry = useContext(RegistryContext);
-  const draft = useAtomValue(draftAtom(draftKey)) ?? emptyDraft;
+  const storedDraft = useAtomValue(draftAtom(draftKey)) ?? emptyDraft;
+  const [recall, setRecall] = useState<{ key: string; history: BrowsingHistory }>();
+  const history =
+    recall?.key === draftKey && recall.history.draft === storedDraft.segments ? recall.history : undefined;
+  if (recall !== undefined && history === undefined) setRecall(undefined);
+  const draft = history === undefined ? storedDraft : { ...storedDraft, segments: recalledPrompt(history) };
   // New threads start with the model, effort and speed the last one was given, which are also the
   // defaults in settings. Access always starts from the settings default. A pick here stays with the draft.
   const [defaultModel, setDefaultModel] = useAtom(modelAtom);
@@ -372,7 +406,21 @@ export function Composer({
   /** A worktree is offered for a work thread in a folder git keeps, on a machine that makes them. */
   const gitFolder =
     target.kind === "new" && target.mode === "work" && target.worktrees === true ? target.folder : undefined;
-  const branch = AsyncResult.getOrElse(useAtomValue(gitBranchAtom(gitFolder ?? "")), () => undefined);
+  const workFolder =
+    target.kind === "thread" ? target.folder : target.mode === "work" ? target.folder : undefined;
+  const checkout =
+    target.kind === "thread"
+      ? (target.worktree?.root ?? workFolder)
+      : (draft.start?.workspace?.path ?? workFolder);
+  const branchFolder = gitFolder ?? checkout;
+  const branch = AsyncResult.getOrElse(
+    useAtomValue(gitBranchAtom(connecting ? "" : (branchFolder ?? ""))),
+    () => undefined,
+  );
+  const checkoutBranch = AsyncResult.getOrElse(
+    useAtomValue(gitBranchAtom(connecting || checkout === branchFolder ? "" : (checkout ?? ""))),
+    () => undefined,
+  );
   const worktree =
     gitFolder !== undefined && branch !== undefined && (draft.start?.worktree ?? workplace === "worktree");
   const sendKey = useAtomValue(sendKeyAtom);
@@ -410,14 +458,33 @@ export function Composer({
       ? speed
       : starting.map((each) => speedFor(each, speed)).find((each) => each !== undefined);
   const [modelsOpen, setModelsOpen] = useState(false);
-  /** The side question's pop-over: a new `id` each time it opens, so nothing of the last one stays. */
-  const [side, setSide] = useState<{
-    readonly id: number;
-    readonly question: string;
-    readonly open: boolean;
+  const [parameters, setParameters] = useState<{
+    readonly key: string;
+    readonly draft: ReadonlyArray<Segment>;
+    readonly prompt: string;
+    readonly template: PromptTemplate;
+    readonly context: PromptContext;
+    readonly replace: (text: string, cursor?: number) => void;
+    readonly trigger: Trigger;
   }>();
-  const openSide = (question: string) =>
-    setSide((current) => ({ id: (current?.id ?? 0) + 1, question, open: true }));
+  const filling =
+    parameters?.key === draftKey && parameters.draft === storedDraft.segments ? parameters : undefined;
+  if (parameters !== undefined && filling === undefined) setParameters(undefined);
+  /** The side question's pop-over: a new `id` each time it opens, so nothing of the last one stays. */
+  const [side, setSide] = useState<
+    SideQuestionDraft & {
+      readonly id: number;
+      readonly draftKey: string;
+      readonly open: boolean;
+    }
+  >();
+  const openSide: MessageBox["openSide"] = (draft) => {
+    if (target.kind !== "thread" || target.onAskSide === undefined) return;
+    setSide((current) => ({ ...draft, id: (current?.id ?? 0) + 1, draftKey, open: true }));
+  };
+  if (side !== undefined && (side.draftKey !== draftKey || target.kind !== "thread" || !target.onAskSide)) {
+    setSide(undefined);
+  }
   const needsFolder = isNew && target.mode === "work" && target.folder === undefined;
   const text = draftText(draft.segments);
   const preparing = draft.attachments.some((attachment) => attachment.state._tag === "Preparing");
@@ -434,14 +501,20 @@ export function Composer({
     draft.segments.every((segment) => segment.kind === "text" && segment.text.replace(/\n/g, "") === "") &&
     draft.attachments.length === 0 &&
     comments.length === 0;
-  const sendable = written && !preparing && !connecting && !blockedAccess && (!isNew || starting.length > 0);
+  const sendable =
+    written &&
+    !preparing &&
+    !connecting &&
+    !blockedAccess &&
+    filling === undefined &&
+    (!isNew || starting.length > 0);
   const canSend = sendable && !needsFolder;
   /** A finished message waits only for a project: sending opens the project list rather than doing nothing. */
   const asksForProject = sendable && needsFolder;
 
   // `@` tags files in the thread's folder; `$` the skills of the harness the message goes to.
   const sources = {
-    folder: target.kind === "thread" ? target.folder : target.mode === "work" ? target.folder : undefined,
+    folder: workFolder,
     provider: target.kind === "thread" ? target.provider : starting[0]?.provider,
     chat: target.kind === "thread" ? target.folder === undefined : target.mode === "chat",
   };
@@ -454,6 +527,8 @@ export function Composer({
     setDismissed(undefined);
   }
   const menuTrigger =
+    history === undefined &&
+    filling === undefined &&
     trigger !== undefined &&
     trigger.char !== "/" &&
     !(trigger.char === dismissed?.char && trigger.start === dismissed.start)
@@ -467,7 +542,8 @@ export function Composer({
   const activeIndex = Math.min(active, Math.max(0, results.options.length - 1));
 
   // `/` at the start of the message: the user's saved prompts, then the actions that answer here.
-  const slashTrigger = trigger?.char === "/" ? trigger : undefined;
+  const slashTrigger =
+    history === undefined && filling === undefined && trigger?.char === "/" ? trigger : undefined;
   const slashOpen =
     slashTrigger !== undefined &&
     !(slashTrigger.char === dismissed?.char && slashTrigger.start === dismissed.start);
@@ -475,51 +551,6 @@ export function Composer({
   const slashPrompts = slashOpen
     ? matchPrompts(visiblePrompts(storedPrompts, sources.folder), slashTrigger?.query ?? "")
     : [];
-  // Switching models and stopping the turn live in the box, beside the palette's actions.
-  const slashLocal: ReadonlyArray<PaletteCommand> = [
-    ...(target.kind === "thread" && target.onAskSide
-      ? [
-          {
-            id: SIDE_QUESTION_COMMAND,
-            group: "Actions" as const,
-            label: "Side question",
-            icon: MessageCircleQuestionMark,
-            keywords: "btw ask aside quick",
-            // Picking it writes `/btw ` (`pickSlash`); the box's ref stays out of render.
-            run: () => undefined,
-          },
-        ]
-      : []),
-    ...(target.kind === "new"
-      ? [
-          {
-            id: "slash-switch-model",
-            group: "Actions" as const,
-            label: "Switch model",
-            icon: ArrowRightLeft,
-            keywords: "model effort speed",
-            run: () => setModelsOpen(true),
-          },
-        ]
-      : []),
-    ...(running
-      ? [
-          {
-            id: "slash-stop",
-            group: "Actions" as const,
-            label: "Stop this turn",
-            icon: Square,
-            keywords: "interrupt cancel halt",
-            run: onStop,
-          },
-        ]
-      : []),
-  ];
-  const slashActions = slashOpen
-    ? matchCommands([...slashLocal, ...slashCommands], queryWords(slashTrigger?.query ?? ""))
-    : [];
-  const slashActive = Math.min(active, Math.max(0, slashPrompts.length + slashActions.length - 1));
-
   // A long draft, attached files and waiting approvals all grow the box over the transcript's end.
   // An effect rather than a ref callback: reporting re-renders the box, which would re-run the callback.
   const box = useRef<HTMLDivElement>(null);
@@ -870,6 +901,7 @@ export function Composer({
   useImperativeHandle<MessageBox | null, MessageBox | null>(messageBox, () => ({
     mention: (mention) => editor.current?.mentionAtCaret(mention),
     append: appendToDraft,
+    openSide,
     comment: ({ quote, text, file }) =>
       updateDraft(draftKey, (current) => ({
         ...current,
@@ -902,22 +934,56 @@ export function Composer({
 
   /** A `/` entry: a saved prompt's text in place of the command, or the action run at once. */
   const pickSlash = (entry: SlashEntry) => {
-    if (entry.kind === "prompt") editor.current?.replaceTriggerText(entry.prompt.text);
-    else if (entry.command.id === SIDE_QUESTION_COMMAND) editor.current?.replaceTriggerText("/btw ");
-    else entry.command.run();
+    if (entry.kind === "prompt") {
+      const replace = editor.current?.captureSlashReplacement();
+      if (replace && slashTrigger) {
+        const template = parsePromptTemplate(entry.prompt.text);
+        const workspace = draft.start?.workspace;
+        const currentBranch =
+          target.kind === "thread"
+            ? (branch ?? target.worktree?.branch)
+            : (workspace?.branch ?? workspace?.existingBranch ?? checkoutBranch ?? branch);
+        const project = target.kind === "thread" ? (target.worktree?.project ?? workFolder) : workFolder;
+        const context: PromptContext = {
+          ...(currentBranch === undefined ? {} : { branch: currentBranch }),
+          ...(project === undefined ? {} : { project: projectName(project) }),
+        };
+        if (template.parameters.length === 0) {
+          const expanded = expandPromptTemplate(template, context);
+          replace(expanded.text, expanded.cursor);
+        } else {
+          setParameters({
+            key: draftKey,
+            draft: storedDraft.segments,
+            prompt: entry.prompt.name,
+            template,
+            context,
+            replace,
+            trigger: slashTrigger,
+          });
+        }
+      }
+    } else if (entry.command.id === SIDE_QUESTION_COMMAND) {
+      editor.current?.captureSlashReplacement()?.("/btw ");
+    } else {
+      if (entry.command.id === SWITCH_MODEL_COMMAND) editor.current?.captureSlashReplacement()?.("");
+      entry.command.run();
+    }
     setTrigger(undefined);
     setActive(0);
   };
 
-  const send = () => {
+  const send = (afterDelivery?: () => void) => {
+    if (filling !== undefined) return;
     const asked = thread?.onAskSide ? sideQuestionOf(text) : undefined;
     if (asked !== undefined) {
       // A side question never joins the thread: the box empties and the pop-over answers.
       revokeLostPreviews({ [draftKey]: draft }, {});
       setDrafts((current) => withoutDraft(current, draftKey));
+      setRecall(undefined);
       setEpoch((current) => current + 1);
       setTrigger(undefined);
-      openSide(asked);
+      openSide({ initial: asked });
       return;
     }
     if (asksForProject) {
@@ -951,18 +1017,21 @@ export function Composer({
     // behind a running turn waits in the box instead.
     if (!running && input.current) launch(input.current, message);
     setDrafts((current) => withoutDraft(current, key));
+    setRecall(undefined);
     setEpoch((current) => current + 1);
     setTrigger(undefined);
     const release = holdRenderer();
-    void onSend({ text: message, attachments: ready, mentions: draftMentions(draft.segments) }, [
-      setupOf(first),
-      ...rest.map(setupOf),
-    ])
+    void onSend(
+      { text: message, attachments: ready, mentions: draftMentions(draft.segments) },
+      [setupOf(first), ...rest.map(setupOf)],
+      sent.start?.taskId,
+    )
       .then((delivered) => {
         if (delivered) {
           for (const attachment of sent.attachments) {
             if (attachment.preview) URL.revokeObjectURL(attachment.preview);
           }
+          afterDelivery?.();
           return;
         }
         // Give an undelivered message back, unless the user has started writing another.
@@ -972,7 +1041,32 @@ export function Composer({
       .finally(release);
   };
 
+  const steerNow = () => {
+    if (!running || onSteer === undefined || filling !== undefined) return false;
+    if (written) {
+      if (!canSend || (thread?.onAskSide && sideQuestionOf(text) !== undefined)) return false;
+      // The backend accepts and queues the message before resolving the send.
+      send(onSteer);
+      return true;
+    }
+    if (blankBox && queue?.onSteer && !queue.ended && queue.messages.length > 0) {
+      queue.onSteer();
+      return true;
+    }
+    return false;
+  };
+
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const composing = event.nativeEvent.isComposing;
+    if (
+      !composing &&
+      !isCapturingBinding() &&
+      matchesBinding(event, bindingFor(bindings, "steer-now"), usesCommandKey())
+    ) {
+      if (event.repeat || steerNow()) event.preventDefault();
+      return;
+    }
+    const plain = !event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey;
     // The suggestion answers only a plain Tab, which then writes it as ordinary text, and Esc, which
     // drops it. Shift Tab, a composing IME and every other key go on as they would.
     if (!event.nativeEvent.isComposing) {
@@ -998,12 +1092,12 @@ export function Composer({
     }
     const count = results.options.length;
     if (menuOpen && count > 0 && !event.nativeEvent.isComposing) {
-      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      if (plain && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
         event.preventDefault();
         setActive((activeIndex + (event.key === "ArrowDown" ? 1 : count - 1)) % count);
         return;
       }
-      if ((event.key === "Enter" || event.key === "Tab") && !event.shiftKey) {
+      if ((event.key === "Enter" || event.key === "Tab") && plain) {
         event.preventDefault();
         pick(results.options[activeIndex]!.mention);
         return;
@@ -1012,12 +1106,12 @@ export function Composer({
     // The `/` list answers the same keys: arrows move, Enter or Tab runs, Esc closes it.
     const slashCount = slashPrompts.length + slashActions.length;
     if (slashOpen && slashCount > 0 && !event.nativeEvent.isComposing) {
-      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      if (plain && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
         event.preventDefault();
         setActive((slashActive + (event.key === "ArrowDown" ? 1 : slashCount - 1)) % slashCount);
         return;
       }
-      if ((event.key === "Enter" || event.key === "Tab") && !event.shiftKey) {
+      if ((event.key === "Enter" || event.key === "Tab") && plain) {
         event.preventDefault();
         pickSlash(
           slashActive < slashPrompts.length
@@ -1038,7 +1132,7 @@ export function Composer({
       matchesBinding(event, bindingFor(bindings, "side-question"), usesCommandKey())
     ) {
       event.preventDefault();
-      openSide("");
+      openSide();
       return;
     }
     if (
@@ -1055,6 +1149,28 @@ export function Composer({
       event.preventDefault();
       dictation.cancel();
       return;
+    }
+    if (!composing && plain && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+      const blocked = menuOpen || slashOpen || suggestion !== undefined || filling !== undefined || listening;
+      const atStart = history !== undefined || editor.current?.atStart() === true;
+      const step = stepPromptHistory({
+        direction: event.key === "ArrowUp" ? "older" : "newer",
+        history,
+        entries:
+          !blocked && history === undefined && blankBox && atStart && event.key === "ArrowUp"
+            ? (promptHistory?.() ?? [])
+            : [],
+        draft: storedDraft.segments,
+        atStart,
+        empty: blankBox,
+        blocked,
+      });
+      if (step !== undefined) {
+        event.preventDefault();
+        setRecall(step.history === undefined ? undefined : { key: draftKey, history: step.history });
+        setTrigger(undefined);
+        return;
+      }
     }
     if (isSendKey(event, touch ? "ctrlEnter" : sendKey)) {
       event.preventDefault();
@@ -1168,7 +1284,7 @@ export function Composer({
       {...(touch || asksForProject ? {} : { shortcut: sendKey === "enter" ? "Enter" : "Ctrl Enter" })}
     >
       <Button
-        onClick={send}
+        onClick={() => send()}
         onMouseDown={keepFocus}
         disabled={sendDisabled}
         aria-label={sendLabel}
@@ -1260,15 +1376,72 @@ export function Composer({
     manifests.value.find((manifest) => manifest.provider === thread?.provider)?.compact === true;
   const onCompact =
     thread?.onCompact && compacts && !running && thread.ended === undefined ? thread.onCompact : undefined;
+  const threadPicker =
+    handoff ||
+    switchesModel ||
+    threadEffortChoice ||
+    offersSpeed(threadSpeedChoice) ||
+    onCompact ||
+    thread?.onLimit;
+  const openModels = () => {
+    if (!isNew && !threadPicker) return false;
+    input.current?.focus({ preventScroll: true });
+    setModelsOpen(true);
+    return true;
+  };
+  useImperativeHandle(commands, () => ({ openModels, steerNow }));
+  // Switching models and stopping the turn live in the box, beside the palette's actions.
+  const slashLocal: ReadonlyArray<PaletteCommand> = [
+    ...(target.kind === "thread" && target.onAskSide
+      ? [
+          {
+            id: SIDE_QUESTION_COMMAND,
+            group: "Actions" as const,
+            label: "Side question",
+            icon: MessageCircleQuestionMark,
+            keywords: "btw ask aside quick",
+            // Picking it writes `/btw ` (`pickSlash`); the box's ref stays out of render.
+            run: () => undefined,
+          },
+        ]
+      : []),
+    ...(isNew || handoff || switchesModel || threadEffortChoice || offersSpeed(threadSpeedChoice)
+      ? [
+          {
+            id: SWITCH_MODEL_COMMAND,
+            group: "Actions" as const,
+            label: "Switch model",
+            icon: ArrowRightLeft,
+            keywords: "model effort speed",
+            keys: bindingFor(bindings, "open-model-picker"),
+            run: () => setModelsOpen(true),
+          },
+        ]
+      : []),
+    ...(running
+      ? [
+          {
+            id: "slash-stop",
+            group: "Actions" as const,
+            label: "Stop this turn",
+            icon: Square,
+            keywords: "interrupt cancel halt",
+            run: onStop,
+          },
+        ]
+      : []),
+  ];
+  const slashActions = slashOpen
+    ? matchCommands([...slashLocal, ...slashCommands], queryWords(slashTrigger?.query ?? ""))
+    : [];
+  const slashActive = Math.min(active, Math.max(0, slashPrompts.length + slashActions.length - 1));
+
   const threadChip =
     thread && threadShown ? (
-      handoff ||
-      switchesModel ||
-      threadEffortChoice ||
-      offersSpeed(threadSpeedChoice) ||
-      onCompact ||
-      thread.onLimit ? (
+      threadPicker ? (
         <ModelPicker
+          open={modelsOpen}
+          onOpenChange={setModelsOpen}
           models={
             handoff
               ? [...ownModels, ...models.filter((each) => each.provider !== thread.provider)]
@@ -1357,7 +1530,17 @@ export function Composer({
           onPick={(keys) => pickForDraft({ models: keys })}
           // Agents that may edit share the one folder, where they can undo each other's work.
           {...(target.mode === "work" && !worktree && access !== "readOnly" && starting.length > 1
-            ? { note: "They share the folder, so their edits can collide" }
+            ? {
+                note: "They share the folder, so their edits can collide",
+                ...(gitFolder !== undefined && branch !== undefined
+                  ? {
+                      onUseWorktrees: () => {
+                        setWorkplace("worktree");
+                        pickForDraft({ worktree: true, workspace: undefined });
+                      },
+                    }
+                  : {}),
+              }
             : {})}
         />
       ) : (
@@ -1394,7 +1577,7 @@ export function Composer({
   const actions = (
     <div ref={actionsRow} className="relative isolate flex min-w-0 shrink-0 items-center gap-1">
       <div ref={leadingActions} className="flex min-w-0 items-center gap-1 empty:hidden">
-        {oneLine ? null : thread ? threadChip : newChip}
+        {!oneLine || modelsOpen ? (thread ? threadChip : newChip) : null}
         {!inline || restingAccess ? accessMenu : null}
         {dictates ? <DictationControl dictation={dictation} /> : null}
       </div>
@@ -1509,9 +1692,14 @@ export function Composer({
             key={side.id}
             open={side.open}
             anchor={box}
-            initial={side.question}
+            initial={side.initial}
+            quote={side.quote}
             ask={thread.onAskSide}
-            onClose={() => setSide((current) => current && { ...current, open: false })}
+            onClose={() =>
+              setSide((current) =>
+                current?.id === side.id ? { id: side.id, draftKey, open: false } : current,
+              )
+            }
             finalFocus={input}
           />
         ) : null}
@@ -1579,6 +1767,24 @@ export function Composer({
               })
             }
           />
+          {filling ? (
+            <PromptParameters
+              prompt={filling.prompt}
+              parameters={filling.template.parameters}
+              onInsert={(values) => {
+                const expanded = expandPromptTemplate(filling.template, filling.context, values);
+                setParameters(undefined);
+                filling.replace(expanded.text, expanded.cursor);
+                setTrigger(undefined);
+              }}
+              onCancel={() => {
+                setParameters(undefined);
+                input.current?.focus({ preventScroll: true });
+                setTrigger(filling.trigger);
+                setDismissed(filling.trigger);
+              }}
+            />
+          ) : null}
           <Reveal carry className={inline ? "min-w-0 basis-full" : ""}>
             {comments.length > 0 ? (
               <CommentTray comments={comments} onEdit={editComment} onRemove={removeComment} />
@@ -1597,7 +1803,11 @@ export function Composer({
             resetKey={`${draftKey}:${epoch}`}
             segments={draft.segments}
             placeholder={placeholder}
-            onChange={(segments) => updateDraft(draftKey, (current) => ({ ...current, segments }))}
+            onChange={(segments) => {
+              setRecall(undefined);
+              setParameters(undefined);
+              updateDraft(draftKey, (current) => ({ ...current, segments }));
+            }}
             onTrigger={(next) => {
               if (!sameTrigger(next, trigger)) setActive(0);
               setTrigger(next);

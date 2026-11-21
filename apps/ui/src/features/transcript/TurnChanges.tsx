@@ -26,8 +26,13 @@ export interface TurnFileOpen {
 
 export interface TurnFileActions {
   readonly open: (file: TurnFileOpen) => void;
+  readonly perFile?: boolean;
   /** Resolves whether it worked; the turn's events then say what became of the files. */
-  readonly revert: (turnId: string, direction: "undone" | "redone") => Promise<boolean>;
+  readonly revert: (
+    turnId: string,
+    direction: "undone" | "redone",
+    paths?: ReadonlyArray<string>,
+  ) => Promise<boolean>;
 }
 
 const plural = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
@@ -50,22 +55,32 @@ function Row({
   kept,
   undone,
   onOpen,
+  onRevert,
+  busy,
 }: {
   file: TurnFile;
   kept: boolean;
   undone: boolean;
   onOpen: (() => void) | undefined;
+  onRevert: (() => void) | undefined;
+  busy: boolean;
 }) {
   const dir = dirOf(file.path);
   const gone = file.change === "deleted";
   const tag = kept ? "kept" : changeTag[file.change];
   return (
-    <li className="border-t border-line-subtle first:border-t-0">
+    <li
+      className={`group/file flex items-center border-t border-line-subtle first:border-t-0 ${
+        onOpen === undefined ? "" : "hover:bg-surface-hover has-focus-visible:bg-surface-hover"
+      }`}
+    >
       <Button
         onClick={onOpen}
         disabled={onOpen === undefined}
         title={file.path}
-        className="flex h-8 w-full min-w-0 cursor-default items-center gap-2 px-3 text-left text-body outline-none hover:bg-surface-hover focus-visible:bg-surface-hover disabled:hover:bg-transparent max-md:h-10"
+        className={`flex h-8 w-full min-w-0 cursor-default items-center gap-2 text-left text-body outline-none max-md:h-10 ${
+          onRevert === undefined ? "px-3" : "pr-1.5 pl-3"
+        }`}
       >
         <FileIcon path={file.path} className={`size-4 shrink-0 ${undone && !kept ? "opacity-60" : ""}`} />
         <span className="flex min-w-0 flex-1 items-baseline gap-2">
@@ -90,13 +105,28 @@ function Row({
             className={`shrink-0 rounded border px-1 text-caption leading-4 ${
               kept ? "border-attention/40 text-attention-text" : "border-line-subtle text-fg-tertiary"
             }`}
-            title={kept ? "Changed since, so left as it is" : undefined}
+            title={kept ? "Left as it is to preserve current files" : undefined}
           >
             {tag}
           </span>
         )}
         <Lines added={file.added} removed={file.removed} />
       </Button>
+      {onRevert === undefined ? null : (
+        <Tooltip label={undone ? "Redo this file" : "Undo this file"} side="top">
+          <Button
+            aria-label={`${undone ? "Redo" : "Undo"} ${file.path}`}
+            onClick={onRevert}
+            disabled={busy}
+            // Out of the way until the row is pointed at or reached by keyboard; a file put back keeps its Redo in view.
+            className={`mr-1.5 grid size-6 shrink-0 place-items-center rounded-md text-fg-tertiary transition-[opacity,color,background-color] duration-150 hover:bg-surface-active hover:text-fg-primary focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:outline-none disabled:pointer-events-none disabled:text-fg-disabled group-hover/file:opacity-100 pointer-coarse:opacity-100 max-md:size-9 ${
+              undone ? "opacity-100" : "opacity-0"
+            }`}
+          >
+            {undone ? <Redo2 size={13} strokeWidth={1.75} /> : <Undo2 size={13} strokeWidth={1.75} />}
+          </Button>
+        </Tooltip>
+      )}
     </li>
   );
 }
@@ -127,21 +157,24 @@ export function TurnChanges({
           after: changes.after,
           paths: changes.files.map((file) => file.path),
         } as const);
-  const { files, more, undone } = changes;
+  const { files, more, fileStates, status } = changes;
+  const undone = status === "undone";
   const total = files.length + more;
   const added = files.reduce((sum, file) => sum + (file.added ?? 0), 0);
   const removed = files.reduce((sum, file) => sum + (file.removed ?? 0), 0);
   // One row past the limit shows rather than a "1 more" that takes as much room.
   const shown = expanded || files.length <= SHOWN + 1 ? files : files.slice(0, SHOWN);
   const hidden = files.length - shown.length;
-  const kept = new Set(undone?.kept ?? []);
-  const direction = undone === undefined ? "undone" : "redone";
+  const direction = undone ? "redone" : "undone";
 
-  const revert = async () => {
+  const revert = async (direction: "undone" | "redone", paths?: ReadonlyArray<string>) => {
     if (actions === undefined || busy) return;
     setBusy(true);
-    await actions.revert(changes.turnId, direction);
-    setBusy(false);
+    try {
+      await actions.revert(changes.turnId, direction, paths);
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -152,49 +185,60 @@ export function TurnChanges({
       <header className="flex min-h-9 items-center gap-2.5 border-b border-line-subtle py-1 pr-1.5 pl-3">
         <h3 className="text-body font-medium">{plural(total, "file")} changed</h3>
         <Lines added={added || undefined} removed={removed || undefined} />
-        {undone === undefined ? null : <span className="text-meta text-fg-tertiary">· undone</span>}
+        {undone ? <span className="text-meta text-fg-tertiary">· undone</span> : null}
+        {status === "partial" ? (
+          <span
+            className="shrink-0 rounded border border-attention/40 px-1 text-caption leading-4 text-attention-text"
+            title="Some of this turn's files are put back as they were"
+          >
+            Partially undone
+          </span>
+        ) : null}
         <span className="flex-1" />
-        {review === undefined || reviewTarget === undefined || undone !== undefined ? null : (
+        {review === undefined || reviewTarget === undefined || undone ? null : (
           <ReviewButton threadId={review.threadId} target={reviewTarget} onError={setReviewError} />
         )}
         {actions === undefined ? null : (
           <Tooltip
             label={
-              undone === undefined
-                ? "Put these files back as they were before this turn"
-                : "Put back what this turn changed"
+              undone
+                ? "Put back what this turn changed"
+                : "Put these files back as they were before this turn"
             }
             side="top"
           >
             <Button
-              onClick={revert}
+              onClick={() => revert(direction)}
               disabled={busy}
               className="flex h-7 items-center gap-1.5 rounded-md px-2 text-meta text-fg-secondary transition-colors duration-150 hover:bg-surface-hover hover:text-fg-primary disabled:opacity-40 max-md:h-9"
             >
-              {undone === undefined ? (
-                <Undo2 size={13} strokeWidth={1.75} />
-              ) : (
-                <Redo2 size={13} strokeWidth={1.75} />
-              )}
-              {undone === undefined ? "Undo" : "Redo"}
+              {undone ? <Redo2 size={13} strokeWidth={1.75} /> : <Undo2 size={13} strokeWidth={1.75} />}
+              {undone ? "Redo" : "Undo"}
             </Button>
           </Tooltip>
         )}
       </header>
       <ul>
-        {shown.map((file) => (
-          <Row
-            key={file.path}
-            file={file}
-            kept={kept.has(file.path)}
-            undone={undone !== undefined}
-            onOpen={
-              actions === undefined
-                ? undefined
-                : () => actions.open({ before: changes.before, after: changes.after, path: file.path })
-            }
-          />
-        ))}
+        {shown.map((file) => {
+          const state = fileStates?.get(file.path);
+          return (
+            <Row
+              key={file.path}
+              file={file}
+              kept={state?.kept ?? false}
+              undone={state?.undone ?? false}
+              onOpen={
+                actions === undefined
+                  ? undefined
+                  : () => actions.open({ before: changes.before, after: changes.after, path: file.path })
+              }
+              onRevert={
+                actions?.perFile ? () => revert(state?.undone ? "redone" : "undone", [file.path]) : undefined
+              }
+              busy={busy}
+            />
+          );
+        })}
       </ul>
       {hidden > 0 ? (
         <Button

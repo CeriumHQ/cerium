@@ -1,6 +1,9 @@
 import {
   HubCopyOutcome,
   HubHarness,
+  HubInstructionFile,
+  HubInstructionMode,
+  HubInstructionOutcome,
   HubScope,
   HubServerStatus,
   HubTargetScope,
@@ -11,7 +14,7 @@ import { Rpc, RpcGroup } from "effect/rpc";
 
 import { CeriumError } from "./error.ts";
 
-// The MCP and skills hub (Settings → MCP & skills): every harness's MCP servers and skills for a
+// The Settings Hub manages project instructions and every harness's MCP servers and skills for a
 // project, read from and written to the harness's own config. The backend finds a server or skill
 // afresh by its name and scope on each change, so nothing the UI sends back carries a secret.
 
@@ -27,7 +30,31 @@ const ServerRef = {
 export const HubCopyTarget = Schema.Struct({ provider: ProviderId, scope: HubTargetScope });
 export type HubCopyTarget = typeof HubCopyTarget.Type;
 
+const InstructionSnapshot = { path: Schema.NonEmptyString, revision: Schema.NonEmptyString };
+
+export const HubInstructionSync = Schema.Struct({
+  project: Schema.NonEmptyString,
+  source: Schema.Struct({ ...InstructionSnapshot, content: Schema.optionalKey(Schema.String) }),
+  targets: Schema.Array(
+    Schema.Struct({ ...InstructionSnapshot, replace: Schema.optionalKey(Schema.Boolean) }),
+  ),
+  mode: HubInstructionMode,
+});
+export type HubInstructionSync = typeof HubInstructionSync.Type;
+
 export const HubRpcs = RpcGroup.make(
+  /** Project instruction files and their revisions. Since `RPC_VERSION` 56. */
+  Rpc.make("ReadHubInstructions", {
+    payload: { project: Schema.NonEmptyString },
+    success: Schema.Array(HubInstructionFile),
+    error: CeriumError,
+  }),
+  /** Saves the canonical file, optionally syncing specific target revisions. Since `RPC_VERSION` 56. */
+  Rpc.make("SyncHubInstructions", {
+    payload: HubInstructionSync,
+    success: Schema.Array(HubInstructionOutcome),
+    error: CeriumError,
+  }),
   /** Each harness's servers and skills for `project`, read from its config. Since `RPC_VERSION` 42. */
   Rpc.make("ReadHub", {
     payload: { project: Schema.NonEmptyString },
