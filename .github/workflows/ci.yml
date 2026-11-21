@@ -47,6 +47,10 @@ jobs:
         with:
           # The commit check and the release plan read the commits since the base and the release tags.
           fetch-depth: 0
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /scripts/*.ts
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -66,7 +70,7 @@ jobs:
           installer=true
           everywhere=true
           if [ "$GITHUB_EVENT_NAME" != merge_group ] && [ "$GITHUB_EVENT_NAME" != workflow_dispatch ] && git cat-file -e "$BASE^{commit}" 2>/dev/null; then
-            changed=$(git diff --name-only "$BASE...$HEAD")
+            changed=$(git diff --no-renames --name-only "$BASE...$HEAD")
             app=$(grep -vE '\.md$|^LICENSE$|^\.github/(media|ISSUE_TEMPLATE)/' <<<"$changed" || true)
             changelog=$(grep -xF CHANGELOG.md <<<"$changed" || true)
             if [ -n "$changed" ] && [ -z "$app$changelog" ]; then
