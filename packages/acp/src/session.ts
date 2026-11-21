@@ -98,6 +98,8 @@ export interface AcpSessionOptions {
   readonly permission?: RequestHandler;
   /** Handlers for the agent's other requests, by method. Requests without one are refused. */
   readonly requests?: Readonly<Record<string, RequestHandler>>;
+  /** Provider notifications outside the standard `session/update` stream. */
+  readonly notification?: (method: string, params: JsonRecord, session: AcpSession) => Effect.Effect<void>;
   /** Approvals the user hasn't answered by then are denied, before the agent stops waiting. */
   readonly approvalTimeout?: Duration.Input;
   /** Sends `session/close` when the scope closes between turns. Default true. */
@@ -132,6 +134,12 @@ export interface AcpSession {
     text: string,
     extras: TurnExtras | undefined,
     plan: () => Effect.Effect<TurnPlan, HarnessFailure>,
+  ) => Effect.Effect<void, HarnessFailure>;
+  /** Runs a native compaction RPC between turns and reports it on the same event stream. */
+  readonly compact: (
+    method: string,
+    params: JsonRecord,
+    model: () => string,
   ) => Effect.Effect<void, HarnessFailure>;
   readonly interrupt: Effect.Effect<void>;
 }
@@ -222,6 +230,14 @@ export const makeAcpSession = Effect.fn("Acp.session")(function* (options: AcpSe
 
   const accepting = (params: JsonRecord) => params["sessionId"] === sessionId && active && !cancelling;
 
+  const start = (method: string, params: JsonRecord, model: string, compact: boolean) =>
+    Effect.gen(function* () {
+      active = true;
+      cancelling = false;
+      const { awaitResponse } = yield* acp.beginRequest(method, params);
+      yield* run(method, awaitResponse, model, compact).pipe(Effect.interruptible, Effect.forkIn(scope));
+    }).pipe(Effect.uninterruptible);
+
   const session: AcpSession = {
     acp,
     sessionId,
@@ -242,16 +258,19 @@ export const makeAcpSession = Effect.fn("Acp.session")(function* (options: AcpSe
             return yield* acp.failure(`This ${label} CLI does not accept images`);
           }
           const turn = yield* plan();
-          active = true;
-          cancelling = false;
-          const { awaitResponse } = yield* acp.beginRequest("session/prompt", {
-            ...target,
-            prompt: promptBlocks(turn.text ?? text, extras?.images),
-            ...(turn.meta === undefined ? {} : { _meta: turn.meta }),
-          });
-          yield* run(awaitResponse, turn.model).pipe(Effect.interruptible, Effect.forkIn(scope));
+          yield* start(
+            "session/prompt",
+            {
+              ...target,
+              prompt: promptBlocks(turn.text ?? text, extras?.images),
+              ...(turn.meta === undefined ? {} : { _meta: turn.meta }),
+            },
+            turn.model,
+            false,
+          );
         }).pipe(Effect.uninterruptible),
       ),
+    compact: (method, params, model) => whenIdle(Effect.suspend(() => start(method, params, model(), true))),
     interrupt: Effect.suspend(() => {
       if (!active || cancelling) return Effect.void;
       cancelling = true;
@@ -275,7 +294,12 @@ export const makeAcpSession = Effect.fn("Acp.session")(function* (options: AcpSe
   const agentError = (message: string) =>
     emit({ _tag: "AgentError", kind: "unknown", message, retryable: false });
 
-  const run = (awaitResponse: Effect.Effect<unknown, AcpError | HarnessFailure>, model: string) =>
+  const run = (
+    method: string,
+    awaitResponse: Effect.Effect<unknown, AcpError | HarnessFailure>,
+    model: string,
+    compact: boolean,
+  ) =>
     awaitResponse.pipe(
       Effect.matchEffect({
         onFailure: (error) =>
@@ -288,13 +312,15 @@ export const makeAcpSession = Effect.fn("Acp.session")(function* (options: AcpSe
                 loginCommand: acp.harness.loginCommand,
               });
             } else if (!cancelling) {
-              yield* agentError(acp.refused("session/prompt")(error).message);
+              yield* agentError(acp.refused(method)(error).message);
             }
             yield* finish(undefined, model, cancelling ? "interrupted" : "error");
           }),
         onSuccess: (answer) =>
           Effect.gen(function* () {
-            const reason = cancelling ? "interrupted" : toStopReason(answer);
+            const reason = cancelling ? "interrupted" : compact ? "completed" : toStopReason(answer);
+            if (compact && reason === "completed")
+              yield* emit({ _tag: "ContextCompacted", trigger: "manual" });
             if (reason === "error") yield* agentError(`${label} stopped the turn without completing it`);
             yield* finish(answer, model, reason);
           }),
@@ -309,7 +335,8 @@ export const makeAcpSession = Effect.fn("Acp.session")(function* (options: AcpSe
         const handler = method === "session/request_permission" ? permission : options.requests?.[method];
         return handler === undefined ? acp.reject(id) : handler(id, params, session);
       }
-      if (method !== "session/update" || params["sessionId"] !== sessionId || !active) return Effect.void;
+      if (method !== "session/update") return options.notification?.(method, params, session) ?? Effect.void;
+      if (params["sessionId"] !== sessionId || !active) return Effect.void;
       return emitAll(translator.update(params["update"]));
     }),
   );

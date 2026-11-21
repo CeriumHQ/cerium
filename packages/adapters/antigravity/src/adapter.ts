@@ -1,3 +1,4 @@
+import { listAcpSessions, probeWorkspace, readAcpSession, requireExecutable } from "@cerium/acp";
 import {
   HarnessUnavailable,
   compareVersions,
@@ -7,16 +8,23 @@ import {
 import { Context, Effect, Exit, FileSystem, Layer, Path, Stream } from "effect";
 import type { ChildProcessSpawner } from "effect/process";
 
+import { makeAntigravityHub } from "./hub.ts";
 import {
   INSTALL_HINT,
   MINIMUM_VERSION,
   PROVIDER,
   SIGNED_OUT,
+  antigravityHarness,
   antigravityManifest,
   failure,
 } from "./manifest.ts";
-import { discoverAntigravity, loginRequired } from "./probe.ts";
-import { startAntigravitySession } from "./session.ts";
+import {
+  connectAntigravity,
+  discoverAntigravity,
+  findAntigravityExecutable,
+  loginRequired,
+} from "./probe.ts";
+import { antigravityTranslator, startAntigravitySession } from "./session.ts";
 import { readAntigravityUsage } from "./usage.ts";
 
 /** Defaults to finding the user's `agy` on PATH. A caller may supply its absolute path instead. */
@@ -26,6 +34,15 @@ export const makeAntigravityAdapter = (executable?: string) =>
       ChildProcessSpawner.ChildProcessSpawner | FileSystem.FileSystem | Path.Path
     >();
     const fs = yield* FileSystem.FileSystem;
+    const hub = yield* makeAntigravityHub();
+    const history = Effect.gen(function* () {
+      const path = yield* requireExecutable(
+        antigravityHarness,
+        executable ?? (yield* findAntigravityExecutable),
+      );
+      const cwd = yield* probeWorkspace(antigravityHarness);
+      return yield* connectAntigravity(path, cwd, ["--include-default-customizations=false"]);
+    });
     const [kept, forget] = yield* Effect.cachedInvalidateWithTTL(
       discoverAntigravity(executable).pipe(Effect.provide(platform)),
       (exit) =>
@@ -65,6 +82,7 @@ export const makeAntigravityAdapter = (executable?: string) =>
 
     return {
       provider: PROVIDER,
+      ...hub,
       hubInstructions: {
         files: [
           { path: "AGENTS.md", primary: true },
@@ -80,6 +98,17 @@ export const makeAntigravityAdapter = (executable?: string) =>
       manifest: antigravityManifest,
       probe: fresh.pipe(Effect.map(({ status }) => status)),
       listModels: ready.pipe(Effect.map(({ models }) => models)),
+      listSessions: history.pipe(
+        Effect.flatMap((acp) => listAcpSessions(acp)),
+        Effect.scoped,
+        Effect.provide(platform),
+      ),
+      readSession: (session) =>
+        history.pipe(
+          Effect.flatMap((acp) => readAcpSession(acp, session, antigravityTranslator())),
+          Effect.scoped,
+          Effect.provide(platform),
+        ),
       usage: ready.pipe(
         Effect.flatMap(({ executable }) => readAntigravityUsage(executable).pipe(Effect.provide(platform))),
       ),

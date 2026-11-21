@@ -11,14 +11,16 @@ import {
   readConfigOptions,
   record,
   string,
+  type AcpConnection,
   type ApprovalRequest,
   type RequestHandler,
 } from "@cerium/acp";
 import type { AgentSession, SessionOptions, TurnExtras } from "@cerium/harness";
-import { Effect } from "effect";
+import { Effect, type Scope } from "effect";
 
 import { authenticate, connectGrok } from "./catalog.ts";
 import { PROVIDER, failure } from "./manifest.ts";
+import { makeGrokTasks } from "./tasks.ts";
 import { grokTranslator, toolName } from "./translate.ts";
 
 const READ_TOOLS = ["read_file", "list_dir", "grep"];
@@ -36,6 +38,7 @@ const continueHook = { decision: "continue" };
 export const startGrokSession = Effect.fn("GrokAdapter.startSession")(function* (
   executable: string,
   options: SessionOptions,
+  registerMcp?: (acp: AcpConnection, sessionId: string) => Effect.Effect<void, never, Scope.Scope>,
 ) {
   const readOnly = options.access === "readOnly";
   const fullAccess = options.access === "fullAccess";
@@ -69,7 +72,7 @@ export const startGrokSession = Effect.fn("GrokAdapter.startSession")(function* 
   }
   if (!readOnly) {
     tools.push(
-      { id: "GrokBuild:run_terminal_cmd", params: { enabled_background: false } },
+      { id: "GrokBuild:run_terminal_cmd", params: { enabled_background: true } },
       { id: "GrokBuild:search_replace" },
       { id: "OpenCode:write" },
       { id: "GrokBuild:todo_write" },
@@ -191,6 +194,7 @@ export const startGrokSession = Effect.fn("GrokAdapter.startSession")(function* 
     return session.ask({ id, toolName: name, summary: string(call["title"]) ?? name, input, answer });
   };
 
+  const tasks = yield* makeGrokTasks(acp, sessionId);
   const session = yield* makeAcpSession({
     acp,
     sessionId,
@@ -201,7 +205,15 @@ export const startGrokSession = Effect.fn("GrokAdapter.startSession")(function* 
     closeOnExit: false,
     idleExitMessage: "The Grok Build process exited.",
     onTurnEnd: () => approvedCalls.clear(),
+    notification: (method, params, active) =>
+      params["sessionId"] === sessionId &&
+      (method === "_x.ai/task_backgrounded" || method === "_x.ai/task_completed")
+        ? tasks.refreshInBackground(active)
+        : Effect.void,
   });
+  if (options.resume !== undefined) yield* tasks.refreshInBackground(session);
+  if (!readOnly && options.includeUserMcpServers && registerMcp !== undefined)
+    yield* registerMcp(acp, sessionId);
 
   yield* config.set("model", options.model);
   if (options.effort !== undefined) yield* config.set("reasoning_effort", options.effort);
@@ -220,6 +232,8 @@ export const startGrokSession = Effect.fn("GrokAdapter.startSession")(function* 
       session.send(text, extras, () =>
         Effect.succeed({ model: model(), meta: { verbatim: true, promptId: extras?.turnId } }),
       ),
+    compact: session.compact("_x.ai/compact_conversation", { session_id: sessionId }, model),
+    stopBackgroundTask: (id) => tasks.stop(session, id),
     respondToPermission: session.respondToPermission,
     interrupt: session.interrupt,
     setModel: (next) => session.whenIdle(config.set("model", next)),

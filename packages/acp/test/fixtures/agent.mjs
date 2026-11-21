@@ -132,8 +132,8 @@ for await (const line of createInterface({ input: process.stdin, crlfDelay: Infi
       reply({
         protocolVersion: Number(env.ACP_FIXTURE_PROTOCOL ?? 1),
         agentCapabilities: {
-          loadSession: true,
-          sessionCapabilities: { resume: {} },
+          loadSession: env.ACP_FIXTURE_NO_HISTORY !== "1",
+          sessionCapabilities: { resume: {}, ...(env.ACP_FIXTURE_NO_HISTORY ? {} : { list: {} }) },
           promptCapabilities: { image: env.ACP_FIXTURE_IMAGES !== "0" },
           mcpCapabilities: { http: true },
         },
@@ -169,6 +169,50 @@ for await (const line of createInterface({ input: process.stdin, crlfDelay: Infi
         break;
       }
       reply({ sessionId: sid, configOptions: configOptions() });
+      break;
+    case "session/list":
+      if (params.cursor === "second" && env.ACP_FIXTURE_REPEAT_CURSOR) {
+        reply({ sessions: [], nextCursor: "second" });
+      } else if (params.cursor === "second") {
+        reply({
+          sessions: [
+            { sessionId: "new", cwd: "/project", title: "New", updatedAt: "2026-10-02T00:00:00Z" },
+            { sessionId: sid, cwd: "/project", title: "Duplicate" },
+            { sessionId: "missing-directory" },
+          ],
+        });
+      } else {
+        reply({
+          sessions: [{ sessionId: sid, cwd: "/project", updatedAt: "2026-10-01T00:00:00Z" }],
+          nextCursor: "second",
+        });
+      }
+      break;
+    case "session/load":
+      if (env.ACP_FIXTURE_LOGGED_OUT) {
+        send({ id, error: { code: -32000, message: "Authentication required" } });
+        break;
+      }
+      send({
+        method: "session/update",
+        params: {
+          sessionId: "other",
+          update: { sessionUpdate: "user_message_chunk", content: { type: "text", text: "ignore" } },
+        },
+      });
+      update("user_message_chunk", { content: { type: "text", text: "First" } });
+      update("user_message_chunk", { content: { type: "image", data: "eA==" } });
+      update("user_message_chunk", { content: { type: "text", text: " prompt" } });
+      update("agent_thought_chunk", { content: { type: "text", text: "Thinking" } });
+      update("tool_call", { toolCallId: "saved-tool", name: "read", status: "completed" });
+      say("First reply");
+      update("user_message_chunk", { content: { type: "text", text: "Second prompt" } });
+      say("Second reply");
+      ask("session/request_permission", { sessionId: sid }, () => reply({ configOptions: configOptions() }));
+      break;
+    case "_fixture/compact":
+      if (params.refuse) send({ id, error: { code: -32601, message: "Compaction unavailable" } });
+      else setTimeout(() => reply({}), 60);
       break;
     case "session/set_config_option": {
       const option = config.get(params.configId);

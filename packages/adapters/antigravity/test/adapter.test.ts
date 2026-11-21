@@ -40,6 +40,26 @@ const drainTurn = (session: AgentSession) =>
   );
 
 describe.skipIf(process.platform === "win32")("Antigravity adapter over ACP", () => {
+  it("lists and replays a saved conversation using Antigravity's translator", () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const { adapter } = yield* fixture();
+        const saved = (yield* adapter.listSessions)[0];
+        if (saved === undefined) throw new Error("Missing saved session");
+        expect(saved).toMatchObject({ id: "acp-fixture", title: "Saved Antigravity" });
+        const history = yield* adapter.readSession(saved);
+        expect(history.model).toBe("fixture-flash");
+        expect(history.turns[0]).toMatchObject({
+          prompt: "Review this",
+          events: [
+            { payload: { _tag: "ToolCallStarted", toolName: "run_command" } },
+            { payload: { _tag: "ToolCallCompleted", isError: false } },
+            { payload: { _tag: "MessageDelta", text: "Looks good" } },
+            { payload: { _tag: "MessageCompleted", text: "Looks good" } },
+          ],
+        });
+      }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    ));
   it("probes, catalogs, verifies one-call approvals, then resumes with model switching", () =>
     Effect.runPromise(
       Effect.gen(function* () {

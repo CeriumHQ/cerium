@@ -21,6 +21,8 @@ export const failure = (message: string, cause?: unknown) =>
 
 export const devinManifest: CapabilityManifest = {
   provider: PROVIDER,
+  // Devin's local ACP server provides history replay but no verified turn-boundary fork RPC.
+  // Its /compact reply can report end_turn without confirming any compaction.
   session: { resume: true, fork: false },
   switching: { model: true, effort: true, cacheSafeEffort: false, speed: true },
   input: { images: true },

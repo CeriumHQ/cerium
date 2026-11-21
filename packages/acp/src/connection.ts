@@ -38,6 +38,8 @@ export interface AgentInfo {
   readonly meta: JsonRecord | undefined;
   /** `session/load`, which replays the session's history as updates. */
   readonly loadSession: boolean;
+  /** `session/list`, which enumerates saved sessions. */
+  readonly listSessions: boolean;
   /** `session/resume`, which continues a session without replaying it. */
   readonly resumeSession: boolean;
   readonly images: boolean;
@@ -58,13 +60,15 @@ const parse = (line: string): unknown => {
 
 const agentInfo = (raw: JsonRecord): AgentInfo => {
   const capabilities = record(raw["agentCapabilities"]);
+  const sessions = record(capabilities?.["sessionCapabilities"]);
   return {
     raw,
     capabilities,
     authMethods: Array.isArray(raw["authMethods"]) ? raw["authMethods"] : [],
     meta: record(raw["_meta"]),
     loadSession: capabilities?.["loadSession"] === true,
-    resumeSession: record(capabilities?.["sessionCapabilities"])?.["resume"] !== undefined,
+    listSessions: record(sessions?.["list"]) !== undefined,
+    resumeSession: sessions?.["resume"] !== undefined,
     images: record(capabilities?.["promptCapabilities"])?.["image"] === true,
     httpMcp: record(capabilities?.["mcpCapabilities"])?.["http"] === true,
   };

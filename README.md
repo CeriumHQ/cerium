@@ -47,7 +47,7 @@ Every coding agent has strengths. Instead of juggling terminals or routing throu
 - **Git, GitHub & checkpoints** — Durable git worktrees per thread, inline staging and commits, PR and issue workflows, and turn-level checkpoints that restore both conversation and files.
 - **Terminals, preview & computer use** — Per-thread shells, an inspectable browser preview agents can drive (element picking, viewports, light/dark), and opt-in cross-harness computer use with live per-agent cursors.
 - **Phone & remote access** — Optional sign-in syncs desktop threads to the web app and phone, with push notifications when an agent finishes or needs approval.
-- **Daily ergonomics** — Thread forking, `/btw` side questions, split panes, local Whisper dictation, `cerium` CLI, remote MCP server, a shared Hub for MCP servers, skills, and project instructions, and session import from Claude Code, Codex, GitHub Copilot, OpenCode, and Muse.
+- **Daily ergonomics** — Thread forking, `/btw` side questions, split panes, local Whisper dictation, `cerium` CLI, remote MCP server, a shared Hub for MCP servers, skills, and project instructions, and session import from Antigravity, Claude Code, Codex, Devin, GitHub Copilot, Grok Build, Muse, and OpenCode.
 
 <p align="center">
   <img src=".github/media/artifact.webp" alt="An interactive artifact rendered inside a Cerium thread with live sliders, stats, and a job-queue timeline" width="100%" />
@@ -76,6 +76,7 @@ Install any of these locally and sign in as usual — Cerium detects them automa
 - **GitHub Copilot** uses manual approval prompts in Auto mode. It imports local CLI sessions and supports thread forks, `/btw`, and manual compaction. Hub server and skill switches apply across projects.
 - **Cursor** uses the local Agent SDK's workspace-scoped sessions. The standalone Cursor CLI keeps a separate chat history. Cursor's Hub server switches apply per project.
 - **Devin** runs each session on a copy of your Devin settings with native subagents turned off, so helpers coordinate over Cerium's MCP bus. Devin has no appendable system prompt over ACP, so Cerium's instructions open a thread's first turn.
+- **Grok Build** supports turn-boundary forks, private side questions, compaction, and background command cancellation. The Hub can show MCP connection status and tools while a Grok Build session is open with your MCP servers enabled.
 - **Muse Code** supports native thread forks and exposes configured MCP servers and skills in the Hub. On Windows, it runs commands with Full access only, as `muse serve` cannot sandbox commands there.
 - **OpenCode** answers `/btw` from the session's context. OpenCode 2.3.2 can also show background jobs and stop running shell jobs.
 

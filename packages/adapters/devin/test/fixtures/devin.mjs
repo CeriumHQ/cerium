@@ -14,7 +14,14 @@ if (args[0] === "--version") {
 const configAt = args[0] === "--config" ? args[1] : undefined;
 const rest = configAt === undefined ? args : args.slice(2);
 assert.deepEqual(rest, ["acp", "--process-model", "in-process"]);
-const config = configAt === undefined ? undefined : JSON.parse(readFileSync(configAt, "utf8"));
+const config =
+  configAt === undefined
+    ? undefined
+    : JSON.parse(
+        readFileSync(configAt, "utf8")
+          .replace(/^\s*\/\/.*$/gm, "")
+          .replace(/,\s*}/g, "}"),
+      );
 
 const variants = {
   "fixture-swe": { thought: ["medium", "high", "max"], effort: "high", speed: ["standard", "fast"] },
@@ -256,12 +263,54 @@ for await (const line of createInterface({ input: process.stdin })) {
       state.prompts = 1;
       // History replays before the response; a client must not take it for a new turn.
       update(params.sessionId, {
+        sessionUpdate: "user_message_chunk",
+        content: { type: "text", text: "Inspect this" },
+        _meta: { "cognition.ai/eventId": "prompt-1", "cognition.ai/timestamp": "2026-10-01T00:01:00Z" },
+      });
+      update(params.sessionId, {
         sessionUpdate: "agent_message_chunk",
         content: { type: "text", text: "From the past." },
       });
       result(id, { configOptions: configOptions(state) });
       break;
     }
+    case "session/list":
+      assert.deepEqual(params, {});
+      result(id, {
+        sessions: [
+          {
+            sessionId: "fixture-2",
+            cwd: "/workspace",
+            title: "Empty",
+            _meta: { "cognition.ai/hasUserMessages": false },
+          },
+          {
+            sessionId: "fixture-1",
+            cwd: "/workspace",
+            title: "Saved Devin",
+            updatedAt: "2026-10-02T00:00:00Z",
+            _meta: { "cognition.ai/hasUserMessages": true, "cognition.ai/createdAt": "2026-10-01T00:00:00Z" },
+          },
+        ],
+      });
+      break;
+    case "_cognition.ai/skills/list":
+      assert.ok(params.cwd);
+      if (scenario === "devin-no-skill-list") {
+        send({ id, error: { code: -32601, message: "Method not found" } });
+        break;
+      }
+      result(id, {
+        skills: [
+          {
+            name: "repo:review",
+            description: "Review changes",
+            path: join(params.cwd, "review", "SKILL.md"),
+          },
+          { name: "hidden", userInvocable: false },
+        ],
+      });
+      break;
     case "session/set_config_option": {
       const state = sessions.get(params.sessionId);
       if (params.configId === "mode") state.mode = params.value;
