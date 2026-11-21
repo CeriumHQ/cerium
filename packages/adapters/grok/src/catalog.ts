@@ -1,65 +1,89 @@
-import { HarnessUnavailable, findOnPath, parseVersion, scratchFolder } from "@cerium/harness";
+import {
+  array,
+  connect,
+  findExecutable,
+  loginRequired,
+  needsLogin,
+  readCliVersion,
+  record,
+  string,
+  type AcpConnection,
+} from "@cerium/acp";
+import { scratchFolder } from "@cerium/harness";
 import { ReasoningEffort, type AuthStatus, type ModelInfo } from "@cerium/protocol";
 import { Effect, Schema } from "effect";
-import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
-import { INSTALL_HINT, LOGIN_COMMAND, SIGNED_OUT } from "./manifest.ts";
-import { array, connect, failure, object, string, type GrokConnection } from "./rpc.ts";
+import { INSTALL_HINT, LOGIN_COMMAND, PROVIDER, failure, grokHarness } from "./manifest.ts";
 
 const isEffort = Schema.is(ReasoningEffort);
 const efforts = ["minimal", "low", "medium", "high", "xhigh", "max"] as const;
-const loginRequired = (cause: unknown) => cause === -32000;
 
-export const signedOut = () =>
-  new HarnessUnavailable({ provider: "grok", reason: "loggedOut", message: SIGNED_OUT });
+export const signedOut = () => loginRequired(grokHarness);
 
-export const initialize = (client: GrokConnection) =>
-  client
-    .request("initialize", {
-      protocolVersion: 1,
-      clientCapabilities: {},
-      clientInfo: { name: "cerium", version: "0.0.0" },
-      _meta: { clientIdentifier: "cerium" },
-    })
-    .pipe(
-      Effect.flatMap((value) => {
-        const info = object(value);
-        return info?.["protocolVersion"] === 1
-          ? Effect.succeed(info)
-          : Effect.fail(failure("Grok Build did not negotiate ACP version 1"));
-      }),
-    );
+/**
+ * `grok agent stdio`, Grok Build's ACP agent, without its updater, telemetry, workflows or goals.
+ * Without the user's MCP servers, Grok's imports of other harnesses' servers are off too.
+ */
+export const connectGrok = (
+  executable: string,
+  cwd: string,
+  sandbox?: "off" | "workspace" | "read-only",
+  includeUserMcpServers = true,
+) =>
+  connect(
+    grokHarness,
+    {
+      executable,
+      args: ["--no-auto-update", "agent", "--no-leader", "stdio"],
+      cwd,
+      env: {
+        GROK_DISABLE_AUTOUPDATER: "1",
+        GROK_TELEMETRY_ENABLED: "0",
+        GROK_STORAGE_MODE: "local",
+        GROK_WORKFLOWS: "0",
+        GROK_GOAL: "0",
+        GROK_SANDBOX_AUTO_ALLOW_BASH: "0",
+        ...(includeUserMcpServers
+          ? {}
+          : {
+              GROK_CLAUDE_MCPS_ENABLED: "0",
+              GROK_CURSOR_MCPS_ENABLED: "0",
+              GROK_CODEX_MCPS_ENABLED: "0",
+              GROK_MANAGED_MCPS_ENABLED: "0",
+              GROK_MANAGED_MCP_GATEWAY_TOOLS_ENABLED: "0",
+            }),
+        ...(sandbox === undefined ? {} : { GROK_SANDBOX: sandbox }),
+      },
+    },
+    { meta: { clientIdentifier: "cerium" } },
+  );
 
-export const authenticate = Effect.fn("GrokAdapter.authenticate")(function* (
-  client: GrokConnection,
-  info: Readonly<Record<string, unknown>>,
-) {
-  const meta = object(info["_meta"]);
-  const ids = array(info["authMethods"]).map((method) => object(method)?.["id"]);
-  const preferred = meta?.["defaultAuthMethodId"];
+export const authenticate = Effect.fn("GrokAdapter.authenticate")(function* (acp: AcpConnection) {
+  const ids = array(acp.agent.authMethods).map((method) => record(method)?.["id"]);
+  const preferred = acp.agent.meta?.["defaultAuthMethodId"];
   // Interactive auth belongs to the user's CLI. Only ask the provider to use its existing login.
   const method = [preferred, "cached_token", "xai.api_key"].find(
     (id) => (id === "cached_token" || id === "xai.api_key") && ids.includes(id),
   );
   if (method === undefined) return yield* signedOut();
-  yield* client
-    .request("authenticate", { methodId: method, _meta: { headless: true } })
-    .pipe(Effect.mapError((error) => (loginRequired(error.cause) ? signedOut() : error)));
+  yield* acp
+    .query("authenticate", { methodId: method, _meta: { headless: true } })
+    .pipe(Effect.mapError((error) => (needsLogin(error) ? signedOut() : acp.refused("authenticate")(error))));
   return method === "xai.api_key" ? "apiKey" : "grokLogin";
 });
 
 export const grokModels = (state: unknown): ReadonlyArray<ModelInfo> => {
-  const catalog = object(state);
+  const catalog = record(state);
   return array(catalog?.["availableModels"]).flatMap((entry) => {
-    const model = object(entry);
+    const model = record(entry);
     const id = string(model?.["modelId"]);
     if (id === undefined) return [];
     const description = string(model?.["description"]);
-    const options = array(object(model?.["_meta"])?.["reasoningEfforts"]).map(object);
+    const options = array(record(model?.["_meta"])?.["reasoningEfforts"]).map(record);
     const defaultEffort = options.find((option) => option?.["default"] === true)?.["value"];
     return [
       {
-        provider: "grok",
+        provider: PROVIDER,
         id,
         label: string(model?.["name"]) ?? id,
         ...(description === undefined ? {} : { description }),
@@ -75,26 +99,17 @@ export const grokModels = (state: unknown): ReadonlyArray<ModelInfo> => {
 
 export const inspectGrok = Effect.fn("GrokAdapter.inspect")(
   function* () {
-    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-    const executable = (yield* findOnPath("grok")).find(
-      (path) => process.platform !== "win32" || /\.exe$/i.test(path),
-    );
+    const executable = yield* findExecutable("grok");
     if (executable === undefined)
       return {
-        status: { _tag: "HarnessMissing", provider: "grok", installHint: INSTALL_HINT },
+        status: { _tag: "HarnessMissing", provider: PROVIDER, installHint: INSTALL_HINT },
         models: [],
       } as const;
 
-    const version = yield* spawner.string(ChildProcess.make(executable, ["--version"])).pipe(
-      Effect.map(parseVersion),
-      Effect.mapError((cause) => failure("Could not run grok --version", cause)),
-    );
-    if (version === undefined) return yield* failure("Could not read the Grok Build version");
-
-    const cwd = yield* scratchFolder("grok", "grok-probe");
-    const client = yield* connect(executable, cwd, undefined, false);
-    const info = yield* initialize(client);
-    const auth: AuthStatus = yield* authenticate(client, info).pipe(
+    const version = yield* readCliVersion(grokHarness, executable, "grok");
+    const cwd = yield* scratchFolder(PROVIDER, "grok-probe");
+    const acp = yield* connectGrok(executable, cwd, undefined, false);
+    const auth: AuthStatus = yield* authenticate(acp).pipe(
       Effect.map((method): AuthStatus => ({ _tag: "LoggedIn", method })),
       Effect.catchTag("HarnessUnavailable", () =>
         Effect.succeed({ _tag: "LoggedOut", loginCommand: LOGIN_COMMAND } as const),
@@ -102,12 +117,12 @@ export const inspectGrok = Effect.fn("GrokAdapter.inspect")(
     );
     const status = {
       _tag: "HarnessInstalled",
-      provider: "grok",
+      provider: PROVIDER,
       executablePath: executable,
       version,
       auth,
     } as const;
-    return { status, models: grokModels(object(info["_meta"])?.["modelState"]) };
+    return { status, models: grokModels(acp.agent.meta?.["modelState"]) };
   },
   Effect.scoped,
   Effect.timeoutOrElse({

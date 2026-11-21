@@ -160,10 +160,24 @@
         "@effect/vitest": "4.0.5",
       },
     },
+    "packages/acp": {
+      "name": "@cerium/acp",
+      "version": "0.0.0",
+      "dependencies": {
+        "@cerium/harness": "workspace:*",
+        "@cerium/protocol": "workspace:*",
+        "effect": "4.0.5",
+      },
+      "devDependencies": {
+        "@effect/platform-node": "4.0.5",
+        "@effect/vitest": "4.0.5",
+      },
+    },
     "packages/adapters/antigravity": {
       "name": "@cerium/adapter-antigravity",
       "version": "0.0.0",
       "dependencies": {
+        "@cerium/acp": "workspace:*",
         "@cerium/harness": "workspace:*",
         "@cerium/protocol": "workspace:*",
         "effect": "4.0.5",
@@ -237,6 +251,7 @@
       "name": "@cerium/adapter-devin",
       "version": "0.0.0",
       "dependencies": {
+        "@cerium/acp": "workspace:*",
         "@cerium/harness": "workspace:*",
         "@cerium/protocol": "workspace:*",
         "effect": "4.0.5",
@@ -250,6 +265,7 @@
       "name": "@cerium/adapter-grok",
       "version": "0.0.0",
       "dependencies": {
+        "@cerium/acp": "workspace:*",
         "@cerium/harness": "workspace:*",
         "@cerium/protocol": "workspace:*",
         "effect": "4.0.5",
@@ -487,6 +503,8 @@
     "@bufbuild/protobuf": ["@bufbuild/protobuf@1.10.0", "", {}, "sha512-QDdVFLoN93Zjg36NoQPZfsVH9tZew7wKDKyV5qRdj8ntT4wQCOradQjRaTdwMhWUYsgKsvCINKKm87FdEk96Ag=="],
 
     "@cerium/account": ["@cerium/account@workspace:packages/account"],
+
+    "@cerium/acp": ["@cerium/acp@workspace:packages/acp"],
 
     "@cerium/adapter-antigravity": ["@cerium/adapter-antigravity@workspace:packages/adapters/antigravity"],
 

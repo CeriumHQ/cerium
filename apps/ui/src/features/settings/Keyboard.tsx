@@ -18,9 +18,17 @@ import {
 } from "../../lib/shortcuts.ts";
 import { buttonClass } from "../../components/ui/Button.tsx";
 import { SelectItem, SelectPopup, SelectRoot, SelectTrigger } from "../../components/ui/Select.tsx";
-import { Keys, SettingsCard, SettingsList, SettingsPage, SettingsRow, SettingsSection } from "./parts.tsx";
+import {
+  Keys,
+  SettingsCard,
+  SettingsList,
+  SettingsPage,
+  SettingsRow,
+  SettingsSection,
+  SettingsSwitch,
+} from "./parts.tsx";
 import { WEB } from "../../backend/target.ts";
-import { sendKeyAtom, type SendKey } from "./preferences.ts";
+import { autocompleteAtom, sendKeyAtom, type SendKey } from "./preferences.ts";
 import { canScale } from "./scale.ts";
 
 const sendKeys: Record<SendKey, { readonly send: string; readonly newLine: string }> = {
@@ -41,6 +49,7 @@ interface Conflict {
 
 export function KeyboardSettings() {
   const [sendKey, setSendKey] = useAtom(sendKeyAtom);
+  const [autocomplete, setAutocomplete] = useAtom(autocompleteAtom);
   const [bindings, setBindings] = useAtom(shortcutBindingsAtom);
   const [query, setQuery] = useState("");
   const [capturing, setCapturing] = useState<ShortcutId | undefined>(undefined);
@@ -127,6 +136,18 @@ export function KeyboardSettings() {
                 ))}
               </SelectPopup>
             </SelectRoot>
+          )}
+        />
+        {/* Every window offers it, the web client's too; it's kept in this window. */}
+        <SettingsRow
+          label="Composer autocomplete"
+          hint="Suggests what to send next once a turn finishes. Press Tab to use it, or Esc to dismiss it."
+          control={(labelledBy) => (
+            <SettingsSwitch
+              checked={autocomplete === "on"}
+              onCheckedChange={(next) => setAutocomplete(next ? "on" : "off")}
+              labelledBy={labelledBy}
+            />
           )}
         />
       </SettingsList>

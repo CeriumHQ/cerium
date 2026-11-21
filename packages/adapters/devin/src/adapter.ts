@@ -1,11 +1,12 @@
-import { HarnessUnavailable, shareProbe, type HarnessAdapter, type SessionOptions } from "@cerium/harness";
+import { usableStatus as acpUsableStatus } from "@cerium/acp";
+import { shareProbe, type HarnessAdapter, type SessionOptions } from "@cerium/harness";
 import type { HarnessStatus } from "@cerium/protocol";
 import { Clock, Context, Deferred, Duration, Effect, FileSystem, Layer, Path } from "effect";
 import { ChildProcessSpawner } from "effect/process";
 
-import { INSTALL_HINT, PROVIDER, SIGNED_OUT, devinManifest, failure } from "./manifest.ts";
+import { PROVIDER, SIGNED_OUT, devinHarness, devinManifest, failure } from "./manifest.ts";
 import { modelIds, toModelInfos, type Variant } from "./models.ts";
-import { discoverDevin, loginRequired, sweepVariants } from "./probe.ts";
+import { discoverDevin, sweepVariants } from "./probe.ts";
 import { startDevinSession } from "./session.ts";
 import { readDevinUsage } from "./usage.ts";
 
@@ -32,18 +33,7 @@ export const makeDevinAdapter = (executable?: string, userConfig?: string) =>
     const probes = yield* shareProbe(discover.pipe(Effect.map(({ status }) => status)));
 
     /** The installed, signed-in CLI status, or why there is none. */
-    const usableStatus = (status: HarnessStatus) =>
-      Effect.gen(function* () {
-        if (status._tag === "HarnessMissing") {
-          return yield* new HarnessUnavailable({
-            provider: PROVIDER,
-            reason: "notInstalled",
-            message: INSTALL_HINT,
-          });
-        }
-        if (status.auth._tag === "LoggedOut") return yield* loginRequired();
-        return status;
-      });
+    const usableStatus = (status: HarnessStatus) => acpUsableStatus(devinHarness, status);
     const usable = (status: HarnessStatus) =>
       usableStatus(status).pipe(Effect.map((installed) => installed.executablePath));
 

@@ -8,6 +8,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@cerium/acp": "workspace:*",
     "@cerium/harness": "workspace:*",
     "@cerium/protocol": "workspace:*",
     "effect": "4.0.5"

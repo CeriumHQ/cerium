@@ -1,15 +1,17 @@
 import type { AdvisorSettings, ModelInfo, ReasoningEffort } from "@cerium/protocol";
+import { useAtomValue } from "@effect/atom-react";
 
+import { modelsAtom } from "../../backend/atoms.ts";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { SelectItem, SelectPopup, SelectRoot, SelectTrigger } from "../../components/ui/Select.tsx";
 import { effortLabel, modelKey } from "../composer/models.ts";
-import { providerName } from "../threads/model.ts";
 import type { HarnessIndicator } from "../threads/Sidebar.tsx";
+import { advisorModelHint } from "./advisorModel.ts";
 import { ModelGroups, readyProviders } from "./ModelGroups.tsx";
 import { SettingsRow, SettingsSwitch } from "./parts.tsx";
 import { useSetting } from "./useSetting.ts";
 
-// The advisor agents can call on beyond their own harness: rows for the Agents page's Advisor card.
+// The advisor agents can call on beyond their own harness: the rows of the Advisor page.
 
 /** An advisor is there to think hard, so a new pick starts at the model's strongest effort. */
 const advisorEffort = (model: ModelInfo, wanted?: ReasoningEffort) =>
@@ -40,6 +42,8 @@ export function AdvisorRows({
     : undefined;
   const effort = model ? advisorEffort(model, picked?.effort) : undefined;
   const idle = picked !== undefined && !readyProviders(harnesses).has(picked.provider);
+  const loading = useAtomValue(modelsAtom).waiting;
+  const modelHint = advisorModelHint({ picked, listed: model !== undefined, idle, loading });
 
   const toggle = (on: boolean) => {
     const start: Partial<AdvisorSettings> =
@@ -69,13 +73,7 @@ export function AdvisorRows({
       {advisor.enabled ? (
         <SettingsRow
           label="Advisor model"
-          hint={
-            idle && picked ? (
-              <span className="text-attention-text">
-                {providerName[picked.provider]} can't run right now.
-              </span>
-            ) : undefined
-          }
+          hint={modelHint ? <span className="text-attention-text">{modelHint}</span> : undefined}
           className="pr-2.5"
           control={() => (
             <span className="flex shrink-0 items-center">

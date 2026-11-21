@@ -1,18 +1,42 @@
-import { HarnessUnavailable, findOnPath, parseVersion, scratchFolder } from "@cerium/harness";
+import {
+  configOption,
+  connect,
+  findExecutable,
+  loginRequired as acpLoginRequired,
+  needsLogin,
+  probeWorkspace,
+  readCliVersion,
+  readConfigOptions,
+  record,
+  string,
+  type AcpConnection,
+  type ConfigOption,
+} from "@cerium/acp";
 import type { HarnessStatus } from "@cerium/protocol";
-import { Effect, FileSystem } from "effect";
-import { ChildProcess, ChildProcessSpawner } from "effect/process";
+import { Effect } from "effect";
 
-import { callFailure, connect, needsLogin, record, string, type DevinConnection } from "./acp.ts";
-import { INSTALL_HINT, LOGIN_COMMAND, PROVIDER, SIGNED_OUT, failure } from "./manifest.ts";
-import { configOption, readConfigOptions, variantOf, type ConfigOption, type Variant } from "./models.ts";
+import { INSTALL_HINT, LOGIN_COMMAND, PROVIDER, devinHarness, failure } from "./manifest.ts";
+import { variantOf, type Variant } from "./models.ts";
 
-export const findDevinExecutable = findOnPath("devin").pipe(
-  Effect.map((paths) => paths.find((path) => process.platform !== "win32" || /\.exe$/i.test(path))),
-);
+export const findDevinExecutable = findExecutable("devin");
 
-export const loginRequired = () =>
-  new HarnessUnavailable({ provider: PROVIDER, reason: "loggedOut", message: SIGNED_OUT });
+export const loginRequired = () => acpLoginRequired(devinHarness);
+
+/**
+ * `devin acp` over stdio. The agent runs in this process rather than in the daemon the user's own
+ * `devin` commands share, so closing the scope ends it.
+ */
+export const connectDevin = (executable: string, cwd: string, configFile?: string) =>
+  connect(devinHarness, {
+    executable,
+    args: [
+      ...(configFile === undefined ? [] : ["--config", configFile]),
+      "acp",
+      "--process-model",
+      "in-process",
+    ],
+    cwd,
+  });
 
 export interface Discovery {
   readonly status: HarnessStatus;
@@ -20,17 +44,8 @@ export interface Discovery {
   readonly config: ReadonlyArray<ConfigOption>;
 }
 
-/** A folder outside any project, so no project's rules or MCP servers load. */
-const probeFolder = Effect.gen(function* () {
-  const fs = yield* FileSystem.FileSystem;
-  const directory = yield* scratchFolder(PROVIDER);
-  return yield* fs
-    .makeTempDirectoryScoped({ directory, prefix: "cerium-devin-" })
-    .pipe(Effect.mapError((cause) => failure("Could not prepare Devin's probe workspace", cause)));
-});
-
 /** Devin keeps a session from its creation. One that never had a prompt goes with it here. */
-const discard = (acp: DevinConnection, sessionId: string) =>
+const discard = (acp: AcpConnection, sessionId: string) =>
   acp
     .query("session/close", { sessionId })
     .pipe(
@@ -39,7 +54,7 @@ const discard = (acp: DevinConnection, sessionId: string) =>
       Effect.ignore,
     );
 
-const openSession = (acp: DevinConnection, cwd: string) =>
+const openSession = (acp: AcpConnection, cwd: string) =>
   acp.query("session/new", { cwd, mcpServers: [] }).pipe(
     Effect.flatMap((result) => {
       const sessionId = string(record(result)?.["sessionId"]);
@@ -63,26 +78,14 @@ export const discoverDevin = Effect.fn("Devin.discover")(
       } satisfies Discovery;
     }
 
-    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-    const output = yield* spawner
-      .string(ChildProcess.make(executablePath, ["--version"], { stderr: "ignore" }))
-      .pipe(
-        Effect.mapError((cause) => failure("Could not run `devin --version`", cause)),
-        Effect.timeoutOrElse({
-          duration: "10 seconds",
-          orElse: () => Effect.fail(failure("Devin did not report its CLI version")),
-        }),
-      );
-    const version = parseVersion(output);
-    if (version === undefined) return yield* failure("Could not read the Devin CLI version");
-
+    const version = yield* readCliVersion(devinHarness, executablePath, "devin");
     const installed = { _tag: "HarnessInstalled", provider: PROVIDER, executablePath, version } as const;
-    const cwd = yield* probeFolder;
-    const acp = yield* connect(executablePath, cwd);
+    const cwd = yield* probeWorkspace(devinHarness);
+    const acp = yield* connectDevin(executablePath, cwd);
     const opened = yield* openSession(acp, cwd).pipe(
       Effect.map((session) => ({ signedIn: true as const, ...session })),
       Effect.catchIf(needsLogin, () => Effect.succeed({ signedIn: false as const })),
-      Effect.mapError(callFailure("session/new")),
+      Effect.mapError(acp.refused("session/new")),
     );
     if (!opened.signedIn) {
       return {
@@ -118,8 +121,8 @@ export const sweepVariants = Effect.fn("Devin.sweepVariants")(function* (
   models: ReadonlyArray<string>,
   found: (model: string, variant: Variant) => void,
 ) {
-  const cwd = yield* probeFolder;
-  const acp = yield* connect(executable, cwd);
+  const cwd = yield* probeWorkspace(devinHarness);
+  const acp = yield* connectDevin(executable, cwd);
   const queue = [...models];
   const sweep = (session: { readonly sessionId: string }) =>
     Effect.gen(function* () {
@@ -138,7 +141,7 @@ export const sweepVariants = Effect.fn("Devin.sweepVariants")(function* (
     }).pipe(Effect.ensuring(discard(acp, session.sessionId)));
   yield* Effect.forEach(
     Array.from({ length: Math.min(SWEEP_SESSIONS, models.length) }),
-    () => openSession(acp, cwd).pipe(Effect.mapError(callFailure("session/new")), Effect.flatMap(sweep)),
+    () => openSession(acp, cwd).pipe(Effect.mapError(acp.refused("session/new")), Effect.flatMap(sweep)),
     { concurrency: "unbounded", discard: true },
   );
 }, Effect.scoped);
