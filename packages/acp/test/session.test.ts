@@ -135,13 +135,14 @@ describe("ACP session", () => {
           expect.objectContaining({ _tag: "PermissionResolved", decision: "deny", scope: "once" }),
         );
         expect(payloads.at(-1)).toEqual({ _tag: "TurnCompleted", stopReason: "interrupted" });
+        // The agent can finish the cancelled turn before reading the approval reply. The next
+        // prompt is queued after that reply, so its completion confirms both reached the agent.
+        expect(texts(yield* turn(session, "again"))).toEqual(["again"]);
         const messages = yield* received;
         expect(messages.some(({ method }) => method === "session/cancel")).toBe(true);
         expect(messages.find(({ id }) => id === "client-1")?.result).toEqual({
           outcome: { outcome: "cancelled" },
         });
-        // The session takes the next turn.
-        expect(texts(yield* turn(session, "again"))).toEqual(["again"]);
       }),
     ));
 
