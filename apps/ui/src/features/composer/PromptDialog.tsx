@@ -1,4 +1,5 @@
 import { MAX_PROMPT_NAME } from "@cerium/protocol";
+import { Braces } from "lucide-react";
 import { useState } from "react";
 
 import {
@@ -87,6 +88,14 @@ export function PromptDialog({
           className={textClass}
         />
       </DialogField>
+      <p className="-mt-1 flex gap-2 rounded-lg bg-surface-sunken px-2.5 py-2 text-meta leading-relaxed text-fg-tertiary max-md:text-[13px] [&_code]:rounded [&_code]:bg-surface-hover [&_code]:px-1 [&_code]:py-px [&_code]:font-mono [&_code]:text-caption [&_code]:whitespace-nowrap [&_code]:text-fg-secondary">
+        <Braces size={13} strokeWidth={1.75} aria-hidden className="mt-[3px] shrink-0" />
+        <span>
+          Use <code>{"{{branch}}"}</code> and <code>{"{{project}}"}</code> for the current branch and project.
+          Use <code>{"{{name}}"}</code> or <code>{"{{name:default}}"}</code> for values you fill in before
+          inserting. <code>$0</code> sets the cursor. Put a backslash before a token to keep it as text.
+        </span>
+      </p>
       {options.length > 0 ? (
         <DialogField label="Works in">
           <DialogSelect

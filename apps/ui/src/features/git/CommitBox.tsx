@@ -11,6 +11,8 @@ import { checkMarkClass } from "../../components/ui/Checkbox.tsx";
 import { Disclosure } from "../../components/ui/Disclosure.tsx";
 import { GenerateButton } from "../../components/ui/GenerateButton.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
+import type { AskAgentFix } from "../composer/agentFix.ts";
+import { AskAgentToFix } from "../composer/AskAgentToFix.tsx";
 import { ReviewButton } from "../review/ReviewButton.tsx";
 import { ReviewCard } from "../review/ReviewCard.tsx";
 import { commitDraftAtom, commitMessage, splitMessage } from "./model.ts";
@@ -19,6 +21,7 @@ import { commitDraftAtom, commitMessage, splitMessage } from "./model.ts";
 interface Failure {
   readonly message: string;
   readonly output?: string | undefined;
+  readonly command?: string;
 }
 
 const failureOf = (error: unknown): Failure => {
@@ -43,6 +46,7 @@ export function CommitBox({
   changed,
   conflicted,
   threadId,
+  onAskFix,
   onCommitted,
 }: {
   /** The repository's top. */
@@ -56,6 +60,7 @@ export function CommitBox({
    * none where the machine can't review.
    */
   threadId?: ThreadId | undefined;
+  onAskFix?: AskAgentFix | undefined;
   /** Has what the panel shows read again. */
   onCommitted: () => void;
 }) {
@@ -139,13 +144,14 @@ export function CommitBox({
       ...(draft.amend ? { amend: true } : {}),
       ...(all ? { all: true } : {}),
     };
+    const command = draft.amend ? "git commit --amend" : "git commit";
     try {
       const result = await commit({ payload });
       setDraft({ subject: "", body: "", amend: false });
       setFilled(undefined);
       setMade(result);
     } catch (error) {
-      setFailure(failureOf(error));
+      setFailure({ ...failureOf(error), command });
     }
     setBusy(false);
     onCommitted();
@@ -171,6 +177,7 @@ export function CommitBox({
           : staged === 1
             ? "Commit 1 file"
             : `Commit ${staged} files`;
+  const hookFailed = failure !== undefined && /\bhooks?\b/i.test(failure.message);
 
   return (
     <div className="flex flex-col gap-2 border-b border-line-subtle p-2">
@@ -263,14 +270,21 @@ export function CommitBox({
           <p className="text-meta text-error-text max-md:text-[14px]">{failure.message}</p>
           {failure.output === undefined ? null : (
             <Disclosure
-              summary={/hook/.test(failure.message) ? "What the hook printed" : "What git printed"}
-              defaultOpen={/hook/.test(failure.message)}
+              summary={hookFailed ? "What the hook printed" : "What git printed"}
+              defaultOpen={hookFailed}
             >
               <pre className="scroll-thin max-h-56 overflow-auto rounded-lg bg-surface-sunken p-2.5 font-mono text-meta leading-relaxed whitespace-pre-wrap text-fg-secondary">
                 {failure.output}
               </pre>
             </Disclosure>
           )}
+          {onAskFix && failure.command && (hookFailed || failure.output?.trim()) ? (
+            <AskAgentToFix
+              variant="button"
+              failure={() => ({ ...failure, context: top })}
+              onAskFix={onAskFix}
+            />
+          ) : null}
         </div>
       ) : made ? (
         <p className="flex min-w-0 items-center gap-1.5 text-meta text-fg-tertiary max-md:text-[14px]">

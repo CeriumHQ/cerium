@@ -64,6 +64,18 @@ export const makeAntigravityAdapter = (executable?: string) =>
 
     return {
       provider: PROVIDER,
+      hubInstructions: {
+        files: [
+          { path: "AGENTS.md", primary: true },
+          { path: "GEMINI.md" },
+          { path: ".agents/AGENTS.md" },
+          { path: ".agents/GEMINI.md" },
+        ],
+        folders: [
+          { path: ".agents/rules", suffix: ".md" },
+          { path: ".agent/rules", suffix: ".md" },
+        ],
+      },
       manifest: antigravityManifest,
       probe: fresh.pipe(Effect.map(({ status }) => status)),
       listModels: ready.pipe(Effect.map(({ models }) => models)),

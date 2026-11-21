@@ -1,4 +1,4 @@
-import { inboxAt, needsYou, type ThreadSummary } from "./model.ts";
+import { entryThreads, inboxAt, needsYou, type InboxEntry, type ThreadSummary } from "./model.ts";
 
 export interface ThreadSection {
   readonly key: string;
@@ -27,6 +27,32 @@ const statusSections = [
   { key: "working", label: "Working" },
   { key: "unread", label: "Unread" },
 ] as const;
+
+export const inboxStatusFilters = [
+  { key: "all", label: "All statuses" },
+  ...statusSections,
+  { key: "worktree", label: "Worktrees" },
+] as const;
+
+export type InboxStatusFilter = (typeof inboxStatusFilters)[number]["key"];
+
+/** A matched comparison stays together so its members remain available to select. */
+export function filterInboxEntries(entries: ReadonlyArray<InboxEntry>, status: InboxStatusFilter) {
+  if (status === "all") return entries;
+  const matches = (thread: ThreadSummary) => {
+    switch (status) {
+      case "needsYou":
+        return needsYou(thread);
+      case "working":
+        return thread.status === "running";
+      case "unread":
+        return thread.unread;
+      case "worktree":
+        return thread.worktree !== undefined;
+    }
+  };
+  return entries.filter((entry) => entryThreads(entry).some(matches));
+}
 
 /**
  * Where a work thread sits in the inbox: waiting on the user (an approval, or a failure they haven't

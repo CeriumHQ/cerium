@@ -34,6 +34,15 @@ export class GrokAdapter extends Context.Service<GrokAdapter, HarnessAdapter>()(
         });
       return GrokAdapter.of({
         provider: "grok",
+        hubInstructions: {
+          files: [
+            { path: "AGENTS.md", primary: true },
+            { path: "AGENT.md" },
+            { path: "CLAUDE.md" },
+            { path: "CLAUDE.local.md", supplemental: true },
+          ],
+          folders: [{ path: ".claude/rules", suffix: ".md", recursive: true }],
+        },
         manifest: grokManifest,
         probe: probes.fresh,
         listModels: inspect.pipe(

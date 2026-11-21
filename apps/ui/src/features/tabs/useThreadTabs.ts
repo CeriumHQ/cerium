@@ -58,7 +58,7 @@ export function useThreadTabs({
   /** Shows a tab's thread or draft. */
   onShow: (key: string) => void;
   /** Shows the blank new thread `key` in place of the window's current one. */
-  onFresh: (key: string) => void;
+  onFresh: (key: string, focus: boolean) => void;
   /**
    * Tabs closed, for the window to forget the empty drafts among them and close their panes. Returns
    * what shows in place of the active tab when it closed, if the window has its own idea (the pane
@@ -72,10 +72,10 @@ export function useThreadTabs({
   const drafts = useAtomValue(newThreadDraftTabsAtom);
   const githubTitles = useAtomValue(githubTitlesAtom);
   const strip = strips[machine]?.[mode] ?? emptyStrip;
-  const update = (change: (strip: TabStrip) => TabStrip) =>
+  const update = (change: (strip: TabStrip) => TabStrip, targetMode: AppMode = mode) =>
     setStrips((all) => ({
       ...all,
-      [machine]: { ...all[machine], [mode]: change(all[machine]?.[mode] ?? emptyStrip) },
+      [machine]: { ...all[machine], [targetMode]: change(all[machine]?.[targetMode] ?? emptyStrip) },
     }));
 
   /** A tab that holds a new thread with nothing in it yet, which can be replaced or reused without loss. */
@@ -166,10 +166,10 @@ export function useThreadTabs({
     if (key !== undefined && key !== active) onShow(key);
   };
   /** Opens a blank new thread in a tab of its own. */
-  const fresh = () => {
+  const fresh = (focus = true) => {
     const key = newDraftKey();
     setOpening({ key, as: "tab" });
-    onFresh(key);
+    onFresh(key, focus);
   };
   /** A tab holding an empty new thread, which "New thread" reuses rather than opening another. */
   const emptyTab = isEmpty(active) ? active : keys.find(isEmpty);
@@ -178,15 +178,15 @@ export function useThreadTabs({
     else show(emptyTab);
   };
 
-  const close = (closing: ReadonlyArray<string>, remember = true) => {
+  const close = (closing: ReadonlyArray<string>, remember = true, replacement?: string) => {
     // The last tab, holding nothing, stays: closing it would only open another like it.
     if (keys.length === 1 && closing.includes(active) && isEmpty(active)) return;
     const { next } = closeTabs(visible, closing, { remember });
     update((current) => closeTabs(current, closing, { remember }).strip);
     const instead = onClosed(closing);
     if (!closing.includes(active)) return;
-    const shown = instead ?? next;
-    if (shown === undefined) fresh();
+    const shown = replacement ?? instead ?? next;
+    if (shown === undefined) fresh(remember);
     else onShow(shown);
   };
   const canReopen = (key: string) =>
@@ -217,7 +217,7 @@ export function useThreadTabs({
     /** Asks for the next thread shown to open as `as`: the sidebar's Ctrl click wants a tab of its own. */
     openAs: (key: string, as: OpenAs) => setOpening({ key, as }),
     /** The user worked in the tab: it's no longer the preview. */
-    keep: (key: string) => update((current) => keepTab(current, key)),
+    keep: (key: string, targetMode?: AppMode) => update((current) => keepTab(current, key), targetMode),
     /**
      * A new thread started: its tab is now the thread's, and the threads started with it (multi
      * agent) open in tabs right after it.
@@ -227,6 +227,12 @@ export function useThreadTabs({
     /** Closes `key`'s tab, if it has one, without offering to reopen it: its thread is gone. */
     drop: (key: string) => {
       if (keys.includes(key)) close([key], false);
+    },
+    /** Drops archived tabs together. A background strip updates without changing the current view. */
+    dropMany: (archived: ReadonlyArray<string>, replacement: string, background = false) => {
+      if (archived.length === 0) return;
+      if (background) update((current) => closeTabs(current, archived, { remember: false }).strip);
+      else close(archived, false, replacement);
     },
     /** Opens a new thread: in the tab of an empty one if there is one, else in a tab of its own. */
     newTab,

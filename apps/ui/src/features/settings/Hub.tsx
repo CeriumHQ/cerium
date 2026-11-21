@@ -15,6 +15,7 @@ import type {
   ProjectInfo,
   ProviderId,
 } from "@cerium/protocol";
+import { HUB_INSTRUCTIONS_RPC_VERSION } from "@cerium/rpc";
 import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
 import { ChevronDown, Plus, RefreshCw } from "lucide-react";
@@ -32,11 +33,13 @@ import {
   setHubTool,
 } from "../../backend/hub.ts";
 import { savedProjectsAtom } from "../../backend/projects.ts";
+import { drivenRpcVersionAtom } from "../../backend/atoms.ts";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { IconButton } from "../../components/ui/IconButton.tsx";
 import { SearchBar } from "../../components/ui/SearchBar.tsx";
 import { segmentedTrackClass } from "../../components/ui/Segmented.tsx";
 import { harnessName } from "./Harnesses.tsx";
+import { HubInstructions } from "./HubInstructions.tsx";
 import {
   filterHub,
   groupHub,
@@ -104,9 +107,11 @@ const placeTitle: Record<HubPlace, string> = {
 
 export const McpSettings = () => <HubSettings kind="servers" />;
 export const SkillsSettings = () => <HubSettings kind="skills" />;
+export const InstructionSettings = () => <HubSettings kind="instructions" />;
 
-function HubSettings({ kind }: { kind: Kind }) {
+function HubSettings({ kind }: { kind: Kind | "instructions" }) {
   const listed = useAtomValue(savedProjectsAtom);
+  const rpcVersion = useAtomValue(drivenRpcVersionAtom);
   const from = use(SettingsProject);
   const [picked, setPicked] = useState<string>();
   const projects = AsyncResult.getOrElse(listed, (): ReadonlyArray<ProjectInfo> => []).filter(
@@ -114,6 +119,31 @@ function HubSettings({ kind }: { kind: Kind }) {
   );
   const paths = projects.map((project) => project.path);
   const shown = picked !== undefined && paths.includes(picked) ? picked : initialProject(paths, from);
+  if (kind === "instructions") {
+    const supported = rpcVersion >= HUB_INSTRUCTIONS_RPC_VERSION;
+    return (
+      <SettingsPage
+        perMachine
+        title="Project instructions"
+        description="One canonical file for a project's instructions, synced to each harness's own file: AGENTS.md, CLAUDE.md and the rest."
+        action={
+          shown === undefined || !supported ? null : (
+            <ProjectSelect projects={paths} shown={shown} onPick={setPicked} />
+          )
+        }
+      >
+        {!supported ? (
+          <SettingsNote>Update Cerium on this machine to manage project instructions.</SettingsNote>
+        ) : shown === undefined ? (
+          <SettingsNote>
+            No projects yet. Open a folder in a new thread to manage its instructions.
+          </SettingsNote>
+        ) : (
+          <HubInstructions key={shown} project={shown} />
+        )}
+      </SettingsPage>
+    );
+  }
   return (
     <SettingsPage
       perMachine

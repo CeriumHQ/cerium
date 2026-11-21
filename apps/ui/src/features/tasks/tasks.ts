@@ -1,6 +1,12 @@
-import { MAX_TASK_BYTES, type TaskEntry } from "@cerium/protocol";
+import {
+  MAX_TASK_BYTES,
+  MAX_TASK_NOTE,
+  MAX_TASK_TITLE,
+  type AgentEvent,
+  type TaskEntry,
+} from "@cerium/protocol";
 import { Option, Schema } from "effect";
-import { Atom } from "effect/reactivity";
+import { Atom, type AtomRegistry } from "effect/reactivity";
 
 import { remember, stored } from "../../lib/storage.ts";
 
@@ -19,6 +25,7 @@ const TaskContent = Schema.Struct({
   doneAt: Schema.optionalKey(Schema.Finite),
   /** The project an agent handed it works in. */
   folder: Schema.optionalKey(Schema.String),
+  threadIds: Schema.optionalKey(Schema.Array(Schema.NonEmptyString)),
 });
 type TaskContent = typeof TaskContent.Type;
 
@@ -27,6 +34,8 @@ const decodeContent = Schema.decodeUnknownOption(TaskContent);
 export interface Task extends TaskContent {
   readonly id: string;
 }
+
+export type NewTask = Pick<Task, "title" | "note" | "folder" | "threadIds">;
 
 /** Every task this window knows by id, deleted ones (no `task`) included while their stamp is kept. */
 export type TaskStore = Readonly<Record<string, TaskEntry>>;
@@ -70,16 +79,18 @@ const serializeTasks = (tasks: TaskStore): string =>
     ),
   );
 
+const readTask = (entry: TaskEntry | undefined): Task | undefined =>
+  entry?.task === undefined
+    ? undefined
+    : Option.map(decodeContent(entry.task), (content) => ({ ...content, id: entry.id })).pipe(
+        Option.getOrUndefined,
+      );
+
 /** The tasks that read, to do and done. */
 export const listTasks = (tasks: TaskStore): ReadonlyArray<Task> =>
-  Object.values(tasks).flatMap((entry) =>
-    entry.task === undefined
-      ? []
-      : Option.match(decodeContent(entry.task), {
-          onNone: () => [],
-          onSome: (content): Array<Task> => [{ ...content, id: entry.id }],
-        }),
-  );
+  Object.values(tasks)
+    .map(readTask)
+    .filter((task) => task !== undefined);
 
 /** Still to do, the newest first; done, the latest ticked off first. */
 export const splitTasks = (tasks: ReadonlyArray<Task>) => ({
@@ -88,6 +99,14 @@ export const splitTasks = (tasks: ReadonlyArray<Task>) => ({
     .filter((task) => task.doneAt !== undefined)
     .toSorted((a, b) => (b.doneAt ?? 0) - (a.doneAt ?? 0)),
 });
+
+/** `undefined` means all projects and `null` means tasks with no project. */
+export const tasksInProject = (tasks: ReadonlyArray<Task>, project: string | null | undefined) =>
+  project === undefined ? tasks : tasks.filter(({ folder }) => (folder ?? null) === project);
+
+/** Thread ids are globally unique. The same relationship drives both sides of the UI. */
+export const linkedTasks = (tasks: ReadonlyArray<Task>, threadId: string): ReadonlyArray<Task> =>
+  tasks.filter((task) => task.threadIds?.includes(threadId));
 
 /** `tasks` without deleted tasks' stamps past their time. */
 const pruned = (tasks: TaskStore, now: number): TaskStore => {
@@ -104,14 +123,15 @@ const pruned = (tasks: TaskStore, now: number): TaskStore => {
 const stampAfter = (tasks: TaskStore, id: string, now: number) =>
   Math.max(now, (tasks[id]?.updatedAt ?? 0) + 1);
 
-/** `tasks` with a new one called `title`, and its id. */
+/** `tasks` with a new task, including any source note, project and thread links. */
 export const addTask = (
   tasks: TaskStore,
-  title: string,
+  input: string | NewTask,
   now: number,
   id: string = crypto.randomUUID(),
 ): TaskStore => {
-  const content: TaskContent = { title, createdAt: now };
+  const info = typeof input === "string" ? { title: input } : input;
+  const content: TaskContent = { ...info, createdAt: now };
   return pruned({ ...tasks, [id]: { id, updatedAt: now, task: content } }, now);
 };
 
@@ -131,6 +151,100 @@ export const editTask = (tasks: TaskStore, id: string, patch: TaskPatch, now: nu
     else next[key] = value;
   }
   return pruned({ ...tasks, [id]: { id, updatedAt: stampAfter(tasks, id, now), task: next } }, now);
+};
+
+/** Links only tasks that still exist, and considers repeated links a no-op. */
+export const linkTaskThreads = (
+  tasks: TaskStore,
+  taskId: string,
+  threadIds: ReadonlyArray<string>,
+  now: number,
+  folder?: string,
+): TaskStore => {
+  const task = readTask(tasks[taskId]);
+  if (task === undefined || threadIds.length === 0) return tasks;
+  const previous = task.threadIds ?? [];
+  const next = [...new Set([...previous, ...threadIds.filter((id) => id !== "")])];
+  if (next.length === previous.length && next.every((id, index) => id === previous[index])) return tasks;
+  return editTask(
+    tasks,
+    taskId,
+    { threadIds: next, ...(task.folder === undefined && folder ? { folder } : {}) },
+    now,
+  );
+};
+
+export const unlinkTaskThread = (
+  tasks: TaskStore,
+  taskId: string,
+  threadId: string,
+  now: number,
+): TaskStore => {
+  const previous = readTask(tasks[taskId])?.threadIds;
+  if (!previous?.includes(threadId)) return tasks;
+  const threadIds = previous.filter((id) => id !== threadId);
+  return editTask(tasks, taskId, { threadIds: threadIds.length === 0 ? undefined : threadIds }, now);
+};
+
+export const unlinkDeletedThread = (tasks: TaskStore, threadId: string, now: number): TaskStore =>
+  linkedTasks(listTasks(tasks), threadId).reduce(
+    (remaining, task) => unlinkTaskThread(remaining, task.id, threadId, now),
+    tasks,
+  );
+
+/** Offer to complete a task after the lead's latest turn finished successfully. */
+export const leadFinished = (events: ReadonlyArray<AgentEvent>, leadId: string): boolean => {
+  const latest = events.findLast(
+    ({ agentId, payload }) =>
+      agentId === leadId &&
+      (payload._tag === "TurnCompleted" ||
+        payload._tag === "TurnInput" ||
+        payload._tag === "ConversationRewound"),
+  )?.payload;
+  return latest?._tag === "TurnCompleted" && latest.stopReason === "completed";
+};
+
+/** Captures the text as a note and links the task back to the conversation it came from. */
+export const taskFromMessage = (text: string, threadId: string, folder?: string): NewTask => {
+  const note = text.trim();
+  return withCapturedNote(
+    {
+      title: note.split(/\r?\n/u, 1)[0]!.slice(0, MAX_TASK_TITLE),
+      ...(folder === undefined ? {} : { folder }),
+      threadIds: [threadId],
+    },
+    note,
+  );
+};
+
+export const taskFromIssue = (
+  issue: { readonly number: number; readonly title: string; readonly url: string; readonly body: string },
+  folder: string,
+): NewTask =>
+  withCapturedNote(
+    { title: `#${issue.number} ${issue.title}`.slice(0, MAX_TASK_TITLE), folder },
+    `${issue.url}\n\n${issue.body.trim()}`.trimEnd(),
+  );
+
+/** Captured text can contain enough escapes to exceed the relay limit even within the note limit. */
+const withCapturedNote = (task: Omit<NewTask, "note">, text: string): NewTask => {
+  const note = text.slice(0, MAX_TASK_NOTE);
+  const overhead = JSON.stringify({
+    ...task,
+    note: "",
+    createdAt: Number.MAX_SAFE_INTEGER,
+    doneAt: Number.MAX_SAFE_INTEGER,
+  }).length;
+  const room = MAX_TASK_BYTES - overhead;
+  if (JSON.stringify(note).length - 2 <= room) return { ...task, note };
+  let size = 0;
+  let end = 0;
+  for (const character of note) {
+    size += JSON.stringify(character).length - 2;
+    if (size > room) break;
+    end += character.length;
+  }
+  return { ...task, note: note.slice(0, end) };
 };
 
 /** `tasks` with `id`'s task ticked off at `now`, or back to do. */
@@ -179,3 +293,10 @@ export const tasksAtom: Atom.Writable<TaskStore> = Atom.writable(
     remember(TASKS_KEY, serializeTasks(tasks));
   },
 ).pipe(Atom.keepAlive);
+
+/** Creates a task from the latest store and returns the id to open. */
+export const captureTask = (registry: AtomRegistry.AtomRegistry, task: NewTask): string => {
+  const id = crypto.randomUUID();
+  registry.set(tasksAtom, addTask(registry.get(tasksAtom), task, Date.now(), id));
+  return id;
+};

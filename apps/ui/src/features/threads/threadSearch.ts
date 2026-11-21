@@ -98,7 +98,7 @@ const titleRank = (thread: ThreadSummary, words: ReadonlyArray<string>): number 
  * What the search lists for what was typed: threads whose title or project starts a word with each, best
  * first and newest first among equals, then threads found only in their messages in the order the
  * backend ranked them. With nothing typed, the latest threads, so the search doubles as a switcher.
- * `threads` are one mode's, archived ones too; archived threads are searched but never suggested.
+ * Archived threads are searched and stay out of recent suggestions unless they need approval.
  */
 export const searchResults = (
   threads: ReadonlyArray<ThreadSummary>,

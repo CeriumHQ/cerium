@@ -1,13 +1,21 @@
 import { Button } from "@base-ui/react/button";
-import { CheckSquare, ChevronDown, Ellipsis, Monitor, Pin, type LucideIcon } from "lucide-react";
+import { CheckSquare, ChevronDown, Clock, Ellipsis, Monitor, Pin, type LucideIcon } from "lucide-react";
 import { useState, type CSSProperties, type ReactNode } from "react";
 
-import { ContextMenuArea, MenuItem, MenuPopup, MenuRoot, MenuTrigger } from "../../components/ui/Menu.tsx";
+import {
+  ContextMenuArea,
+  MenuItem,
+  MenuPopup,
+  MenuRoot,
+  MenuSubmenu,
+  MenuTrigger,
+} from "../../components/ui/Menu.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { shortAgo } from "../../lib/time.ts";
 import { paneDrag, THREAD_DRAG_TYPE } from "../split/drag.ts";
 import { SelectBox, type SelectMode } from "./BulkBar.tsx";
 import { DeleteThreadDialog } from "./Delete.tsx";
+import { LaterDateDialog, LaterMenuItems } from "./LaterMenu.tsx";
 import { needsYou, type ThreadSummary } from "./model.ts";
 import { TitleField, useRename, type RenameThread } from "./Rename.tsx";
 import { ProviderStack, ThreadMark } from "./StatusIndicator.tsx";
@@ -34,6 +42,7 @@ export interface InboxCardProps {
   readonly onRename: RenameThread;
   /** The menu's items; none when the thread has no actions here. */
   readonly menu?: (controls: RowControls) => ReactNode;
+  readonly onLater?: (until: number) => void;
   readonly onDelete?: (threadId: string) => void;
   /**
    * Bulk picking: whether the card is picked (`mixed` for a run with some threads picked), and
@@ -72,12 +81,14 @@ export function InboxCard({
   onSelect,
   onRename,
   menu,
+  onLater,
   onDelete,
   group,
   selection,
 }: InboxCardProps) {
   const [deleting, setDeleting] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  const [customLater, setCustomLater] = useState(false);
   const { editing, start, finish, title, row } = useRename(thread, onRename);
   const unread = thread.unread && !selected;
   const status =
@@ -92,6 +103,11 @@ export function InboxCard({
           <MenuItem icon={CheckSquare} onClick={() => selection.onToggle("toggle")}>
             Select
           </MenuItem>
+        ) : null}
+        {onLater ? (
+          <MenuSubmenu icon={Clock} label="Later">
+            <LaterMenuItems onPick={onLater} onCustom={() => setCustomLater(true)} />
+          </MenuSubmenu>
         ) : null}
         {menu({ rename: start, remove: () => setDeleting(true) })}
       </>
@@ -223,6 +239,9 @@ export function InboxCard({
 
   return (
     <>
+      {onLater && customLater ? (
+        <LaterDateDialog onPick={onLater} onClose={() => setCustomLater(false)} />
+      ) : null}
       <div className="group/row relative">
         {menuItems === undefined ? button : <ContextMenuArea menu={menuItems}>{button}</ContextMenuArea>}
         {selection ? (

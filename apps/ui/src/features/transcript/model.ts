@@ -14,6 +14,7 @@ import type {
   ReasoningEffort,
   TurnFile,
 } from "@cerium/protocol";
+import { applyTurnFileRevert, type TurnFileState } from "@cerium/protocol";
 
 /** The `RPC_VERSION` that brought `EditMessage`; an older machine's messages can't be edited. */
 export const EDIT_VERSION = 11;
@@ -197,8 +198,9 @@ export interface TurnChanges {
   readonly files: ReadonlyArray<TurnFile>;
   /** Files it changed past those listed. */
   readonly more: number;
-  /** The user put them back as they were before the turn; `kept` had changed since, and stayed. */
-  readonly undone?: { readonly kept: ReadonlyArray<string> };
+  /** Revert state for the paths the user tried to put back. Other paths are still active. */
+  readonly fileStates?: ReadonlyMap<string, TurnFileState>;
+  readonly status?: "partial" | "undone";
 }
 
 /** How a question closed; `answers` holds one per question when the user answered. */
@@ -570,11 +572,17 @@ export const createTranscriptFold = (sameModel: (a: string, b: string) => boolea
           const key = `turn:${payload.turnId}`;
           const end = existing(key, "turnEnd");
           if (end?.changes !== undefined) {
-            const { undone: _was, ...changes } = end.changes;
+            const { status: _was, ...changes } = end.changes;
+            const fileStates = applyTurnFileRevert(changes.fileStates, payload);
+            const allUndone = changes.files.every((file) => fileStates.get(file.path)?.turnUndone);
+            const anyUndone = changes.files.some((file) => fileStates.get(file.path)?.undone);
             upsert(key, {
               ...end,
-              changes:
-                payload.direction === "undone" ? { ...changes, undone: { kept: payload.kept } } : changes,
+              changes: {
+                ...changes,
+                fileStates,
+                ...(allUndone ? { status: "undone" } : anyUndone ? { status: "partial" } : {}),
+              },
             });
           }
           break;

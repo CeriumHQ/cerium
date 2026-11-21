@@ -3,6 +3,11 @@ import { createContext, useContext, useRef } from "react";
 
 import type { DraftCommentFile, Segment } from "./draft.ts";
 
+export interface SideQuestionDraft {
+  readonly initial?: string;
+  readonly quote?: string;
+}
+
 /**
  * What the rest of the window can put into the open thread's message box. Each call changes only
  * that thread's draft, then focuses the box so the user carries on writing.
@@ -29,6 +34,8 @@ export interface MessageBox {
    * on to the next passage.
    */
   comment(content: { readonly quote: string; readonly text: string; readonly file?: DraftCommentFile }): void;
+  /** Opens a side question with an optional initial question and passage from the response. */
+  openSide(draft?: SideQuestionDraft): void;
   /** The draft the box writes to: a thread's id, or a thread not started yet's key. */
   key(): string | undefined;
 }
@@ -48,6 +55,7 @@ export const useMessageBoxHandle = () => {
     mention: (mention) => ref.current?.mention(mention),
     append: (content) => ref.current?.append(content),
     comment: (content) => ref.current?.comment(content),
+    openSide: (draft) => ref.current?.openSide(draft),
     key: () => ref.current?.key(),
   };
   return [ref, box] as const;

@@ -96,6 +96,9 @@ export class CodexAdapter extends Context.Service<CodexAdapter, HarnessAdapter>(
             Effect.provide(platform),
           ),
         hub: makeCodexHub(ready, platform),
+        hubInstructions: {
+          files: [{ path: "AGENTS.md", primary: true }, { path: "AGENTS.override.md" }],
+        },
         startSession,
       });
     }),

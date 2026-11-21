@@ -18,6 +18,7 @@ import {
 import { initRepository } from "../../backend/repositories.ts";
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog.tsx";
 import { IconButton } from "../../components/ui/IconButton.tsx";
+import type { AskAgentFix } from "../composer/agentFix.ts";
 import { MessageBoxContext, type MessageBox } from "../composer/messageBox.ts";
 import type { OpenFile } from "../files/model.ts";
 import { useReviewsOffered } from "../review/hooks.ts";
@@ -61,6 +62,7 @@ export function useSourceControl({
   openCommitFile,
   activeFile,
   review,
+  onAskFix,
   onClose,
 }: {
   /** The thread's folder; none where there is no repository to show. */
@@ -70,6 +72,7 @@ export function useSourceControl({
    * which takes the findings sent to them; none for a thread not started yet.
    */
   review?: { readonly threadId: ThreadId; readonly messageBox: MessageBox | undefined } | undefined;
+  onAskFix: AskAgentFix | undefined;
   /** The panel is shown. */
   open: boolean;
   /** Opens a file of the folder `top` in the viewer; absent where the machine can't serve one. */
@@ -88,6 +91,7 @@ export function useSourceControl({
       openCommitFile={openCommitFile}
       activeFile={activeFile}
       review={review}
+      onAskFix={onAskFix}
       onClose={onClose}
     />
   ) : undefined;
@@ -99,6 +103,7 @@ function SourceControl({
   openCommitFile,
   activeFile,
   review,
+  onAskFix,
   onClose,
 }: {
   root: string;
@@ -106,6 +111,7 @@ function SourceControl({
   openCommitFile: OpenCommitFile;
   activeFile: { readonly root: string; readonly path: string } | undefined;
   review: { readonly threadId: ThreadId; readonly messageBox: MessageBox | undefined } | undefined;
+  onAskFix: AskAgentFix | undefined;
   onClose: () => void;
 }) {
   const reviewsOffered = useReviewsOffered();
@@ -229,6 +235,7 @@ function SourceControl({
                     changed={status.unstaged.length}
                     conflicted={status.conflicted.length}
                     threadId={reviewsOffered ? review?.threadId : undefined}
+                    onAskFix={onAskFix}
                     onCommitted={() => {
                       refreshGitStatus(registry, root);
                       refreshBranches(registry, root);

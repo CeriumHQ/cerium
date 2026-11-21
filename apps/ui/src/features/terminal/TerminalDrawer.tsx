@@ -12,6 +12,8 @@ import { usePanelWidth } from "../../app/ResizeHandle.tsx";
 import { closeTerminal, openTerminal, terminalsAtom } from "../../backend/terminals.ts";
 import { IconButton } from "../../components/ui/IconButton.tsx";
 import { useShortcut } from "../../lib/shortcuts.ts";
+import type { AskAgentFix } from "../composer/agentFix.ts";
+import type { MessageBox } from "../composer/messageBox.ts";
 import { HeightHandle } from "./HeightHandle.tsx";
 import {
   DRAWER,
@@ -37,6 +39,8 @@ export function TerminalDrawer({
   onChoose,
   focus,
   compact,
+  messageBox,
+  onAskFix,
   onHide,
   onNewFocus,
 }: {
@@ -47,6 +51,8 @@ export function TerminalDrawer({
   /** Counts the times the cursor should go to the terminal. */
   focus: number;
   compact: boolean;
+  messageBox: Pick<MessageBox, "append"> | undefined;
+  onAskFix: AskAgentFix | undefined;
   onHide: () => void;
   /** A terminal was started or picked: the cursor goes to it. */
   onNewFocus: () => void;
@@ -188,7 +194,31 @@ export function TerminalDrawer({
         <div className="min-h-0 flex-1">
           {shown ? (
             <Tabs.Panel value={shown.id} keepMounted className="h-full outline-none">
-              <TerminalView key={shown.id} terminal={shown} focus={focus} onError={setError} />
+              <TerminalView
+                key={shown.id}
+                terminal={shown}
+                focus={focus}
+                onError={setError}
+                messageBox={
+                  messageBox && compact
+                    ? {
+                        append: (content) => {
+                          messageBox.append(content);
+                          onHide();
+                        },
+                      }
+                    : messageBox
+                }
+                onAskFix={
+                  onAskFix && compact
+                    ? async (prompt) => {
+                        const delivered = await onAskFix(prompt);
+                        if (delivered === "draft") onHide();
+                        return delivered;
+                      }
+                    : onAskFix
+                }
+              />
             </Tabs.Panel>
           ) : null}
         </div>

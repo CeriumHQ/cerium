@@ -39,7 +39,7 @@ function glyph(art: ReactNode) {
 
 /**
  * Each page's glyph: a slider with its knobs, a person, a ping, a prism, a fan of agents, a slash, a
- * frame, four blocks round a hub, a book, a branch, a gauge, bars, keycaps, a microphone, a turning
+ * frame, four blocks round a hub, a book, a page of instructions with its corner turned, a branch, a gauge, bars, keycaps, a microphone, a turning
  * arrow, a pen, a ranked list, a plug, a fork in the road, a screen beside a phone, a speech bubble and
  * a bubble with a spark leaping from it, and a screen with a pointer on it.
  */
@@ -53,6 +53,7 @@ export const settingsGlyphs: Record<
   | "harnesses"
   | "mcp"
   | "skills"
+  | "instructions"
   | "sourceControl"
   | "limits"
   | "tokens"
@@ -130,6 +131,13 @@ export const settingsGlyphs: Record<
       <path d="M5 4.5A1.5 1.5 0 0 1 6.5 3H17v15H6.5A1.5 1.5 0 0 0 5 19.5z" />
       <path d="M5 19.5A1.5 1.5 0 0 0 6.5 21H19V6" />
       <path d={facet(11, 10.5, 2.5)} className="fill-accent stroke-none" />
+    </>,
+  ),
+  instructions: glyph(
+    <>
+      <path d="M13.5 3.5H7A1.5 1.5 0 0 0 5.5 5v14A1.5 1.5 0 0 0 7 20.5h10a1.5 1.5 0 0 0 1.5-1.5V8.5Z" />
+      <path d="M13.5 3.5v5h5M9 13h6M9 16.5h4" />
+      <path d={facet(9.5, 8.5, 2)} className="fill-accent stroke-none" />
     </>,
   ),
   sourceControl: glyph(

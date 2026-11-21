@@ -15,7 +15,7 @@ import { ComputerUseSettings } from "./ComputerUse.tsx";
 import { EffortRouterSettings } from "./EffortRouter.tsx";
 import { DictationSettings, DiscordSettings, GeneralSettings, UpdateSettings } from "./General.tsx";
 import { HarnessSettings } from "./Harnesses.tsx";
-import { McpSettings, SkillsSettings } from "./Hub.tsx";
+import { InstructionSettings, McpSettings, SkillsSettings } from "./Hub.tsx";
 import { KeyboardSettings } from "./Keyboard.tsx";
 import { LimitsSettings } from "./Limits.tsx";
 import { NotificationSettings } from "./Notifications.tsx";
@@ -41,6 +41,7 @@ export type SettingsCategory =
   | "harnesses"
   | "mcp"
   | "skills"
+  | "instructions"
   | "limits"
   | "tokens"
   | "sourceControl"
@@ -111,6 +112,12 @@ const groups: ReadonlyArray<{ readonly label: string; readonly pages: ReadonlyAr
       ...page("harnesses", "Harnesses", "Installed CLIs and sign-ins", settingsGlyphs.harnesses),
       ...page("mcp", "MCP servers", "Servers across harnesses", settingsGlyphs.mcp),
       ...page("skills", "Skills", "Skills across harnesses", settingsGlyphs.skills),
+      ...page(
+        "instructions",
+        "Project instructions",
+        "Shared instructions across harnesses",
+        settingsGlyphs.instructions,
+      ),
       ...page("limits", "Limits", "What's left of each plan", settingsGlyphs.limits),
       ...page("tokens", "Tokens", "Tokens and cost", settingsGlyphs.tokens),
     ],
@@ -175,6 +182,7 @@ const settingsIndex: ReadonlyArray<{ readonly name: string; readonly category: S
     ["threads", "Access"],
     ["threads", "Where new work threads run"],
     ["threads", "Name new threads"],
+    ["threads", "Inbox auto-archive cap"],
     ["roster", "Roster"],
     ["advisor", "Advisor"],
     ["advisor", "Advisor model"],
@@ -191,6 +199,7 @@ const settingsIndex: ReadonlyArray<{ readonly name: string; readonly category: S
     ["mcp", "Add a server to another harness"],
     ["skills", "Skills"],
     ["skills", "Add a skill to another harness"],
+    ["instructions", "Project instructions"],
     ["limits", "Limits"],
     ["limits", "Usage limits"],
     ["limits", "Free resets"],
@@ -462,6 +471,8 @@ function SettingsContent({
       return <McpSettings />;
     case "skills":
       return <SkillsSettings />;
+    case "instructions":
+      return <InstructionSettings />;
     case "limits":
       return <LimitsSettings {...(onOpen ? { onOpenHarnesses: () => onOpen("harnesses") } : {})} />;
     case "tokens":

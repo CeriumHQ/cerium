@@ -72,6 +72,16 @@ export class ClaudeAdapter extends Context.Service<ClaudeAdapter, HarnessAdapter
         listSessions: listClaudeSessions,
         readSession: readClaudeSession,
         hub: makeClaudeHub(ready, platform),
+        hubInstructions: {
+          files: [
+            { path: "CLAUDE.md", primary: true, imports: true },
+            { path: ".claude/CLAUDE.md", imports: true },
+            { path: "CLAUDE.local.md", imports: true, supplemental: true },
+            { path: "AGENTS.md" },
+            { path: ".claude/AGENTS.md", imports: true },
+          ],
+          folders: [{ path: ".claude/rules", suffix: ".md", recursive: true }],
+        },
         startSession,
       });
     }),

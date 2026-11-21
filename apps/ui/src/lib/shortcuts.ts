@@ -68,6 +68,20 @@ export const SHORTCUTS: ReadonlyArray<ShortcutDef> = [
   def("side-question", "Ask a side question about the thread", "Threads", "Ctrl Shift /", {
     keywords: "btw aside quick question popover",
   }),
+  def("open-model-picker", "Open the model picker", "Threads", "Ctrl Shift M", {
+    keywords: "switch model effort speed",
+  }),
+  def("steer-now", "Steer the running turn now", "Threads", "Ctrl Shift Enter", {
+    keywords: "interrupt queue send now follow-up",
+  }),
+  def("focus-composer", "Focus the message box", "Threads", "Ctrl Shift L", {
+    keywords: "composer prompt input",
+  }),
+  def("prev-prompt", "Go to the previous prompt", "Threads", "Alt ArrowUp"),
+  def("next-prompt", "Go to the next prompt", "Threads", "Alt ArrowDown"),
+  def("jump-next-waiting", "Go to the next thread that needs you or is unread", "Threads", "Ctrl Shift Y", {
+    keywords: "inbox attention approval failure unread waiting",
+  }),
   def("switch-to-work", "Switch to Work", "General", "Ctrl Shift 1", { keywords: "mode home" }),
   def("switch-to-chat", "Switch to Chat", "General", "Ctrl Shift 2", { keywords: "mode" }),
   def("open-tasks", "Open tasks", "General", "Ctrl Shift 3", {
@@ -105,6 +119,10 @@ export const SHORTCUTS: ReadonlyArray<ShortcutDef> = [
   def("toggle-github-panel", "Show or hide GitHub", "Panels", "Ctrl Shift H", {
     keywords: "pull requests issues reviews",
   }),
+  def("toggle-preview", "Show or hide the preview", "Panels", "Ctrl Shift P", {
+    keywords: "browser web page",
+  }),
+  def("toggle-artifacts", "Show or hide artifacts", "Panels", "Ctrl Shift A"),
   def("toggle-terminal", "Show, focus or hide the terminal", "Panels", "Control `", {
     keywords: "shell console",
   }),
@@ -171,18 +189,27 @@ const readOverrides = (): Partial<Record<ShortcutId, string>> => {
   }
 };
 
+const loadBindings = (): Record<ShortcutId, string> => {
+  const merged = defaultBindings();
+  const overrides = readOverrides();
+  for (const id of Object.keys(merged) as ReadonlyArray<ShortcutId>) {
+    const next = overrides[id];
+    if (next !== undefined) merged[id] = next;
+  }
+  return merged;
+};
+
+let latestBindings: Record<ShortcutId, string> | undefined;
+
 /** Every shortcut's keys, defaults with the user's rebinds over them. Kept in this window's storage. */
 export const shortcutBindingsAtom: Atom.Writable<Record<ShortcutId, string>> = Atom.writable(
   (): Record<ShortcutId, string> => {
-    const merged = defaultBindings();
-    const overrides = readOverrides();
-    for (const id of Object.keys(merged) as ReadonlyArray<ShortcutId>) {
-      const next = overrides[id];
-      if (next !== undefined) merged[id] = next;
-    }
+    const merged = loadBindings();
+    latestBindings = merged;
     return merged;
   },
   (context, value: Record<ShortcutId, string>) => {
+    latestBindings = value;
     context.setSelf(value);
     const defaults = defaultBindings();
     const overrides = Object.fromEntries(
@@ -197,6 +224,9 @@ export const shortcutBindingsAtom: Atom.Writable<Record<ShortcutId, string>> = A
 /** One shortcut's keys outside React, from the bindings map. */
 export const bindingFor = (bindings: Record<ShortcutId, string>, id: ShortcutId): string =>
   bindings[id] ?? (byId.has(id) ? defaultKeysOf(byId.get(id) as ShortcutDef) : "");
+
+/** One shortcut's live keys outside React, following rebinds made in this window. */
+export const currentBinding = (id: ShortcutId): string => bindingFor(latestBindings ?? loadBindings(), id);
 
 /** One shortcut's keys in React, following the user's rebinds. */
 export const useShortcut = (id: ShortcutId): string => bindingFor(useAtomValue(shortcutBindingsAtom), id);
@@ -324,6 +354,7 @@ const matchKey = (token: string, event: KeyPress): boolean => {
   if (token === "Space") return event.key === " ";
   if (token === "PgUp") return event.key === "PageUp";
   if (token === "PgDn") return event.key === "PageDown";
+  if (/^Arrow(Up|Down|Left|Right)$/.test(token)) return event.key === token;
   if (/^F([1-9]|1[0-9]|2[0-4])$/.test(token)) return event.key === token;
   if (token === "`") return event.code === "Backquote";
   if (token === "\\") return event.code === "Backslash";
@@ -424,7 +455,13 @@ const keyToken = (event: KeyPress): string | undefined => {
     case "Tab":
       return "Tab";
     case "Enter":
+    case "NumpadEnter":
       return "Enter";
+    case "ArrowUp":
+    case "ArrowDown":
+    case "ArrowLeft":
+    case "ArrowRight":
+      return code;
     case "Space":
       return "Space";
     case "PageUp":

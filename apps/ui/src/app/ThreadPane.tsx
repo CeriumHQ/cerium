@@ -8,10 +8,11 @@ import {
   type ThreadId,
 } from "@cerium/protocol";
 import type { ThreadOverview } from "@cerium/rpc";
-import { useAtomValue } from "@effect/atom-react";
+import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import { Button } from "@base-ui/react/button";
 import { AsyncResult, Atom } from "effect/reactivity";
 import {
+  useContext,
   useEffect,
   useEffectEvent,
   useRef,
@@ -29,17 +30,25 @@ import {
   summaryEventsAtom,
   threadEventsAtom,
 } from "../backend/atoms.ts";
-import { leadOf, modelLabel, toAgentSummaries } from "../backend/view.ts";
+import { leadOf, modelLabel, toAgentSummaries, toThreadSummary } from "../backend/view.ts";
 import { KeptViews, useKeptHidden, useKeptResult } from "../components/KeptViews.tsx";
 import { Reveal } from "../components/Reveal.tsx";
 import type { AgentActions } from "../features/agents/AgentMenu.tsx";
+import { ThreadTasks } from "../features/tasks/ThreadTasks.tsx";
+import { leadFinished, taskFromMessage, type NewTask } from "../features/tasks/tasks.ts";
 import {
   ApprovalTray,
   type AnswerApproval,
   type AnswerQuestion,
   type AnswerSpawn,
 } from "../features/agents/ApprovalTray.tsx";
-import { Composer, type OutgoingMessage, type ThreadSetup } from "../features/composer/Composer.tsx";
+import {
+  Composer,
+  type ComposerCommands,
+  type OutgoingMessage,
+  type ThreadSetup,
+} from "../features/composer/Composer.tsx";
+import { sentPrompts } from "../features/composer/promptHistory.ts";
 import type { AskSide } from "../features/composer/SideQuestion.tsx";
 import type { Followup } from "../features/composer/followup.ts";
 import { draftStartAtom } from "../features/composer/drafts.ts";
@@ -69,6 +78,7 @@ import {
 import { ThreadLog, type ThreadHistory, type AgentHistory } from "../backend/threadLog.ts";
 import type { ForkRequest } from "../features/transcript/fork.ts";
 import { Transcript } from "../features/transcript/Transcript.tsx";
+import type { PromptSteps } from "../features/transcript/PromptStepper.tsx";
 import { EmptyThread } from "./EmptyThread.tsx";
 import type { AppMode } from "./mode.ts";
 
@@ -127,10 +137,12 @@ export interface ThreadPaneActions {
   readonly turnFiles?:
     | {
         readonly open: (tab: TurnFileTab) => void;
+        readonly perFile: boolean;
         readonly revert: (
           agentId: AgentId,
           turnId: string,
           direction: "undone" | "redone",
+          paths?: ReadonlyArray<string>,
         ) => Promise<unknown>;
       }
     | undefined;
@@ -143,6 +155,7 @@ export interface ThreadPaneActions {
     message: OutgoingMessage,
     setups: readonly [ThreadSetup, ...Array<ThreadSetup>],
     folder: string | undefined,
+    taskId: string | undefined,
   ) => Promise<unknown>;
   readonly interrupt: (agentId: AgentId) => Promise<unknown>;
   /**
@@ -202,6 +215,8 @@ export interface ThreadPaneActions {
 export interface ThreadPaneProps {
   readonly inspectedAgent?: string | undefined;
   readonly onLeaveAgent?: (() => void) | undefined;
+  readonly onOpenTask: (id: string) => void;
+  readonly onAddTask: (task: NewTask) => void;
   readonly mode: AppMode;
   /** The thread, live from the machine the window drives. */
   readonly selected: ThreadOverview | undefined;
@@ -258,12 +273,17 @@ export interface SetupRun {
 export interface PaneHandles {
   readonly input: RefObject<HTMLDivElement | null>;
   readonly box: MessageBox;
+  readonly hasComposer: boolean;
+  readonly composer: RefObject<ComposerCommands | null>;
+  readonly prompts: RefObject<PromptSteps | null>;
 }
 
 /** A thread's conversation and its message box, or a new thread's empty page and box. */
 export function ThreadPane({
   inspectedAgent,
   onLeaveAgent,
+  onOpenTask,
+  onAddTask,
   mode,
   selected,
   cloud,
@@ -284,16 +304,14 @@ export function ThreadPane({
   slashCommands,
 }: ThreadPaneProps) {
   const models = useModels();
+  const registry = useContext(RegistryContext);
   const limitDefault =
     AsyncResult.getOrElse(useAtomValue(settingsAtom), () => undefined)?.limits.onLimit ??
     DEFAULT_LIMIT_POLICY;
   const input = useRef<HTMLDivElement>(null);
+  const composer = useRef<ComposerCommands>(null);
+  const prompts = useRef<PromptSteps>(null);
   const [boxRef, box] = useMessageBoxHandle();
-  const handOver = useEffectEvent(() => onHandles(paneKey, { input, box }));
-  useEffect(() => {
-    handOver();
-    return () => onHandles(paneKey, undefined);
-  }, [paneKey, onHandles]);
   /** How tall the message box floating over the transcript is, with what sits above it, so the transcript's end stays visible. */
   const [composerHeight, setComposerHeight] = useState(0);
   /** Where a new thread's question seats the message box under it, in the window. */
@@ -316,6 +334,14 @@ export function ThreadPane({
 
   const lead = viewed ? leadOf(viewed.agents) : undefined;
   const child = viewed?.agents.find((agent) => agent.id === inspectedAgent && agent.parentId !== undefined);
+  const hasComposer = child === undefined && bar == null;
+  const handOver = useEffectEvent((available: boolean) =>
+    onHandles(paneKey, { input, box, hasComposer: available, composer, prompts }),
+  );
+  useEffect(() => {
+    handOver(hasComposer);
+    return () => onHandles(paneKey, undefined);
+  }, [paneKey, onHandles, hasComposer]);
   const agents = viewed ? toAgentSummaries(viewed.agents, events, models) : [];
   const leadModel =
     agents.find((agent) => agent.id === lead?.id)?.model ??
@@ -324,23 +350,46 @@ export function ThreadPane({
   // An ended lead picks the thread back up on the user's next message.
   const leadEnded = lead?.state === "stopped" || lead?.state === "failed" ? lead.state : undefined;
   const { attempt, restore, fork, turnFiles, handOff, askSide, suggestFollowup } = actions;
+  const onAskSide: AskSide | undefined =
+    cloud || bar != null || !askSide || !lead
+      ? undefined
+      : (question, earlier) => askSide(lead.id, question, earlier);
   /** Whether two of the lead's model ids name the same model. */
   const sameModel = (a: string, b: string) =>
     a === b ||
     (lead !== undefined && modelLabel(models, lead.provider, a) === modelLabel(models, lead.provider, b));
   const queueResult = useAtomValue(queueAtom);
   const queueEvents = AsyncResult.getOrElse(queueResult, (): ReadonlyArray<AgentEvent> => []);
+  const promptHistory = () => {
+    if (lead === undefined) return [];
+    const history = AsyncResult.getOrElse(registry.get(eventsAtom), () => emptyHistory);
+    return sentPrompts(history.agents.get(lead.id)?.events ?? []);
+  };
   const queued = queuedMessages(lead ? queueEvents.filter((event) => event.agentId === lead.id) : []);
+  const finished =
+    viewed !== undefined &&
+    lead !== undefined &&
+    queued.messages.length === 0 &&
+    toThreadSummary(viewed).status === "idle" &&
+    leadFinished(queueEvents, lead.id);
+  const addMessageTask =
+    viewed === undefined
+      ? undefined
+      : (text: string) =>
+          onAddTask(
+            taskFromMessage(text, viewed.thread.id, viewed.thread.worktree?.project ?? viewed.thread.cwd),
+          );
   const leadActivity = leadRunning ? "running" : leadEnded ? "ended" : "idle";
   // Messages waiting behind a running turn, or for an ended lead, wait in the message box, where they
   // can be taken back. A thread read from the cloud copy can't touch them: that takes its machine.
   const { withdraw, steer } = actions;
+  const onSteer = lead && !cloud && steer ? () => void attempt(steer(lead.id)) : undefined;
   const queue: Queue | undefined =
     lead && holdsQueue(queued, leadActivity)
       ? {
           messages: queued.messages,
           ended: leadActivity === "ended",
-          ...(cloud || !steer ? {} : { onSteer: () => void attempt(steer(lead.id)) }),
+          onSteer,
           ...(cloud || !withdraw
             ? {}
             : {
@@ -412,6 +461,9 @@ export function ThreadPane({
       <div data-drawer-column="" className="relative flex h-full flex-col">
         <div className="relative flex min-h-0 flex-1 flex-col">
           {notices}
+          {viewed ? (
+            <ThreadTasks threadId={viewed.thread.id} finished={finished} onOpenTask={onOpenTask} />
+          ) : null}
           {child ? (
             <header className="flex shrink-0 items-center gap-3 border-b border-line-subtle px-4 py-2 text-meta">
               <Button
@@ -436,8 +488,10 @@ export function ThreadPane({
                   }
                   folder={viewed.thread.cwd}
                   threadId={viewed.thread.id}
+                  onAddTask={addMessageTask}
                   searchCloudKey={cloud ? `${cloud.machine}:${cloud.overview.thread.id}` : undefined}
                   focused={focused}
+                  promptSteps={prompts}
                   agent={{ provider: child.provider }}
                   modelName={(model, provider) => modelLabel(models, provider, model)}
                   activity={child.state === "running" || child.state === "queued" ? "running" : "ended"}
@@ -459,11 +513,14 @@ export function ThreadPane({
                       sameModel={sameModel}
                       folder={viewed.thread.cwd}
                       threadId={viewed.thread.id}
+                      onAddTask={addMessageTask}
                       searchCloudKey={cloud ? `${cloud.machine}:${cloud.overview.thread.id}` : undefined}
                       focused={focused}
+                      promptSteps={prompts}
                       agent={{ provider: lead.provider }}
                       modelName={(model, provider) => modelLabel(models, provider, model)}
                       {...(cloud ? {} : { messageBox: box })}
+                      onOpenSideQuestion={onAskSide ? (quote) => box.openSide({ quote }) : undefined}
                       activity={leadActivity}
                       bottomInset={composerHeight}
                       childState={(childId) => {
@@ -524,10 +581,11 @@ export function ThreadPane({
                         ? {}
                         : {
                             turnFiles: {
+                              perFile: turnFiles.perFile && bar == null,
                               open: (file: TurnFileOpen) =>
                                 turnFiles.open({ root: viewed.thread.cwd ?? "", ...file }),
-                              revert: (turnId: string, direction: "undone" | "redone") =>
-                                attempt(turnFiles.revert(lead.id, turnId, direction)),
+                              revert: (turnId, direction, paths) =>
+                                attempt(turnFiles.revert(lead.id, turnId, direction, paths)),
                             },
                           })}
                     />
@@ -554,6 +612,8 @@ export function ThreadPane({
                   connecting={cloud !== undefined}
                   inputRef={input}
                   messageBox={boxRef}
+                  commands={composer}
+                  promptHistory={promptHistory}
                   seat={seat}
                   // Panes opening side by side leave the cursor where the user put it: only the focused one takes it.
                   takesFocus={focused}
@@ -589,9 +649,7 @@ export function ThreadPane({
                                 },
                               }),
                           ...(followup ? { followup } : {}),
-                          ...(cloud || askSide === undefined
-                            ? {}
-                            : { onAskSide: (question, earlier) => askSide(lead.id, question, earlier) }),
+                          ...(onAskSide ? { onAskSide } : {}),
                           ...(cloud || handOff === undefined
                             ? {}
                             : {
@@ -626,6 +684,7 @@ export function ThreadPane({
                     ) : undefined
                   }
                   queue={queue}
+                  onSteer={onSteer}
                   background={viewed && lead ? background : undefined}
                   computer={
                     viewed && cloud === undefined ? <ComputerTray threadId={viewed.thread.id} /> : undefined
@@ -649,13 +708,13 @@ export function ThreadPane({
                     )
                   }
                   onHeight={setComposerHeight}
-                  onSend={(message, setups) => {
+                  onSend={(message, setups, taskId) => {
                     // Writing to a thread keeps its tab: it's no longer only a preview.
                     if (viewed) actions.keep(viewed.thread.id);
                     return attempt(
                       selected && lead
                         ? actions.send(lead.id, message)
-                        : actions.start(draftKey, message, setups, newFolder),
+                        : actions.start(draftKey, message, setups, newFolder, taskId),
                     );
                   }}
                   onStop={() => {

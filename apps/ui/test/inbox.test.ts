@@ -1,9 +1,22 @@
 import { describe, expect, it } from "@effect/vitest";
 
-import { sameSummary, type ThreadSummary } from "../src/features/threads/model.ts";
+import {
+  entryThreads,
+  groupRuns,
+  nextWaitingThread,
+  sameSummary,
+  type ThreadSummary,
+} from "../src/features/threads/model.ts";
+import { inboxFocusAfterRemoval, inboxNavigationTarget } from "../src/features/threads/inboxNavigation.ts";
 import { wordmark } from "../src/features/threads/ProjectBadge.tsx";
 import { isUnread } from "../src/features/threads/readState.ts";
-import { chatSections, firstOf, inboxProjects, inboxSections } from "../src/features/threads/sections.ts";
+import {
+  chatSections,
+  filterInboxEntries,
+  firstOf,
+  inboxProjects,
+  inboxSections,
+} from "../src/features/threads/sections.ts";
 
 const now = new Date(2026, 9, 18, 15, 0).getTime();
 const HOUR = 3_600_000;
@@ -23,6 +36,41 @@ const thread = (id: string, overrides: Partial<ThreadSummary> = {}): ThreadSumma
 
 const layout = (sections: ReturnType<typeof inboxSections>) =>
   sections.map(({ label, threads }) => [label, threads.map(({ id }) => id)]);
+
+describe("nextWaitingThread", () => {
+  it("prioritizes approvals and unread failures across both modes and wraps", () => {
+    const threads = [
+      thread("unread", { unread: true, updatedAt: now + 1 }),
+      thread("failed", { status: "failed", unread: true, updatedAt: now - 1 }),
+      thread("approval", { status: "awaitingApproval", mode: "chat", updatedAt: now }),
+      thread("other-approval", { status: "awaitingApproval", updatedAt: now - 2 }),
+    ];
+    expect(nextWaitingThread(threads, "unread")?.id).toBe("approval");
+    expect(nextWaitingThread(threads, "approval")?.id).toBe("failed");
+    expect(nextWaitingThread(threads, "failed")?.id).toBe("other-approval");
+    expect(nextWaitingThread(threads, "other-approval")?.id).toBe("approval");
+  });
+
+  it("falls back to unread threads and skips archived threads and seen failures", () => {
+    const threads = [
+      thread("archived", { unread: true, archivedAt: now }),
+      thread("failed", { status: "failed", updatedAt: now }),
+      thread("beta", { unread: true }),
+      thread("alpha", { unread: true }),
+    ];
+    expect(nextWaitingThread(threads, undefined)?.id).toBe("alpha");
+    expect(nextWaitingThread(threads, "alpha")?.id).toBe("beta");
+    expect(nextWaitingThread(threads, "beta")?.id).toBe("alpha");
+    expect(nextWaitingThread(threads.slice(0, 2), undefined)).toBeUndefined();
+  });
+
+  it("skips the current thread when it is the sole waiting match", () => {
+    const waiting = thread("waiting", { status: "awaitingApproval", archivedAt: now });
+    expect(nextWaitingThread([waiting], undefined)?.id).toBe("waiting");
+    expect(nextWaitingThread([waiting], "waiting")).toBeUndefined();
+    expect(nextWaitingThread([waiting, thread("unread", { unread: true })], "waiting")?.id).toBe("unread");
+  });
+});
 
 describe("inboxSections", () => {
   it("puts what needs the user first, then work in progress, then unread, then history", () => {
@@ -81,6 +129,67 @@ describe("chatSections", () => {
       ["Today", ["waiting"]],
       ["Older", ["older"]],
     ]);
+  });
+});
+
+describe("Inbox status filters", () => {
+  const threads = [
+    thread("read"),
+    thread("approval", { status: "awaitingApproval" }),
+    thread("unseen-failure", { status: "failed", unread: true }),
+    thread("seen-failure", { status: "failed" }),
+    thread("working-unread", { status: "running", unread: true }),
+    thread("first", { runId: "comparison" }),
+    thread("worktree", { runId: "comparison", worktree: { branch: "patch", base: "main" } }),
+    thread("other-project", { folder: "/other", worktree: { branch: "patch", base: "main" } }),
+  ];
+  const entries = groupRuns(threads.filter((thread) => thread.folder === "C:/code/cerium"));
+  const ids = (status: Parameters<typeof filterInboxEntries>[1]) =>
+    filterInboxEntries(entries, status)
+      .flatMap(entryThreads)
+      .map(({ id }) => id);
+
+  it("matches approvals, unread failures, active work, and unread cards independently", () => {
+    expect(ids("all")).toHaveLength(7);
+    expect(ids("needsYou")).toEqual(["approval", "unseen-failure"]);
+    expect(ids("working")).toEqual(["working-unread"]);
+    expect(ids("unread")).toEqual(["unseen-failure", "working-unread"]);
+  });
+
+  it("keeps a matching comparison together within the project scope", () => {
+    expect(ids("worktree")).toEqual(["first", "worktree"]);
+    expect(filterInboxEntries(entries, "worktree")).toHaveLength(1);
+    expect(filterInboxEntries(groupRuns([thread("read")]), "worktree")).toEqual([]);
+  });
+});
+
+describe("Inbox keyboard navigation", () => {
+  const cards = ["first", "comparison", "last"];
+  it("moves through cards with J/K and the arrows, stopping at the ends", () => {
+    expect(inboxNavigationTarget(cards, "first", "j")).toBe("comparison");
+    expect(inboxNavigationTarget(cards, "comparison", "ArrowDown")).toBe("last");
+    expect(inboxNavigationTarget(cards, "last", "J")).toBe("last");
+    expect(inboxNavigationTarget(cards, "last", "k")).toBe("comparison");
+    expect(inboxNavigationTarget(cards, "comparison", "ArrowUp")).toBe("first");
+    expect(inboxNavigationTarget(cards, "first", "ArrowUp")).toBe("first");
+    expect(inboxNavigationTarget(cards, "first", "h")).toBeUndefined();
+  });
+
+  it("enters from the panel in either direction and jumps across the whole list", () => {
+    expect(inboxNavigationTarget(cards, undefined, "ArrowDown")).toBe("first");
+    expect(inboxNavigationTarget(cards, undefined, "ArrowUp")).toBe("last");
+    expect(inboxNavigationTarget(cards, "last", "Home")).toBe("first");
+    expect(inboxNavigationTarget(cards, "first", "End")).toBe("last");
+    expect(inboxNavigationTarget([], undefined, "ArrowDown")).toBeUndefined();
+  });
+
+  it("continues triage at the next surviving card or falls back to the previous card", () => {
+    const afterArchive = ["last", "first"];
+    const next = inboxFocusAfterRemoval(cards, afterArchive, "comparison");
+    expect(next).toBe("last");
+    expect(inboxFocusAfterRemoval(afterArchive, ["first"], next!)).toBe("first");
+    expect(inboxFocusAfterRemoval(cards, ["first"], "last")).toBe("first");
+    expect(inboxFocusAfterRemoval(["first"], [], "first")).toBeUndefined();
   });
 });
 

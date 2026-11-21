@@ -22,6 +22,7 @@ import {
   useState,
   type CSSProperties,
   type ReactNode,
+  type Ref,
 } from "react";
 
 import { ImageGallery } from "../../components/ImageViewer.tsx";
@@ -64,7 +65,7 @@ import {
   type TranscriptBlock,
   type TurnChanges as TurnChangesModel,
 } from "./model.ts";
-import { PromptStepper, promptsOf } from "./PromptStepper.tsx";
+import { PromptStepper, promptsOf, type PromptSteps } from "./PromptStepper.tsx";
 import { PushCard } from "./PushCard.tsx";
 import { previewFailure } from "./restore.ts";
 import { ForkDialog } from "./ForkDialog.tsx";
@@ -76,12 +77,13 @@ import { ToolGroup, ToolRun } from "./ToolGroup.tsx";
 import { threadImages } from "./tools.ts";
 import { TurnChanges, type TurnFileActions } from "./TurnChanges.tsx";
 import { useStickToBottom } from "./useStickToBottom.ts";
-import { WorkSection, WorkToggles } from "./Work.tsx";
+import { WorkDisclosures, WorkSection } from "./Work.tsx";
 import { useArrivals, usePresence } from "../../lib/motion.ts";
 import { HistoryWindow } from "./HistoryWindow.tsx";
 
 interface TranscriptProps {
   readonly blocks: ReadonlyArray<TranscriptBlock>;
+  readonly promptSteps?: Ref<PromptSteps> | undefined;
   readonly live?: ReadonlyMap<string, AgentEvent>;
   readonly history?: ThreadHistory;
   readonly searchAgent?: AgentId | undefined;
@@ -96,6 +98,7 @@ interface TranscriptProps {
   readonly folder?: string | undefined;
   /** The thread's message box, which messages and chips can put content into; absent when closed. */
   readonly messageBox?: MessageBox | undefined;
+  readonly onOpenSideQuestion?: ((quote: string) => void) | undefined;
   readonly activity: AgentActivity;
   /** Live state of a spawned child, for its card. */
   readonly childState: (childId: string) => ChildState;
@@ -130,6 +133,7 @@ interface TranscriptProps {
   readonly turnFiles?: TurnFileActions | undefined;
   /** The thread the conversation is of, which a message a palette search picked is found in. */
   readonly threadId?: string | undefined;
+  readonly onAddTask?: ((text: string) => void) | undefined;
   /** The pane shows this conversation and has focus, so Ctrl F opens its find bar. */
   readonly focused?: boolean | undefined;
 }
@@ -252,6 +256,7 @@ const containsBlock = (item: Item, id: string): boolean => {
 
 export function Transcript({
   blocks,
+  promptSteps,
   live,
   history,
   searchAgent,
@@ -261,6 +266,7 @@ export function Transcript({
   modelName,
   folder,
   messageBox,
+  onOpenSideQuestion,
   activity,
   childState,
   childAgent,
@@ -274,6 +280,7 @@ export function Transcript({
   onFork,
   turnFiles,
   threadId,
+  onAddTask,
   focused = false,
 }: TranscriptProps) {
   // Read from the spawns as text, which stays equal while they do, so `actions` below stays the same
@@ -300,8 +307,6 @@ export function Transcript({
     queued.messages.at(-1)?.id ?? blocks.findLast((block) => block.kind === "user")?.id,
   );
   const items = layout(shown);
-  // Which works the reader opened or closed, kept as long as the thread is open.
-  const [workToggles] = useState(() => new Map<string, boolean>());
   // What comes in while the thread is open rises into place; what it opened with stays still.
   const arrived = useArrivals(items.flatMap(idsOf));
   const last = items.at(-1);
@@ -354,6 +359,7 @@ export function Transcript({
     ...(onAnswerPermission ? { onAnswerPermission } : {}),
     ...(onAnswerQuestion ? { onAnswerQuestion } : {}),
     ...(onEditMessage ? { onEditMessage } : {}),
+    onAddTask,
     ...(onFork ? { fork: onFork } : {}),
     ...(turnFiles ? { turnFiles } : {}),
     ...(threadId === undefined ? {} : { threadId }),
@@ -411,7 +417,7 @@ export function Transcript({
 
   return (
     <LiveText value={live ?? emptyLive}>
-      <WorkToggles value={workToggles}>
+      <WorkDisclosures threadId={threadId}>
         <ThreadContext folder={folder} messageBox={messageBox} actions={actions}>
           {/* An image opened from the conversation steps through all of the thread's others. */}
           <ImageGallery images={() => threadImages(shown)}>
@@ -457,8 +463,13 @@ export function Transcript({
                   />
                 </div>
               </ScrollArea>
-              <PromptStepper prompts={promptsOf(items)} viewport={viewport} onReveal={unfollow} />
-              <SelectionReply within={column} />
+              <PromptStepper
+                prompts={promptsOf(items)}
+                viewport={viewport}
+                onReveal={unfollow}
+                steps={focused ? promptSteps : undefined}
+              />
+              <SelectionReply within={column} onOpenSideQuestion={onOpenSideQuestion} />
               {/* Back to the latest output after scrolling up to read; sits just above the composer. */}
               <Button
                 onClick={toEnd}
@@ -487,7 +498,7 @@ export function Transcript({
             </div>
           </ImageGallery>
         </ThreadContext>
-      </WorkToggles>
+      </WorkDisclosures>
     </LiveText>
   );
 }
@@ -515,6 +526,7 @@ function WorkingLine({ show, onVisible }: { show: boolean; onVisible: () => void
  * of every item, which would re-render the whole conversation for each streamed word.
  */
 interface TranscriptActions {
+  readonly onAddTask?: TranscriptProps["onAddTask"];
   readonly roleOf: (agentId: string) => string;
   readonly providerOf: (agentId: string) => ProviderId | undefined;
   readonly childState: TranscriptProps["childState"];
@@ -909,10 +921,17 @@ function ReplyMessage({
   quiet: boolean;
   replaced: boolean;
 }) {
+  const { onAddTask } = use(Actions);
   const fork = useTurnFork(replaced ? undefined : block.forkTurn, text);
   return (
     <>
-      <MessageMenuArea text={text} className="select-text" onFork={fork.open}>
+      <MessageMenuArea
+        text={text}
+        className="select-text"
+        onFork={fork.open}
+        onAddTask={onAddTask}
+        actionsOnHover
+      >
         <div data-reply-source data-find={block.id}>
           <Markdown text={text} streaming={block.streaming} compact={quiet} />
         </div>
@@ -960,7 +979,7 @@ function useTurnFork(turn: string | undefined, message: string) {
  * unless a rewind replaced it.
  */
 function EditableMessage({ block, replaced }: { block: Block<"user">; replaced: boolean }) {
-  const { onEditMessage, restore } = use(Actions);
+  const { onEditMessage, onAddTask, restore } = use(Actions);
   const messageBox = useMessageBox();
   const [restoreOpen, setRestoreOpen] = useState(false);
   const [check, setCheck] = useState<RestoreCheck>({ status: "loading" });
@@ -995,6 +1014,7 @@ function EditableMessage({ block, replaced }: { block: Block<"user">; replaced: 
         }
         onRestore={restorable ? openRestore : undefined}
         onFork={fork.open}
+        onAddTask={onAddTask}
       />
       {fork.dialog}
       {restorable ? (

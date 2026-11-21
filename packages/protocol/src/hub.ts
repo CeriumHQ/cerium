@@ -121,3 +121,45 @@ export const HubCopyOutcome = Schema.Struct({
   skipped: Schema.optionalKey(Schema.String),
 });
 export type HubCopyOutcome = typeof HubCopyOutcome.Type;
+
+export const HUB_CANONICAL_INSTRUCTIONS = "AGENTS.md";
+
+export const HubInstructionFile = Schema.Struct({
+  /** A slash-separated path relative to the selected project. */
+  path: Schema.NonEmptyString,
+  providers: Schema.Array(ProviderId),
+  /** A project Markdown file discovered through an instruction reference. */
+  sourceOnly: Schema.optionalKey(Schema.Boolean),
+  /** Supplemental rules and local instructions can be inspected in place. */
+  supplemental: Schema.Boolean,
+  /** The snapshot a save or sync must still match. */
+  revision: Schema.NonEmptyString,
+  content: Schema.optionalKey(Schema.String),
+  /** The project-relative file supplying the text through a symlink or standalone native import. */
+  reference: Schema.optionalKey(Schema.String),
+  problem: Schema.optionalKey(Schema.String),
+});
+export type HubInstructionFile = typeof HubInstructionFile.Type;
+
+export type HubInstructionStatus = "canonical" | "inSync" | "linked" | "missing" | "diverged" | "unavailable";
+
+export const hubInstructionStatus = (
+  file: HubInstructionFile,
+  canonical: HubInstructionFile | undefined,
+): HubInstructionStatus => {
+  if (file.problem !== undefined) return file.reference === undefined ? "unavailable" : "diverged";
+  if (file.content === undefined) return "missing";
+  if (file.path === canonical?.path) return "canonical";
+  if (file.reference !== undefined) return file.reference === canonical?.path ? "linked" : "diverged";
+  return file.content === canonical?.content ? "inSync" : "diverged";
+};
+
+export const HubInstructionMode = Schema.Literals(["copy", "link"]);
+export type HubInstructionMode = typeof HubInstructionMode.Type;
+
+export const HubInstructionOutcome = Schema.Struct({
+  path: Schema.NonEmptyString,
+  result: Schema.Literals(["unchanged", "copied", "linked", "skipped"]),
+  problem: Schema.optionalKey(Schema.String),
+});
+export type HubInstructionOutcome = typeof HubInstructionOutcome.Type;

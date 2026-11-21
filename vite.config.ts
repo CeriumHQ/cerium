@@ -17,6 +17,7 @@ const browserTests = [
   "packages/browser/test/page.test.ts",
   "packages/browser/test/shutdown.test.ts",
   "packages/artifacts/test/preview.test.ts",
+  "apps/ui/test/qol.interactions.test.ts",
 ];
 
 // Restarting a listener must reacquire its previous port. A released ephemeral port is available
@@ -94,7 +95,7 @@ export default defineConfig({
           name: "unit",
           include: [
             "packages/**/test/**/*.test.ts",
-            "apps/**/test/**/*.test.ts",
+            "apps/**/test/**/*.test.{ts,tsx}",
             "scripts/test/**/*.test.ts",
           ],
           exclude: [...ignored, ...browserTests, ...loopbackTests],

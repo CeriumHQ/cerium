@@ -313,8 +313,8 @@ export const Handlers = MachineRpcs.toLayer(
           .pipe(Effect.mapError(refuse)),
       PreviewRestore: ({ agentId, messageId }) =>
         orchestrator.previewRestore(agentId, messageId).pipe(Effect.mapError(refuse)),
-      RevertTurnFiles: ({ agentId, turnId, direction }) =>
-        orchestrator.revertTurn(agentId, turnId, direction).pipe(Effect.mapError(refuse)),
+      RevertTurnFiles: ({ agentId, turnId, direction, paths }) =>
+        orchestrator.revertTurn(agentId, turnId, direction, paths).pipe(Effect.mapError(refuse)),
       RestoreBefore: ({ agentId, messageId }) =>
         orchestrator.restoreBefore(agentId, messageId).pipe(Effect.mapError(refuse)),
       SwitchModel: ({ agentId, model, effort, autoEffort, speed }) =>

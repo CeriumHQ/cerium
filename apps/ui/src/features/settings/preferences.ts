@@ -11,6 +11,7 @@ import { WEB } from "../../backend/target.ts";
 import { primaryHeld } from "../../lib/keys.ts";
 import { remember, stored } from "../../lib/storage.ts";
 import { accessOptions, effortLabel, speedLabel } from "../composer/models.ts";
+import { INBOX_CAP } from "../threads/model.ts";
 
 // Preferences that only change this window, kept in its local storage. Each is an atom, so the
 // settings view and the parts of the window a preference changes stay in step.
@@ -25,6 +26,17 @@ const preference = <A extends string>(key: string, options: ReadonlyArray<A>, fa
   ).pipe(Atom.keepAlive);
 
 const MODEL_KEY = "cerium:model";
+
+const INBOX_CAP_KEY = "cerium:inboxCap";
+export const inboxCaps = [INBOX_CAP, 12, 20, 50, 0] as const;
+type InboxCap = (typeof inboxCaps)[number];
+export const inboxCapAtom = Atom.writable(
+  (): InboxCap => inboxCaps.find((cap) => String(cap) === stored(INBOX_CAP_KEY)) ?? INBOX_CAP,
+  (context, cap: InboxCap) => {
+    context.setSelf(cap);
+    remember(INBOX_CAP_KEY, String(cap));
+  },
+).pipe(Atom.keepAlive);
 
 export type Theme = "system" | "dark" | "light";
 export const THEME_KEY = "cerium:theme";

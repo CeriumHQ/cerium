@@ -7,6 +7,8 @@ import {
   CheckCheck,
   Clock,
   CornerDownRight,
+  FunnelX,
+  GitFork,
   Inbox as InboxIcon,
   ListFilter,
   Mail,
@@ -17,9 +19,20 @@ import {
   SquarePen,
   Trash2,
   Undo2,
+  X,
 } from "lucide-react";
 import { useAtomValue, useAtomSet } from "@effect/atom-react";
-import { memo, useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import {
+  memo,
+  useEffect,
+  useEffectEvent,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ComponentProps,
+  type ReactNode,
+  type RefObject,
+} from "react";
 
 import {
   MenuGroupLabel,
@@ -33,24 +46,34 @@ import {
 } from "../../components/ui/Menu.tsx";
 import { Reveal } from "../../components/Reveal.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
+import { buttonClass } from "../../components/ui/Button.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { BulkBar, BulkNote, useBulkSelection, type SelectMode } from "./BulkBar.tsx";
 import { useArrivals, useGlide, useLingering, usePresence, useRetained } from "../../lib/motion.ts";
 import { usePaging } from "../../lib/paging.ts";
 import { remember, stored } from "../../lib/storage.ts";
 import type { NewThreadDraft } from "../composer/drafts.ts";
-import { inboxProjects, inboxSections } from "./sections.ts";
+import { inboxCapAtom } from "../settings/preferences.ts";
+import {
+  filterInboxEntries,
+  inboxProjects,
+  inboxSections,
+  inboxStatusFilters,
+  type InboxStatusFilter,
+} from "./sections.ts";
 import { CopyLinkMenuItem } from "../launch/CopyLink.tsx";
 import { ExportMenuItems } from "../export/ExportItems.tsx";
 import { DraftRow, type DraftActions } from "./DraftRow.tsx";
 import { EmptyList } from "./EmptyList.tsx";
 import { InboxCard, type CardAction } from "./InboxCard.tsx";
+import { inboxFocusAfterRemoval, inboxNavigationTarget } from "./inboxNavigation.ts";
 import {
   archivedWork,
   backLabel,
   canArchive,
   canDelete,
   boxOf,
+  entryThreads,
   groupRuns,
   isPutOff,
   type InboxBox,
@@ -67,6 +90,7 @@ import { pinnedAtom, togglePin, withPinned } from "./pins.ts";
 import { ProjectBadge } from "./ProjectBadge.tsx";
 import { type RenameThread } from "./Rename.tsx";
 import { RunScoreboard } from "./RunScoreboard.tsx";
+import { summarizeBulk, type BulkPlan } from "./bulk.ts";
 import type { RowControls } from "./ThreadRow.tsx";
 
 const SCOPE_KEY = "cerium:inboxScope";
@@ -124,6 +148,7 @@ interface InboxProps {
   readonly onRename: RenameThread;
   /** Each resolves whether the thread went, so the bulk bar reports what worked. */
   readonly onArchive: (threadId: string) => Promise<boolean>;
+  readonly onKeepRun: (winnerId: string) => Promise<BulkPlan>;
   readonly onRestore: (threadId: string) => Promise<boolean>;
   /** Puts a thread off until then, or brings it back; absent where the machine can't. */
   readonly onLater: ((threadId: string, until: number | undefined) => Promise<boolean>) | undefined;
@@ -152,6 +177,7 @@ export function Inbox({
   onNewThreadIn,
   onRename,
   onArchive,
+  onKeepRun,
   onRestore,
   onLater,
   onContinue,
@@ -172,22 +198,30 @@ export function Inbox({
   // The list follows what opens: a draft shows Drafts, a new thread the inbox, and a thread opened
   // from the palette the list it's in. Only a different one counts: the selection drops out for a
   // moment while a file or settings shows.
-  const [followed, setFollowed] = useState(selectedId);
-  if (selectedId !== undefined && followed !== selectedId) {
-    setFollowed(selectedId);
-    setBox(
-      drafts.some((draft) => draft.key === selectedId)
+  const selectedBox =
+    selectedId === undefined
+      ? undefined
+      : drafts.some((draft) => draft.key === selectedId)
         ? "drafts"
         : boxOf(
             [...threads, ...archived].find((thread) => thread.id === selectedId),
             now,
-          ),
-    );
+          );
+  const [followed, setFollowed] = useState({ id: selectedId, box: selectedBox });
+  if (selectedId !== undefined && (followed.id !== selectedId || followed.box !== selectedBox)) {
+    if (followed.id !== selectedId && selectedBox !== undefined) {
+      // Closing an archived thread's tab can select a thread in another list. Keep triage in place.
+      const archiving =
+        followed.box === box && box !== "archive" && archived.some(({ id }) => id === followed.id);
+      if (!archiving) setBox(selectedBox);
+    }
+    setFollowed({ id: selectedId, box: selectedBox });
   }
   const pins = useAtomValue(pinnedAtom);
   const projects = inboxProjects([...threads, ...archived]);
   /** The folder the lists are scoped to; empty for every project. */
   const [scope, setScope] = useState(() => stored(SCOPE_KEY) ?? "");
+  const [status, setStatus] = useState<InboxStatusFilter>("all");
   // A remembered folder with no threads left falls back to every project.
   const project = projects.find((candidate) => candidate.folder === scope);
   const inScope = (thread: ThreadSummary) => project === undefined || thread.folder === project.folder;
@@ -195,6 +229,32 @@ export function Inbox({
     remember(SCOPE_KEY, folder);
     setScope(folder);
   };
+  const clearFilters = () => {
+    chooseScope("");
+    setStatus("all");
+  };
+  const activeStatus = box === "drafts" ? "all" : status;
+  const statusLabel = inboxStatusFilters.find(({ key }) => key === activeStatus)?.label ?? "All statuses";
+  let viewLabel = project?.name ?? "View";
+  if (activeStatus !== "all") viewLabel = project ? `${project.name}, ${statusLabel}` : statusLabel;
+  const filteredEmpty =
+    project !== undefined || status !== "all" ? (
+      <EmptyList
+        icon={ListFilter}
+        title="No threads match this filter."
+        hint={`${[project?.name, activeStatus === "all" ? undefined : statusLabel].filter(Boolean).join(", ")} shows nothing in this list.`}
+        action={
+          <button
+            type="button"
+            onClick={clearFilters}
+            className={buttonClass({ tone: "neutral", size: "sm" })}
+          >
+            <FunnelX size={13} strokeWidth={1.75} aria-hidden />
+            Clear filters
+          </button>
+        }
+      />
+    ) : undefined;
 
   const [movingRows, setMovingRows] = useState<ReadonlyArray<BulkMove>>([]);
   const holdMovingRows = (box: InboxBox, threads: ReadonlyArray<ThreadSummary>) => {
@@ -211,26 +271,76 @@ export function Inbox({
     return taken === undefined || source.some((thread) => taken.includes(thread.id));
   });
   if (moves.length !== movingRows.length) setMovingRows(moves);
-  const later = laterWork(withMovingRows(deferred, "later", moves), now).filter(inScope);
-  const archive = archivedWork(withMovingRows(archived, "archive", moves)).filter(inScope);
+  const later = filterInboxEntries(
+    groupRuns(laterWork(withMovingRows(deferred, "later", moves), now).filter(inScope)),
+    status,
+  );
+  const archive = filterInboxEntries(
+    groupRuns(archivedWork(withMovingRows(archived, "archive", moves)).filter(inScope)),
+    status,
+  );
   const sections = inboxSections(withMovingRows(inbox, "inbox", moves).filter(inScope), now);
   // What needs the user leads, then pinned threads, then the rest.
-  const listed = [
-    ...sections.filter((section) => section.key === "needsYou"),
-    ...withPinned(
-      sections.filter((section) => section.key !== "needsYou"),
-      pins,
+  const listed = filterInboxEntries(
+    groupRuns(
+      [
+        ...sections.filter((section) => section.key === "needsYou"),
+        ...withPinned(
+          sections.filter((section) => section.key !== "needsYou"),
+          pins,
+        ),
+      ].flatMap(({ threads }) => threads),
     ),
-  ].flatMap(({ threads }) => threads);
+    status,
+  );
   // A draft with no project chosen yet shows in every scope.
   const scopedDrafts = drafts.filter(
     (draft) => project === undefined || draft.folder === undefined || draft.folder === project.folder,
   );
-  const unread = listed.filter((thread) => thread.unread);
+  const unread = listed.flatMap(entryThreads).filter((thread) => thread.unread);
+  const allRuns = new Map<string, Array<ThreadSummary>>();
+  for (const thread of threads) {
+    if (thread.runId === undefined) continue;
+    const run = allRuns.get(thread.runId);
+    if (run) run.push(thread);
+    else allRuns.set(thread.runId, [thread]);
+  }
 
+  const [keeping, setKeeping] = useState(false);
+  const [keepNote, setKeepNote] = useState<string>();
+  const keepRun = async (winnerId: string) => {
+    if (keeping) return;
+    setKeeping(true);
+    setKeepNote(undefined);
+    const note = await onKeepRun(winnerId).then(
+      (result) => summarizeBulk("archive", result),
+      () => "The comparison could not be archived.",
+    );
+    setKeepNote(note);
+    setKeeping(false);
+  };
+  const comparisonNote =
+    keepNote === undefined ? null : (
+      <div className="mx-2 mb-2 flex shrink-0 items-start gap-2 rounded-lg border border-line-subtle bg-surface-raised py-2 pr-1.5 pl-2.5 text-meta text-fg-secondary shadow-raised transition-[opacity,translate] duration-200 ease-out-soft starting:translate-y-1.5 starting:opacity-0 max-md:text-[13px]">
+        <Archive size={13} strokeWidth={1.75} aria-hidden className="mt-px shrink-0 text-fg-tertiary" />
+        <output className="min-w-0 flex-1 leading-[1.4]">{keepNote}</output>
+        <Tooltip label="Dismiss">
+          <Button
+            aria-label="Dismiss"
+            onClick={() => setKeepNote(undefined)}
+            className="-my-0.5 grid size-5 shrink-0 place-items-center rounded-md text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-primary max-md:-my-1.5 max-md:size-8"
+          >
+            <X size={12} strokeWidth={1.75} />
+          </Button>
+        </Tooltip>
+      </div>
+    );
+
+  const cap = useAtomValue(inboxCapAtom);
   const { note, archiveRow, clearNote } = useArchiveNote(
     inbox,
     (thread) => pins.includes(thread.id) || open.includes(thread.id),
+    cap,
     {
       selectedId,
       onArchive,
@@ -262,15 +372,12 @@ export function Inbox({
 
   // Bulk picking, in the showing list's order so Shift click ticks a run of it. The pick drops
   // when the list changes; what an action moves away drops out of the list by itself.
-  const orderedThreads =
-    box === "later"
-      ? later
-      : box === "archive"
-        ? archive
-        : groupRuns(listed).flatMap((entry) => (entry.kind === "thread" ? [entry.thread] : entry.threads));
+  const orderedThreads = (
+    box === "later" ? later : box === "archive" ? archive : box === "inbox" ? listed : []
+  ).flatMap(entryThreads);
   const ordered = orderedThreads.map((thread) => thread.id);
   const { selected, toggle: togglePicked, setAll: setPicked, clear: clearPicked } = useBulkSelection(ordered);
-  useEffect(() => clearPicked(), [box, scope, clearPicked]);
+  useEffect(() => clearPicked(), [box, scope, status, clearPicked]);
   const ticked = new Set(selected);
   const pickedHere = orderedThreads.filter((thread) => ticked.has(thread.id));
   const picked = pickedHere.map((thread) => thread.id);
@@ -307,7 +414,9 @@ export function Inbox({
     if (event.key !== "Escape" || selected.length === 0) return;
     if (
       event.target instanceof HTMLElement &&
-      event.target.closest("input, textarea, [role='dialog'], [role='alertdialog'], [role='menu']")
+      event.target.closest(
+        "input, textarea, select, dialog, [role='dialog'], [role='alertdialog'], [role='menu']",
+      )
     ) {
       return;
     }
@@ -338,14 +447,33 @@ export function Inbox({
           {/* The archive only grows, so a count there would say nothing. */}
           <BoxTab value="archive" label="Archive" />
         </Tabs.List>
-        {/* One menu for the view: which projects show, and marking the inbox read. */}
-        {projects.length > 1 || unread.length > 0 ? (
+        {activeStatus === "all" ? null : (
+          // The status the lists are narrowed to, in sight while the menu is closed; pressing it shows every status again.
+          <Tooltip label="Show all statuses">
+            <Button
+              aria-label={`Status filter: ${statusLabel}. Show all statuses`}
+              onClick={() => setStatus("all")}
+              className="group/chip ml-auto flex h-5.5 max-w-28 min-w-0 shrink items-center gap-1 rounded-md bg-surface-selected pr-1 pl-1.5 text-caption font-medium text-fg-secondary transition-colors duration-150 hover:text-fg-primary max-md:h-8 max-md:max-w-36 max-md:text-[13px]"
+            >
+              <StatusMark status={activeStatus} />
+              <span className="min-w-0 truncate">{statusLabel}</span>
+              <X
+                size={11}
+                strokeWidth={2}
+                aria-hidden
+                className="shrink-0 text-fg-tertiary group-hover/chip:text-fg-primary"
+              />
+            </Button>
+          </Tooltip>
+        )}
+        {/* One menu for the view: which projects and statuses show, and marking the inbox read. */}
+        {box !== "drafts" || projects.length > 1 || unread.length > 0 ? (
           <MenuRoot>
-            <Tooltip label={project?.name ?? (projects.length > 1 ? "All projects" : "View")}>
+            <Tooltip label={viewLabel}>
               <MenuTrigger>
                 <Button
-                  aria-label={projects.length > 1 ? `Projects shown: ${project?.name ?? "all"}` : "View"}
-                  className="ml-auto grid size-6.5 shrink-0 place-items-center rounded-md text-fg-tertiary transition-colors duration-150 hover:bg-surface-hover hover:text-fg-secondary data-popup-open:bg-surface-active data-popup-open:text-fg-secondary max-md:size-9"
+                  aria-label={`Filter threads, ${project?.name ?? "all projects"}, ${statusLabel}`}
+                  className={`${activeStatus === "all" ? "ml-auto" : ""} grid size-6.5 shrink-0 place-items-center rounded-md text-fg-tertiary transition-colors duration-150 hover:bg-surface-hover hover:text-fg-secondary data-popup-open:bg-surface-active data-popup-open:text-fg-secondary max-md:size-9`}
                 >
                   {project ? (
                     <ProjectBadge folder={project.folder} name={project.name} size="small" />
@@ -382,24 +510,49 @@ export function Inbox({
                   </MenuRadioGroup>
                 </>
               ) : null}
+              {box === "drafts" ? null : (
+                <>
+                  {unread.length > 0 || projects.length > 1 ? <MenuSeparator /> : null}
+                  <MenuRadioGroup value={status} onValueChange={setStatus}>
+                    <MenuGroupLabel>Status</MenuGroupLabel>
+                    {inboxStatusFilters.map(({ key, label }) => (
+                      <MenuRadioItem key={key} value={key}>
+                        <StatusMark status={key} />
+                        {label}
+                      </MenuRadioItem>
+                    ))}
+                  </MenuRadioGroup>
+                </>
+              )}
+              {project !== undefined || activeStatus !== "all" ? (
+                <>
+                  <MenuSeparator />
+                  <MenuItem icon={FunnelX} onClick={clearFilters}>
+                    Clear filters
+                  </MenuItem>
+                </>
+              ) : null}
             </MenuPopup>
           </MenuRoot>
         ) : null}
       </div>
 
-      <BoxPanel
-        value="inbox"
+      <ThreadPanel
+        box="inbox"
         label="Inbox"
         empty={
-          listed.length > 0 ? undefined : threads.length + archived.length + drafts.length > 0 ? (
-            "You're all caught up."
-          ) : (
-            <EmptyList
-              icon={InboxIcon}
-              title="No threads yet"
-              hint="Threads from every project gather here."
-            />
-          )
+          listed.length > 0
+            ? undefined
+            : (filteredEmpty ??
+              (threads.length + archived.length + drafts.length > 0 ? (
+                "You're all caught up."
+              ) : (
+                <EmptyList
+                  icon={InboxIcon}
+                  title="No threads yet"
+                  hint="Threads from every project gather here."
+                />
+              )))
         }
         bar={
           <>
@@ -413,17 +566,16 @@ export function Inbox({
             />
           </>
         }
-      >
-        <Entries
-          threads={listed}
-          box="inbox"
-          now={now}
-          picked={box === "inbox" ? picked : NO_PICKS}
-          onToggle={togglePicked}
-          setAll={setPicked}
-          {...rowProps}
-        />
-      </BoxPanel>
+        entries={listed}
+        allRuns={allRuns}
+        onKeep={keepRun}
+        keeping={keeping}
+        now={now}
+        picked={box === "inbox" ? picked : NO_PICKS}
+        onToggle={togglePicked}
+        setAll={setPicked}
+        {...rowProps}
+      />
       <BoxPanel value="drafts" label="Drafts" empty={scopedDrafts.length === 0 ? "No drafts." : undefined}>
         {scopedDrafts.map((draft) => (
           <li key={draft.key}>
@@ -432,40 +584,52 @@ export function Inbox({
         ))}
       </BoxPanel>
 
-      <BoxPanel
-        value="later"
+      <ThreadPanel
+        box="later"
         label="Later"
-        empty={later.length === 0 ? "Nothing put off." : undefined}
+        empty={later.length === 0 ? (filteredEmpty ?? "Nothing put off.") : undefined}
         bar={bulkBar("later")}
-      >
-        <Entries
-          threads={later}
-          box="later"
-          now={now}
-          picked={box === "later" ? picked : NO_PICKS}
-          onToggle={togglePicked}
-          setAll={setPicked}
-          {...rowProps}
-        />
-      </BoxPanel>
+        entries={later}
+        allRuns={allRuns}
+        onKeep={keepRun}
+        keeping={keeping}
+        now={now}
+        picked={box === "later" ? picked : NO_PICKS}
+        onToggle={togglePicked}
+        setAll={setPicked}
+        {...rowProps}
+      />
 
-      <BoxPanel
-        value="archive"
+      <ThreadPanel
+        box="archive"
         label="Archive"
-        empty={archive.length === 0 ? "Nothing archived yet." : undefined}
+        empty={archive.length === 0 ? (filteredEmpty ?? "Nothing archived yet.") : undefined}
         bar={bulkBar("archive")}
-      >
-        <Entries
-          threads={archive}
-          box="archive"
-          now={now}
-          picked={box === "archive" ? picked : NO_PICKS}
-          onToggle={togglePicked}
-          setAll={setPicked}
-          {...rowProps}
-        />
-      </BoxPanel>
+        entries={archive}
+        allRuns={allRuns}
+        keeping={keeping}
+        now={now}
+        picked={box === "archive" ? picked : NO_PICKS}
+        onToggle={togglePicked}
+        setAll={setPicked}
+        {...rowProps}
+      />
+      {comparisonNote}
     </Tabs.Root>
+  );
+}
+
+/** A status filter's mark in the view menu and its chip: the colour a row of that status shows. */
+function StatusMark({ status }: { status: InboxStatusFilter }) {
+  if (status === "all") return null;
+  if (status === "worktree")
+    return <GitFork size={12} strokeWidth={1.75} aria-hidden className="shrink-0 text-fg-tertiary" />;
+  const tone =
+    status === "needsYou" ? "bg-attention" : status === "working" ? "bg-running" : "bg-fg-secondary";
+  return (
+    <span aria-hidden className="grid size-3 shrink-0 place-items-center">
+      <span className={`size-1.5 rounded-full ${tone}`} />
+    </span>
   );
 }
 
@@ -487,6 +651,8 @@ function BoxPanel({
   label,
   empty,
   bar,
+  panelRef,
+  handlers,
   children,
 }: {
   value: InboxBox;
@@ -494,11 +660,15 @@ function BoxPanel({
   empty: ReactNode;
   /** The bulk-action bar at the list's foot while threads of this list are picked, or its note after. */
   bar?: ReactNode;
+  panelRef?: RefObject<HTMLDivElement | null>;
+  handlers?: Pick<ComponentProps<typeof Tabs.Panel>, "onKeyDown" | "onFocusCapture" | "onBlurCapture">;
   children: ReactNode;
 }) {
   return (
     <Tabs.Panel
       value={value}
+      ref={panelRef}
+      {...handlers}
       className="flex min-h-0 flex-1 flex-col pt-0 outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus-ring"
     >
       <ScrollArea className="flex-1">
@@ -639,12 +809,13 @@ function useNowPast(times: ReadonlyArray<number | undefined>): number {
 }
 
 /**
- * Keeps the inbox to `INBOX_CAP` threads: as a new thread arrives, the oldest quiet ones beyond it are
+ * Keeps the inbox to its configured cap: as a new thread arrives, the oldest quiet ones beyond it are
  * archived, and a note offers to bring them back. The same note follows a single row archive.
  */
 function useArchiveNote(
   inbox: ReadonlyArray<ThreadSummary>,
   keep: (thread: ThreadSummary) => boolean,
+  cap: number,
   { selectedId, onArchive }: Pick<InboxProps, "selectedId" | "onArchive">,
 ) {
   const [note, setNote] = useState<UndoNote>();
@@ -672,7 +843,7 @@ function useArchiveNote(
     );
     for (const thread of inbox) seen.current.add(thread.id);
     if (!fresh) return;
-    const gone = overflow(inbox, (thread) => thread.id === selectedId || keep(thread), at);
+    const gone = overflow(inbox, (thread) => thread.id === selectedId || keep(thread), at, cap);
     if (gone.length === 0) return;
     for (const thread of gone) void onArchive(thread.id);
     // The note shows once this effect is done, rather than rendering again inside it.
@@ -690,7 +861,7 @@ function useArchiveNote(
 
 type RowProps = Omit<
   InboxProps,
-  "threads" | "drafts" | "draftActions" | "archived" | "open" | "onArchive"
+  "threads" | "drafts" | "draftActions" | "archived" | "open" | "onArchive" | "onKeepRun"
 > & {
   readonly onArchive: (threadId: string, undoTitle?: string) => Promise<boolean>;
   /** The folder the lists are scoped to, if any. */
@@ -746,9 +917,15 @@ function useSteadyActions(actions: RowActions): RowActions {
 }
 
 /** A list's threads, each multi-agent run's in one card. */
-function Entries({
-  threads,
+function ThreadPanel({
+  entries,
   box,
+  label,
+  empty,
+  bar,
+  allRuns,
+  onKeep,
+  keeping,
   now,
   selectedId,
   picked,
@@ -756,8 +933,14 @@ function Entries({
   setAll,
   ...rowProps
 }: {
-  threads: ReadonlyArray<ThreadSummary>;
+  entries: ReadonlyArray<InboxEntry>;
   box: InboxBox;
+  label: string;
+  empty: ReactNode;
+  bar: ReactNode;
+  allRuns: ReadonlyMap<string, ReadonlyArray<ThreadSummary>>;
+  onKeep?: (winnerId: string) => void;
+  keeping: boolean;
   now: number;
   /** Ids picked for bulk actions; rows read only whether they hold one. */
   picked: ReadonlyArray<string>;
@@ -766,27 +949,95 @@ function Entries({
 } & RowProps) {
   // A card that moves glides to its new place; one that comes grows into the list and one that goes
   // (archived, put off) folds out of it, so the cards around it close up smoothly.
-  const entries = groupRuns(threads);
   const [rows, release] = useLingering(entries, entryKey);
-  const arrived = useArrivals(entries.map(entryKey));
+  const keys = entries.map(entryKey);
+  const arrived = useArrivals(keys);
   const glide = useGlide();
+  const panel = useRef<HTMLDivElement>(null);
+  const focused = useRef<string | undefined>(undefined);
+  const previousKeys = useRef(keys);
+  const [request, setRequest] = useState<{ key: string; from: HTMLElement }>();
+  const handledRequest = useRef<typeof request>(undefined);
+  const focusCard = (key: string | undefined) => {
+    const root = panel.current;
+    if (root === null) return;
+    const row = [...root.querySelectorAll<HTMLElement>("[data-inbox-entry]")].find(
+      (row) => row.dataset["inboxEntry"] === key,
+    );
+    const card = row?.querySelector<HTMLElement>("[data-thread]");
+    if (card?.closest("[inert]") === null) card.focus();
+    else root.focus({ preventScroll: true });
+  };
+  useLayoutEffect(() => {
+    const before = previousKeys.current;
+    previousKeys.current = keys;
+    const active = document.activeElement;
+    if (request !== undefined && request !== handledRequest.current) {
+      handledRequest.current = request;
+      if (active === request.from && keys.includes(request.key)) focusCard(request.key);
+    }
+    const activeRow = active?.closest("[data-inbox-entry]");
+    if (
+      focused.current !== undefined &&
+      !keys.includes(focused.current) &&
+      (active === document.body ||
+        (panel.current?.contains(activeRow ?? null) &&
+          activeRow?.getAttribute("data-inbox-entry") === focused.current))
+    ) {
+      focusCard(inboxFocusAfterRemoval(before, keys, focused.current));
+    }
+  });
+  const handlers: NonNullable<ComponentProps<typeof BoxPanel>["handlers"]> = {
+    onFocusCapture: (event) => {
+      if (!event.currentTarget.contains(event.target)) return;
+      focused.current = event.target.closest<HTMLElement>("[data-inbox-entry]")?.dataset["inboxEntry"];
+    },
+    onBlurCapture: (event) => {
+      const next = event.relatedTarget;
+      if (next && next !== document.body && !event.currentTarget.contains(next)) {
+        focused.current = undefined;
+      }
+    },
+    onKeyDown: (event) => {
+      if (
+        event.defaultPrevented ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.altKey ||
+        event.shiftKey ||
+        event.nativeEvent.isComposing ||
+        !(event.target instanceof HTMLElement) ||
+        !event.currentTarget.contains(event.target) ||
+        event.target.closest(
+          "input, textarea, select, [contenteditable], [role='menu'], [role='dialog'], [role='alertdialog'], dialog",
+        )
+      )
+        return;
+      const at = event.target.closest<HTMLElement>("[data-inbox-entry]")?.dataset["inboxEntry"];
+      const next = inboxNavigationTarget(keys, at, event.key);
+      if (next === undefined) return;
+      event.preventDefault();
+      setRequest({ key: next, from: event.target });
+    },
+  };
   // A long list, the archive's above all, renders a page at a time as it scrolls.
   const { shown, more, end } = usePaging<HTMLLIElement>(
     rows.length,
-    selectedId === undefined
-      ? -1
-      : rows.findIndex(({ item }) =>
-          item.kind === "thread"
-            ? item.thread.id === selectedId
-            : item.threads.some((thread) => thread.id === selectedId),
-        ),
+    Math.max(
+      request === undefined ? -1 : rows.findIndex(({ key }) => key === request.key),
+      selectedId === undefined
+        ? -1
+        : rows.findIndex(({ item }) =>
+            item.kind === "thread"
+              ? item.thread.id === selectedId
+              : item.threads.some((thread) => thread.id === selectedId),
+          ),
+    ),
   );
-  // A fragment, not the bare array: the React Compiler takes a function for a component, and memoizes
-  // its rows, only when it returns JSX itself.
   return (
-    <>
+    <BoxPanel value={box} label={label} empty={empty} bar={bar} panelRef={panel} handlers={handlers}>
       {rows.slice(0, shown).map(({ key, item: entry, present }) => (
-        <li key={key} ref={glide(key)}>
+        <li key={key} ref={glide(key)} data-inbox-entry={key}>
           <Reveal appear={arrived(key)} onGone={() => release(key)}>
             {!present ? null : entry.kind === "thread" ? (
               <InboxRow
@@ -802,6 +1053,9 @@ function Entries({
             ) : (
               <InboxRun
                 threads={entry.threads}
+                comparisonThreads={allRuns.get(entry.id) ?? entry.threads}
+                onKeep={onKeep}
+                keeping={keeping}
                 box={box}
                 now={now}
                 selectedId={selectedId}
@@ -815,7 +1069,7 @@ function Entries({
         </li>
       ))}
       {more ? <li ref={end} aria-hidden className="h-px" /> : null}
-    </>
+    </BoxPanel>
   );
 }
 
@@ -828,6 +1082,9 @@ const entryKey = (entry: InboxEntry) => (entry.kind === "thread" ? entry.thread.
  */
 function InboxRun({
   threads,
+  comparisonThreads,
+  onKeep,
+  keeping,
   box,
   now,
   selectedId,
@@ -844,7 +1101,14 @@ function InboxRun({
   picked,
   onToggle,
   setAll,
-}: { threads: ReadonlyArray<ThreadSummary>; box: InboxBox; now: number } & RowProps & {
+}: {
+  threads: ReadonlyArray<ThreadSummary>;
+  comparisonThreads: ReadonlyArray<ThreadSummary>;
+  onKeep: ((winnerId: string) => void) | undefined;
+  keeping: boolean;
+  box: InboxBox;
+  now: number;
+} & RowProps & {
     picked: ReadonlyArray<string>;
     onToggle: (threadId: string, mode: SelectMode) => void;
     setAll: (threadIds: ReadonlyArray<string>, on: boolean) => void;
@@ -860,9 +1124,8 @@ function InboxRun({
     for (const thread of threads) void act(thread.id);
   };
   const putOff =
-    onLater && here && archivable
-      ? () => {
-          const until = laterTime(Date.now());
+    onLater && box === "inbox" && here && archivable
+      ? (until: number) => {
           for (const thread of threads) void onLater(thread.id, until);
         }
       : undefined;
@@ -875,7 +1138,8 @@ function InboxRun({
 
   const quick: Array<CardAction> = [];
   if (box === "inbox" && here && archivable) {
-    if (putOff) quick.push({ icon: Clock, label: "Later", key: "h", run: putOff });
+    if (putOff)
+      quick.push({ icon: Clock, label: "Later", key: "h", run: () => putOff(laterTime(Date.now())) });
     quick.push({ icon: Archive, label: "Archive", key: "e", run: each(onArchive) });
   }
   if (back && here) quick.push({ icon: Undo2, label: "Back to Inbox", key: "u", run: back });
@@ -922,11 +1186,6 @@ function InboxRun({
       {here ? (
         <>
           <MenuSeparator />
-          {box === "inbox" && putOff ? (
-            <MenuItem icon={Clock} onClick={putOff}>
-              Later
-            </MenuItem>
-          ) : null}
           {back ? (
             <MenuItem icon={box === "archive" ? ArchiveRestore : Undo2} onClick={back}>
               Back to Inbox
@@ -956,6 +1215,7 @@ function InboxRun({
         actions={quick}
         onSelect={onSelect}
         onRename={onRename}
+        {...(putOff ? { onLater: putOff } : {})}
         menu={menu}
         selection={{
           active: picked.length > 0,
@@ -990,6 +1250,9 @@ function InboxRun({
           selectedId={selectedId}
           onSelect={onSelect}
           onArchive={box === "archive" ? undefined : onArchive}
+          onKeep={onKeep}
+          keeping={keeping}
+          comparisonThreads={comparisonThreads}
         />
       ) : null}
     </>
@@ -1047,7 +1310,9 @@ function InboxRowCard({
   // Another machine's thread is put off, archived, renamed and deleted there: open it there.
   const here = thread.elsewhere === undefined;
   const putOff =
-    onLater && here && canArchive(thread) ? () => onLater(thread.id, laterTime(Date.now())) : undefined;
+    onLater && box === "inbox" && here && canArchive(thread)
+      ? (until: number) => void onLater(thread.id, until)
+      : undefined;
   const back =
     box === "later" && onLater
       ? () => onLater(thread.id, undefined)
@@ -1058,7 +1323,8 @@ function InboxRowCard({
 
   const quick: Array<CardAction> = [];
   if (box === "inbox" && here && canArchive(thread)) {
-    if (putOff) quick.push({ icon: Clock, label: "Later", key: "h", run: putOff });
+    if (putOff)
+      quick.push({ icon: Clock, label: "Later", key: "h", run: () => putOff(laterTime(Date.now())) });
     quick.push({ icon: Archive, label: "Archive", key: "e", run: archive });
   }
   if (back && here) quick.push({ icon: Undo2, label: "Back to Inbox", key: "u", run: back });
@@ -1110,11 +1376,6 @@ function InboxRowCard({
           <MenuItem icon={Pencil} onClick={rename}>
             Rename
           </MenuItem>
-          {box === "inbox" && putOff ? (
-            <MenuItem icon={Clock} onClick={putOff}>
-              Later
-            </MenuItem>
-          ) : null}
           {back ? (
             <MenuItem icon={box === "archive" ? ArchiveRestore : Undo2} onClick={back}>
               Back to Inbox
@@ -1156,6 +1417,7 @@ function InboxRowCard({
       actions={quick}
       onSelect={onSelect}
       onRename={onRename}
+      {...(putOff ? { onLater: putOff } : {})}
       onDelete={onDelete}
       menu={menu}
       selection={{ active: selecting, checked, mixed: false, onToggle: (mode) => onToggle(thread.id, mode) }}

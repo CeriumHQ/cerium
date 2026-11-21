@@ -89,3 +89,81 @@ export const movePrompt = (
   next.splice(to, 0, moved!);
   return next;
 };
+
+type ContextToken = "branch" | "project";
+
+type TemplatePart =
+  | { readonly kind: "text"; readonly text: string }
+  | { readonly kind: "context"; readonly name: ContextToken }
+  | { readonly kind: "parameter"; readonly name: string }
+  | { readonly kind: "cursor" };
+
+export interface PromptParameter {
+  readonly name: string;
+  readonly defaultValue?: string;
+}
+
+export interface PromptTemplate {
+  readonly parts: ReadonlyArray<TemplatePart>;
+  readonly parameters: ReadonlyArray<PromptParameter>;
+}
+
+export type PromptContext = Readonly<Partial<Record<ContextToken, string>>>;
+
+/** A backslash escapes a token. The first explicit default applies to every use of a parameter. */
+export const parsePromptTemplate = (text: string): PromptTemplate => {
+  const parts: Array<TemplatePart> = [];
+  const defaults = new Map<string, string | undefined>();
+  const tokens = /(\\*)(\{\{([A-Za-z_][\w-]*)(?::([^{}\r\n]*))?\}\}|\$0(?!\d))/g;
+  const addText = (value: string) => {
+    if (value !== "") parts.push({ kind: "text", text: value });
+  };
+  let from = 0;
+  for (const match of text.matchAll(tokens)) {
+    const [matched, prefix = "", token = "", name, defaultValue] = match;
+    addText(text.slice(from, match.index) + "\\".repeat(Math.floor(prefix.length / 2)));
+    from = match.index + matched.length;
+    if (prefix.length % 2 === 1) addText(token);
+    else if (name === undefined) parts.push({ kind: "cursor" });
+    else if (name === "branch" || name === "project") parts.push({ kind: "context", name });
+    else {
+      if (defaults.get(name) === undefined) defaults.set(name, defaultValue);
+      parts.push({ kind: "parameter", name });
+    }
+  }
+  addText(text.slice(from));
+  return {
+    parts,
+    parameters: [...defaults].map(([name, value]) =>
+      value === undefined ? { name } : { name, defaultValue: value },
+    ),
+  };
+};
+
+/** Expand once, without interpreting tokens inside replacement values. The first $0 sets the caret. */
+export const expandPromptTemplate = (
+  template: PromptTemplate,
+  context: PromptContext = {},
+  values: ReadonlyMap<string, string> = new Map(),
+): { readonly text: string; readonly cursor?: number } => {
+  const defaults = new Map(template.parameters.map(({ name, defaultValue }) => [name, defaultValue]));
+  let text = "";
+  let cursor: number | undefined;
+  for (const part of template.parts) {
+    switch (part.kind) {
+      case "text":
+        text += part.text;
+        break;
+      case "context":
+        text += context[part.name] ?? "";
+        break;
+      case "parameter":
+        text += values.get(part.name) ?? defaults.get(part.name) ?? "";
+        break;
+      case "cursor":
+        cursor ??= text.length;
+        break;
+    }
+  }
+  return cursor === undefined ? { text } : { text, cursor };
+};

@@ -58,6 +58,7 @@ export function UserMessage({
   onEdit,
   onRestore,
   onFork,
+  onAddTask,
 }: {
   block: Block<"user">;
   /** Sends a new version of the message; resolves whether it went. Absent where it can't be edited. */
@@ -66,6 +67,7 @@ export function UserMessage({
   onRestore?: (() => void) | undefined;
   /** Asks to fork the thread into a new one from the message. Absent where it can't be. */
   onFork?: (() => void) | undefined;
+  onAddTask?: ((text: string) => void) | undefined;
 }) {
   const images = block.attachments.filter((attachment) => attachment.mediaType.startsWith("image/"));
   const files = block.attachments.filter((attachment) => !attachment.mediaType.startsWith("image/"));
@@ -104,6 +106,7 @@ export function UserMessage({
         onEdit={editable ? () => setEditing(true) : undefined}
         onRestore={restorable ? onRestore : undefined}
         onFork={onFork}
+        onAddTask={onAddTask}
         className="group/user relative flex max-w-[85%] flex-col items-end gap-1.5"
       >
         {editable || restorable ? (

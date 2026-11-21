@@ -5,6 +5,8 @@ import { useEffect, useEffectEvent, useState, type ReactNode } from "react";
 import { usesCommandKey } from "../../lib/keys.ts";
 import { isCapturingBinding, matchesBinding, shortcutBindingsAtom } from "../../lib/shortcuts.ts";
 import { remember, stored } from "../../lib/storage.ts";
+import type { AskAgentFix } from "../composer/agentFix.ts";
+import type { MessageBox } from "../composer/messageBox.ts";
 import { ownerKey, type TerminalOwner } from "./model.ts";
 import { TerminalDrawer } from "./TerminalDrawer.tsx";
 
@@ -45,10 +47,14 @@ export function useTerminalDrawer({
   owner,
   suspended,
   compact,
+  messageBox,
+  onAskFix,
 }: {
   owner: TerminalOwner | undefined;
   suspended: boolean;
   compact: boolean;
+  messageBox: Pick<MessageBox, "append"> | undefined;
+  onAskFix: AskAgentFix | undefined;
 }): TerminalDrawerControl {
   const [openIds, setOpenIds] = useState(readOpen);
   const [chosen, setChosen] = useState<Readonly<Record<string, string>>>({});
@@ -110,6 +116,8 @@ export function useTerminalDrawer({
           onChoose={(id: TerminalId) => setChosen((current) => ({ ...current, [key]: id }))}
           focus={compact ? 0 : focus}
           compact={compact}
+          messageBox={messageBox}
+          onAskFix={onAskFix}
           onHide={hide}
           onNewFocus={() => setFocus((count) => count + 1)}
         />

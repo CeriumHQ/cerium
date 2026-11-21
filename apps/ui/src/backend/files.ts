@@ -90,12 +90,19 @@ export const artifactFilesAtom = Atom.family(
 );
 
 /** Files and folders matching a query; keyed `cwd` and query on separate lines. */
-export const workspaceSearchAtom = Atom.family((key: string) => {
+const searchWorkspace = (key: string) => {
   const [cwd = "", ...rest] = key.split("\n");
-  return Backend.runtime.atom(
-    Backend.use((client) => client("SearchWorkspace", { cwd, query: rest.join("\n") })),
-  );
-});
+  return Backend.use((client) => client("SearchWorkspace", { cwd, query: rest.join("\n") }));
+};
+
+export const workspaceSearchAtom = Atom.family((key: string) => Backend.runtime.atom(searchWorkspace(key)));
+
+/** The palette pauses briefly before looking in the chosen project. */
+export const paletteFilesAtom = Atom.family((key: string) =>
+  Backend.runtime.atom(
+    Effect.sleep("180 millis").pipe(Effect.andThen(searchWorkspace(key)), Effect.timeout("10 seconds")),
+  ),
+);
 
 export const workspaceSearchKey = (cwd: string, query: string) => `${cwd}\n${query}`;
 

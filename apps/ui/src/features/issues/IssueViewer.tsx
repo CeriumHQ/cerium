@@ -1,7 +1,8 @@
+import type { IssueDetail } from "@cerium/rpc";
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import { Option } from "effect";
 import { AsyncResult } from "effect/reactivity";
-import { ExternalLink, Link, LoaderCircle, RefreshCw, X } from "lucide-react";
+import { ExternalLink, Link, ListTodo, LoaderCircle, RefreshCw, X } from "lucide-react";
 import { useContext, useEffect } from "react";
 
 import { githubRepositoryAtom } from "../../backend/github.ts";
@@ -50,6 +51,7 @@ export function IssueViewer({
   number,
   onClose,
   onStartThread,
+  onAddTask,
   onOpenPull,
   pane,
 }: {
@@ -59,6 +61,7 @@ export function IssueViewer({
   readonly onClose: () => void;
   /** Starts a thread that looks into the issue, from the brief it is given. */
   readonly onStartThread: (brief: string) => void;
+  readonly onAddTask: (issue: IssueDetail) => void;
   /** Opens one of this repository's pull requests in a tab. */
   readonly onOpenPull?: ((number: number) => void) | undefined;
   /** While it shares the main area with other panes, its header is the pane's: dragged by, with the pane's menu. */
@@ -111,6 +114,14 @@ export function IssueViewer({
           />
         </span>
         <MoreMenu>
+          {issue === undefined ? null : (
+            <>
+              <MenuItem icon={ListTodo} onClick={() => onAddTask(issue)}>
+                Add to Tasks
+              </MenuItem>
+              <MenuSeparator />
+            </>
+          )}
           {url === undefined ? null : (
             <>
               <MenuItem icon={ExternalLink} onClick={() => openOutside(url)}>

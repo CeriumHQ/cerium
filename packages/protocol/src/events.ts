@@ -459,10 +459,12 @@ export const TurnFilesChanged = Schema.TaggedStruct("TurnFilesChanged", {
 export const TurnFilesReverted = Schema.TaggedStruct("TurnFilesReverted", {
   turnId: Schema.NonEmptyString,
   direction: withFallback(Schema.Literals(["undone", "redone"]), "undone"),
-  /** Relative to the thread's folder, with forward slashes. */
+  /** Paths restored, relative to the thread's folder with forward slashes. */
   paths: Schema.Array(Schema.NonEmptyString),
-  /** Those left as they are, as they had changed since. */
+  /** Those left as they are to preserve current files. */
   kept: Schema.Array(Schema.NonEmptyString),
+  /** A request for specific paths. Absent for a whole-turn request, including older events. */
+  partial: Schema.optionalKey(Schema.Literal(true)),
 });
 export type TurnFilesReverted = typeof TurnFilesReverted.Type;
 

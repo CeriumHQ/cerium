@@ -233,8 +233,10 @@ export function CompactPanelMenu({
   terminal?: { readonly open: boolean; readonly onToggle: () => void } | undefined;
   preview?: PreviewToggleProps | undefined;
 }) {
+  const previewKeys = useShortcut("toggle-preview");
+  const artifactsKeys = useShortcut("toggle-artifacts");
   const items = [
-    { id: "artifacts", label: "Artifacts", icon: GalleryVerticalEnd },
+    { id: "artifacts", label: "Artifacts", icon: GalleryVerticalEnd, keys: artifactsKeys },
     { id: "github", label: "GitHub", icon: GitPullRequestArrow },
     { id: "git", label: "Source control", icon: GitBranch },
     { id: "files", label: "Files", icon: FolderTree },
@@ -263,6 +265,7 @@ export function CompactPanelMenu({
             {preview ? (
               <MenuCheckboxItem
                 icon={Globe}
+                shortcut={previewKeys}
                 checked={preview.open}
                 onCheckedChange={preview.onToggle}
                 closeOnClick
@@ -284,6 +287,7 @@ export function CompactPanelMenu({
               <MenuCheckboxItem
                 key={item.id}
                 icon={item.icon}
+                {...("keys" in item ? { shortcut: item.keys } : {})}
                 checked={panels[item.id] ?? false}
                 onCheckedChange={() => onTogglePanel(item.id)}
                 closeOnClick

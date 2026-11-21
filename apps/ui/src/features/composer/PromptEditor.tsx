@@ -27,8 +27,10 @@ import {
 export interface PromptEditorHandle {
   /** Replaces the tag being typed before the caret with a chip for `mention`. */
   insertMention(mention: Mention): void;
-  /** Replaces the `/` command being typed before the caret with `text`. */
-  replaceTriggerText(text: string): void;
+  /** Captures the slash command so a picker can replace it after focus leaves the editor. */
+  captureSlashReplacement(): ((text: string, cursor?: number) => void) | undefined;
+  /** Whether a collapsed caret is at the beginning of the editor. */
+  atStart(): boolean;
   /** A chip for `mention` at the caret the editor last had (the end when none), then focus. */
   mentionAtCaret(mention: Mention): void;
   /**
@@ -277,28 +279,45 @@ export function PromptEditor({
       selection.addRange(caret);
       report();
     },
-    replaceTriggerText: (text) => {
+    captureSlashReplacement: () => {
       const element = root.current;
-      if (!element) return;
-      const trigger = currentTrigger(element);
-      if (trigger === undefined || trigger.char !== "/") return;
       const selection = document.getSelection();
-      const node = selection?.anchorNode;
-      if (selection === null || node?.nodeType !== Node.TEXT_NODE || !element.contains(node)) return;
-      const range = document.createRange();
-      range.setStart(node, trigger.start);
-      range.setEnd(node, selection.anchorOffset);
-      range.deleteContents();
-      // A space after the text gives the caret somewhere to go that keeps typing plain text.
-      const space = document.createTextNode(" ");
-      range.insertNode(space);
-      range.insertNode(document.createTextNode(text));
-      const caret = document.createRange();
-      caret.setStart(space, 1);
-      caret.collapse(true);
-      selection.removeAllRanges();
-      selection.addRange(caret);
-      report();
+      const active =
+        element && selection?.rangeCount && element.contains(selection.anchorNode)
+          ? selection.getRangeAt(0)
+          : caret.current;
+      const node = active?.startContainer;
+      if (!element || !active?.collapsed || node?.nodeType !== Node.TEXT_NODE || !element.contains(node))
+        return undefined;
+      const original = node.textContent ?? "";
+      const end = active.startOffset;
+      const trigger = triggerAt(original.slice(0, end), true);
+      if (trigger?.char !== "/") return undefined;
+      return (text, cursor = text.length) => {
+        if (root.current !== element || !element.contains(node) || node.textContent !== original) return;
+        const range = document.createRange();
+        range.setStart(node, trigger.start);
+        range.setEnd(node, end);
+        range.deleteContents();
+        const inserted = document.createTextNode(text);
+        range.insertNode(inserted);
+        element.focus();
+        range.setStart(inserted, cursor);
+        range.collapse(true);
+        placeCaret(range);
+        report();
+      };
+    },
+    atStart: () => {
+      const element = root.current;
+      const selection = document.getSelection();
+      if (!element || !selection?.isCollapsed || !element.contains(selection.anchorNode)) return false;
+      if (element.childNodes.length === 1 && element.firstElementChild?.tagName === "BR") return true;
+      const before = selection.getRangeAt(0).cloneRange();
+      before.setStart(element, 0);
+      // A trailing <br> is an empty editor, but a line break before the caret is a real line.
+      const content = before.cloneContents();
+      return (content.textContent ?? "") === "" && content.querySelector("br") === null;
     },
     mentionAtCaret: (mention) => {
       const element = root.current;
@@ -411,7 +430,13 @@ export function PromptEditor({
         aria-label="Message"
         aria-placeholder={placeholder}
         aria-autocomplete="list"
-        aria-controls={activeOption === undefined ? undefined : "mention-menu"}
+        aria-controls={
+          activeOption === undefined
+            ? undefined
+            : activeOption.startsWith("slash-")
+              ? "slash-menu"
+              : "mention-menu"
+        }
         aria-describedby={ghost ? suggestionId : undefined}
         aria-activedescendant={activeOption}
         contentEditable

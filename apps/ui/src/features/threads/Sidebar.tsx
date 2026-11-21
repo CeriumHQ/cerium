@@ -32,14 +32,13 @@ import {
 } from "../../lib/shortcuts.ts";
 import { usePaging } from "../../lib/paging.ts";
 import { newThreadDraftsAtom, type NewThreadDraft } from "../composer/drafts.ts";
-import { CommandPalette } from "../palette/CommandPalette.tsx";
-import type { PaletteCommand } from "../palette/palette.ts";
 import { BulkBar, BulkNote, useBulkSelection, type SelectMode } from "./BulkBar.tsx";
 import { DraftSection, type DraftActions, type DraftMachine } from "./DraftRow.tsx";
 import { chatSections, firstOf, type ThreadSection } from "./sections.ts";
 import { EmptyList } from "./EmptyList.tsx";
 import { Inbox } from "./Inbox.tsx";
 import { archivedWork, canArchive, canDelete, isListed, type ThreadSummary } from "./model.ts";
+import type { BulkPlan } from "./bulk.ts";
 import { type RenameThread } from "./Rename.tsx";
 import { pinnedAtom, togglePin, withPinned } from "./pins.ts";
 import { ThreadRow } from "./ThreadRow.tsx";
@@ -63,6 +62,7 @@ interface SidebarProps {
   readonly onRename: RenameThread;
   /** Each resolves whether the thread went, so the bulk bar reports what worked. */
   readonly onArchive: (threadId: string) => Promise<boolean>;
+  readonly onKeepRun: (winnerId: string) => Promise<BulkPlan>;
   readonly onRestore: (threadId: string) => Promise<boolean>;
   /** Puts a work thread off until then, or brings it back; absent where the machine can't. */
   readonly onLater?: (threadId: string, until: number | undefined) => Promise<boolean>;
@@ -77,10 +77,6 @@ interface SidebarProps {
   /** The command palette: opened by its button here and by Ctrl K, which the window listens for. */
   readonly searchOpen: boolean;
   readonly onSearchOpenChange: (open: boolean) => void;
-  /** What the palette can run besides opening a thread. */
-  readonly commands: ReadonlyArray<PaletteCommand>;
-  /** Whether the machine the window drives can search what was said in threads, or only their titles. */
-  readonly messageSearch: boolean;
 }
 
 export interface HarnessIndicator {
@@ -104,6 +100,7 @@ export function Sidebar({
   onNewThreadIn,
   onRename,
   onArchive,
+  onKeepRun,
   onRestore,
   onLater,
   onContinue,
@@ -112,8 +109,6 @@ export function Sidebar({
   onOpenWindow,
   searchOpen,
   onSearchOpenChange,
-  commands,
-  messageSearch,
 }: SidebarProps) {
   const modeThreads = threads.filter((thread) => thread.mode === mode && isListed(thread));
   // Read here rather than by the window, so writing a draft's first line re-renders only the list.
@@ -184,6 +179,7 @@ export function Sidebar({
           onNewThreadIn={onNewThreadIn}
           onRename={onRename}
           onArchive={onArchive}
+          onKeepRun={onKeepRun}
           onRestore={onRestore}
           onLater={onLater}
           onContinue={onContinue}
@@ -205,16 +201,6 @@ export function Sidebar({
           onMarkRead={onMarkRead}
         />
       )}
-
-      <CommandPalette
-        open={searchOpen}
-        onOpenChange={onSearchOpenChange}
-        mode={mode}
-        threads={threads.filter((thread) => thread.mode === mode)}
-        messageSearch={messageSearch}
-        onOpenThread={onSelect}
-        commands={commands}
-      />
     </div>
   );
 }

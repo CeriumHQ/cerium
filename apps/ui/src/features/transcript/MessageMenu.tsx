@@ -1,3 +1,4 @@
+import { Button } from "@base-ui/react/button";
 import {
   BookmarkPlus,
   ClipboardCopy,
@@ -5,6 +6,7 @@ import {
   ExternalLink,
   GitFork,
   Link,
+  ListTodo,
   Pencil,
   RotateCcw,
   TextQuote,
@@ -12,6 +14,7 @@ import {
 import { useState, type MouseEvent, type ReactNode } from "react";
 
 import { ContextMenuArea, MenuItem, MenuSeparator } from "../../components/ui/Menu.tsx";
+import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { copyText, isOpenableLink, LINK_ATTRIBUTE } from "./menus.ts";
 
 /** What a right-click inside a message found, captured as the menu opens. */
@@ -54,6 +57,8 @@ export function MessageMenuArea({
   onEdit,
   onRestore,
   onFork,
+  onAddTask,
+  actionsOnHover = false,
   className,
   children,
 }: {
@@ -68,6 +73,9 @@ export function MessageMenuArea({
   onRestore?: (() => void) | undefined;
   /** Asks to fork the thread into a new one from the user's own message. */
   onFork?: (() => void) | undefined;
+  onAddTask?: ((text: string) => void) | undefined;
+  /** Keeps the corner action out of sight until the message is pointed at or reached by keyboard, where messages stack. */
+  actionsOnHover?: boolean;
   className?: string;
   children: ReactNode;
 }) {
@@ -134,11 +142,35 @@ export function MessageMenuArea({
               Fork into new thread
             </MenuItem>
           ) : null}
+          {onAddTask === undefined || text.trim() === "" ? null : (
+            <MenuItem icon={ListTodo} onClick={() => onAddTask(text)}>
+              Add to Tasks
+            </MenuItem>
+          )}
         </>
       }
     >
-      <div className={className} onContextMenu={(event) => setHit(hitAt(event))}>
+      <div
+        className={`group/message relative ${className ?? ""}`}
+        onContextMenu={(event) => setHit(hitAt(event))}
+      >
         {children}
+        {/* The menu's Add to Tasks within reach of a pointer and the keyboard, in the message's corner. */}
+        {onAddTask === undefined || text.trim() === "" ? null : (
+          <Tooltip label="Add to Tasks" side="top">
+            <Button
+              aria-label="Add to Tasks"
+              onClick={() => onAddTask(text)}
+              className={`absolute -top-1 right-0 z-10 grid size-6 place-items-center rounded-md border border-line-subtle bg-surface-overlay text-fg-tertiary shadow-overlay backdrop-blur-xl transition-[opacity,color] duration-150 ease-out-soft outline-none select-none hover:text-fg-primary focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-focus-ring pointer-coarse:size-8 ${
+                actionsOnHover
+                  ? "pointer-fine:pointer-events-none pointer-fine:opacity-0 pointer-fine:group-hover/message:pointer-events-auto pointer-fine:group-hover/message:opacity-100 pointer-fine:focus-visible:opacity-100"
+                  : ""
+              }`}
+            >
+              <ListTodo size={13} strokeWidth={1.75} />
+            </Button>
+          </Tooltip>
+        )}
       </div>
     </ContextMenuArea>
   );

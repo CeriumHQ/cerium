@@ -13,8 +13,10 @@ import { CeriumError, HubRpcs, type HubCopyTarget } from "@cerium/rpc";
 import { Effect, FileSystem, Path } from "effect";
 
 import { harnessName } from "./discord.ts";
+import { makeHubInstructions } from "./hubInstructions.ts";
 
-// The MCP and skills hub's requests, answered by each adapter's own `hub`: Cerium reads and edits a
+// The Hub discovers project instructions from adapter declarations. For MCP servers and skills,
+// Cerium uses each adapter's own `hub` to read and edit a
 // harness's config only through it, and copies between harnesses translate through `PortableServer`,
 // which carries a server's shape and the names of its secrets, never their values.
 
@@ -43,6 +45,11 @@ export const hubHandlers = Effect.gen(function* () {
   const adapters = yield* Adapters;
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
+  const instructions = yield* makeHubInstructions(
+    [...adapters].flatMap(([provider, adapter]) =>
+      adapter.hubInstructions === undefined ? [] : [[provider, adapter.hubInstructions] as const],
+    ),
+  );
 
   const hubOf = (provider: ProviderId) =>
     Effect.gen(function* () {
@@ -198,6 +205,8 @@ export const hubHandlers = Effect.gen(function* () {
     );
 
   return HubRpcs.of({
+    ReadHubInstructions: ({ project }) => instructions.read(project),
+    SyncHubInstructions: instructions.sync,
     ReadHub: ({ project }) =>
       Effect.forEach([...adapters.keys()], (provider) => readHarness(provider, project), {
         concurrency: "unbounded",

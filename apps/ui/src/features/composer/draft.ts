@@ -37,6 +37,8 @@ export interface DraftStart {
   readonly machine?: string;
   /** The work thread's folder. */
   readonly folder?: string;
+  /** The task that opened this draft, linked once its threads are created. */
+  readonly taskId?: string;
   /** Picks made in this draft's message box, which win over the defaults. */
   readonly model?: string;
   /**

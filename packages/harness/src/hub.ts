@@ -45,6 +45,24 @@ export interface HubListing {
   readonly locked?: string;
 }
 
+/** The harness's project-relative instruction locations, independent of MCP and skill support. */
+export interface HubInstructions {
+  readonly files: ReadonlyArray<{
+    readonly path: string;
+    /** Offer this file even before it exists. */
+    readonly primary?: boolean;
+    /** Inspect local instructions without offering to share their text with another harness. */
+    readonly supplemental?: boolean;
+    /** Supports a standalone relative `@path` import. */
+    readonly imports?: boolean;
+  }>;
+  readonly folders?: ReadonlyArray<{
+    readonly path: string;
+    readonly suffix: string;
+    readonly recursive?: boolean;
+  }>;
+}
+
 type HubError = HarnessUnavailable | HarnessFailure;
 
 export interface HarnessHub {

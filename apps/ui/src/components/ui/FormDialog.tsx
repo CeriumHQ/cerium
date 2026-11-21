@@ -1,7 +1,7 @@
 import { Checkbox } from "@base-ui/react/checkbox";
 import { Dialog } from "@base-ui/react/dialog";
 import { Check } from "lucide-react";
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from "react";
+import type { ButtonHTMLAttributes, ComponentProps, ReactNode, SelectHTMLAttributes } from "react";
 import { buttonClass, type ButtonTone } from "./Button.tsx";
 import { checkMarkClass } from "./Checkbox.tsx";
 
@@ -40,7 +40,7 @@ export function DialogField({ label, children }: { readonly label: string; reado
 }
 
 /** A text box for a form dialog. */
-export function DialogInput(props: InputHTMLAttributes<HTMLInputElement>) {
+export function DialogInput(props: ComponentProps<"input">) {
   return <input spellCheck={false} autoComplete="off" {...props} className={fieldClass} />;
 }
 
@@ -89,6 +89,7 @@ export function FormDialog({
   actions,
   aside,
   onSubmit,
+  onClosed,
   wide = false,
 }: {
   readonly open: boolean;
@@ -103,9 +104,15 @@ export function FormDialog({
   /** A button for the form itself rather than its outcome, at the footer's start: "Generate". */
   readonly aside?: ReactNode;
   readonly onSubmit?: () => void;
+  /** Runs once it has finished closing, for a caller that mounts it only while it's wanted. */
+  readonly onClosed?: () => void;
 }) {
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+    <Dialog.Root
+      open={open}
+      onOpenChange={onOpenChange}
+      {...(onClosed ? { onOpenChangeComplete: (next: boolean) => !next && onClosed() } : {})}
+    >
       <Dialog.Portal>
         <Dialog.Backdrop className={dialogBackdropClass} />
         <Dialog.Popup className={dialogPopupClass(wide ? "lg" : "md")}>

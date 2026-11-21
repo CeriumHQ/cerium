@@ -78,6 +78,7 @@ export class MuseAdapter extends Context.Service<MuseAdapter, HarnessAdapter>()(
 
       return MuseAdapter.of({
         provider: "muse",
+        hubInstructions: { files: [{ path: "AGENTS.md", primary: true }] },
         manifest: museManifest,
         probe: probes.fresh,
         listModels: ready.pipe(Effect.flatMap((status) => listMuseModels(status.executablePath))),

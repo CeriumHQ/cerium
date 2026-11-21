@@ -99,6 +99,7 @@ export class OpenCodeAdapter extends Context.Service<OpenCodeAdapter, HarnessAda
 
       return OpenCodeAdapter.of({
         provider: "opencode",
+        hubInstructions: { files: [{ path: "AGENTS.md", primary: true }, { path: "CLAUDE.md" }] },
         manifest: opencodeManifest,
         probe: probes.fresh,
         listModels: ready.pipe(

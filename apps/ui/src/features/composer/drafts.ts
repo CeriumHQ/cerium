@@ -89,6 +89,7 @@ const StoredDraft = Schema.Struct({
       createdAt: Schema.Finite,
       machine: Schema.optionalKey(Schema.String),
       folder: Schema.optionalKey(Schema.String),
+      taskId: Schema.optionalKey(Schema.String),
       model: Schema.optionalKey(Schema.String),
       models: Schema.optionalKey(Schema.Array(Schema.String)),
       effort: Schema.optionalKey(ReasoningEffort),

@@ -13,7 +13,7 @@ import type {
 } from "@cerium/protocol";
 import { Schema, type Effect, type Option, type Scope, type Stream } from "effect";
 
-import type { HarnessHub } from "./hub.ts";
+import type { HarnessHub, HubInstructions } from "./hub.ts";
 
 // The contract every provider adapter implements. Adapters translate; they never decide policy
 // (spawn limits, approvals, persistence) — that belongs to the orchestrator.
@@ -264,6 +264,7 @@ export interface HarnessAdapter {
   readSession?(session: PastSession): Effect.Effect<PastHistory, HarnessUnavailable | HarnessFailure>;
   /** The harness's own MCP servers and skills, for the hub. Absent when Cerium can't read them. */
   readonly hub?: HarnessHub;
+  readonly hubInstructions?: HubInstructions;
   startSession(
     options: SessionOptions,
   ): Effect.Effect<AgentSession, HarnessUnavailable | HarnessFailure, Scope.Scope>;

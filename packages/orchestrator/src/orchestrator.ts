@@ -14,6 +14,7 @@ import {
   MAX_THREAD_TITLE,
   narrowAccess,
   REVIEWER_ROLE,
+  applyTurnFileRevert,
   type AccessMode,
   type AssistantOrigin,
   type AdvisorSettings,
@@ -49,6 +50,7 @@ import {
   type ThreadOverviewUpdate,
   type ThreadWorktree,
   type TurnFilesReverted,
+  type TurnFileState,
   type WorktreeChanges,
 } from "@cerium/protocol";
 import { Store, type StoreError, type ThreadPatch } from "@cerium/store";
@@ -577,6 +579,7 @@ export class Orchestrator extends Context.Service<
       agentId: AgentId,
       turnId: string,
       direction: "undone" | "redone",
+      paths?: ReadonlyArray<string>,
     ): Effect.Effect<TurnFilesReverted, OrchestratorError>;
     /**
      * Switches a thread's lead to another model of its harness, or another effort or speed, from its
@@ -3671,6 +3674,7 @@ export class Orchestrator extends Context.Service<
         agentId: AgentId,
         turnId: string,
         direction: "undone" | "redone",
+        paths?: ReadonlyArray<string>,
       ) {
         const rt = runtimes.get(agentId);
         const info =
@@ -3682,15 +3686,34 @@ export class Orchestrator extends Context.Service<
           .listEvents(agentId, { tags: ["TurnFilesChanged", "TurnFilesReverted"] })
           .pipe(Effect.mapError(unavailable));
         let changed: Extract<EventPayload, { _tag: "TurnFilesChanged" }> | undefined;
-        let state: "undone" | "redone" = "redone";
+        let state: ReadonlyMap<string, TurnFileState> | undefined;
         for (const { payload } of events) {
-          if (payload._tag === "TurnFilesChanged" && payload.turnId === turnId) changed = payload;
-          if (payload._tag === "TurnFilesReverted" && payload.turnId === turnId) state = payload.direction;
+          if (payload._tag !== "TurnFilesChanged" && payload._tag !== "TurnFilesReverted") continue;
+          if (payload.turnId !== turnId) continue;
+          if (payload._tag === "TurnFilesChanged") {
+            changed = payload;
+            state = undefined;
+          } else state = applyTurnFileRevert(state, payload);
         }
         if (changed === undefined || thread.mode !== "work") {
           return yield* notFound("That turn changed no files Cerium knows of.");
         }
-        if (state === direction) {
+        const turnPaths = changed.files.map((file) => file.path);
+        if (paths !== undefined && (paths.length === 0 || paths.some((file) => !turnPaths.includes(file)))) {
+          return yield* new OrchestratorError({
+            reason: "invalid",
+            message: "Choose one or more files changed in that turn.",
+          });
+        }
+        const requested = paths === undefined ? undefined : new Set(paths);
+        const wanted = direction === "undone";
+        const candidates = turnPaths.filter((file) => {
+          const current = state?.get(file);
+          return requested === undefined
+            ? (current?.turnUndone ?? false) !== wanted
+            : requested.has(file) && (current?.undone ?? false) !== wanted;
+        });
+        if (candidates.length === 0) {
           return yield* new OrchestratorError({
             reason: "invalid",
             message:
@@ -3710,20 +3733,22 @@ export class Orchestrator extends Context.Service<
           });
         const now = yield* checkpoints.save(folder).pipe(Effect.mapError(failed));
         const since = new Set(
-          (yield* checkpoints.changes(folder, expected, now).pipe(Effect.mapError(failed))).map(
+          (yield* checkpoints.changes(folder, expected, now, candidates).pipe(Effect.mapError(failed))).map(
             (file) => file.path,
           ),
         );
-        const paths = changed.files.map((file) => file.path);
-        const back = paths.filter((file) => !since.has(file));
-        const kept = paths.filter((file) => since.has(file));
-        yield* checkpoints.restore(folder, target, back).pipe(Effect.mapError(failed));
+        const back = candidates.filter((file) => !since.has(file));
+        const blocked = yield* checkpoints
+          .restore(folder, target, back, { protectOtherPaths: true })
+          .pipe(Effect.mapError(failed));
+        for (const file of blocked) since.add(file);
         const payload: TurnFilesReverted = {
           _tag: "TurnFilesReverted",
           turnId,
           direction,
-          paths: back,
-          kept,
+          paths: back.filter((file) => !since.has(file)),
+          kept: candidates.filter((file) => since.has(file)),
+          ...(requested === undefined ? {} : { partial: true }),
         };
         yield* rt === undefined ? emitStored(info, payload) : emit(rt, payload);
         return payload;
@@ -4319,8 +4344,8 @@ export class Orchestrator extends Context.Service<
 
         restoreBefore: (agentId, messageId) => forAgent(agentId, true)(restoreBefore(agentId, messageId)),
         // One at a time, and never beside a restore: each reads the files the other puts back.
-        revertTurn: (agentId, turnId, direction) =>
-          forAgent(agentId, true)(revertTurn(agentId, turnId, direction)),
+        revertTurn: (agentId, turnId, direction, paths) =>
+          forAgent(agentId, true)(revertTurn(agentId, turnId, direction, paths)),
 
         // Ordered with the user's messages: one sent before the switch may still run on it, and a
         // lead being picked back up has its runtime before the switch is recorded.

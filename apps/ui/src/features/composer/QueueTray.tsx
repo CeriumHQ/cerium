@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Reveal } from "../../components/Reveal.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { useLingering } from "../../lib/motion.ts";
+import { useShortcut } from "../../lib/shortcuts.ts";
 import type { UserBlock } from "../transcript/model.ts";
 
 /** The user's messages waiting for the lead, as the message box shows them. */
@@ -38,6 +39,7 @@ export function QueueTray({
   readonly className: string;
 }) {
   const { messages, ended, onSteer, onWithdraw } = queue;
+  const steerShortcut = useShortcut("steer-now");
   /** Messages being taken back: hidden at once, and back if the agent took them first. */
   const [leaving, setLeaving] = useState<ReadonlySet<string>>(new Set());
   /** Pressed once per wait: the messages it hands over leave with it. */
@@ -84,7 +86,7 @@ export function QueueTray({
                   : "Queued for the agent's next step"}
             </span>
             {onSteer && !ended && !steered ? (
-              <Tooltip label="Interrupt the agent and send now">
+              <Tooltip label="Interrupt the agent and send now" shortcut={steerShortcut}>
                 <Button
                   onClick={() => {
                     setSteeredFor(shown[0]?.id);
