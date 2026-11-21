@@ -13,7 +13,11 @@ const ignored = [
 ];
 
 /** Tests that drive a real Edge or Chrome, which can take most of a minute to start on a busy machine. */
-const browserTests = ["packages/browser/test/page.test.ts", "packages/artifacts/test/preview.test.ts"];
+const browserTests = [
+  "packages/browser/test/page.test.ts",
+  "packages/browser/test/shutdown.test.ts",
+  "packages/artifacts/test/preview.test.ts",
+];
 
 // Restarting a listener must reacquire its previous port. A released ephemeral port is available
 // to every other socket on the machine, so run this fixture after the parallel projects finish.
