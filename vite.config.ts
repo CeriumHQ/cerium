@@ -66,10 +66,13 @@ export default defineConfig({
     exclude: ignored,
     // No test inherits a repository for git to act on: scripts/test-setup.ts.
     setupFiles: ["scripts/test-setup.ts"],
-    // Test files share their worker's modules instead of each importing Effect and the packages again,
-    // which took most of the suite's time. Nothing in the tests mocks modules or changes global state,
-    // so sharing them can't leak one file's setup into another.
-    isolate: false,
+    // Reuse worker threads but give each file its own VM context and module registry.
+    pool: "vmThreads",
+    isolate: true,
+    sequence: { shuffle: { files: true } },
+    restoreMocks: true,
+    unstubEnvs: true,
+    unstubGlobals: true,
     // CI's log keeps what a failing test printed and leaves out the rest.
     silent: ci ? "passed-only" : false,
     // A test's time limit only catches one that hangs, so a hang names its test instead of running out
@@ -87,9 +90,7 @@ export default defineConfig({
             "scripts/test/**/*.test.ts",
           ],
           exclude: [...ignored, ...browserTests],
-          // Most tests wait on git, SQLite and the processes they start rather than on the CPU, so CI's
-          // two-core runners run four files at once instead of the one Vitest gives two cores.
-          ...(ci ? { maxWorkers: 4 } : {}),
+          maxWorkers: "100%",
         },
       },
       {
