@@ -13,4 +13,4 @@ diff --git a/lib/windowsPtyAgent.js b/lib/windowsPtyAgent.js
 +        });
      }
      Object.defineProperty(WindowsPtyAgent.prototype, "onError", {
-         get: function () {
+         get: function () { return this._onError.event; },
