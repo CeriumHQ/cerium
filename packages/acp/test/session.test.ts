@@ -59,6 +59,28 @@ const texts = (payloads: ReadonlyArray<EventPayload>) =>
   payloads.flatMap((payload) => (payload._tag === "MessageCompleted" ? [payload.text] : []));
 
 describe("ACP session", () => {
+  it("serializes native compaction with prompts and reports success and refusal as turns", () =>
+    run(
+      Effect.gen(function* () {
+        const { acp } = yield* fixture();
+        const { session } = yield* start(acp);
+        yield* session.compact("_fixture/compact", {}, () => "fixture-a");
+        const busy = yield* Effect.flip(
+          session.send("overlap", undefined, () => Effect.succeed({ model: "fixture-a" })),
+        );
+        expect(busy.message).toContain("turn is still running");
+        expect(yield* collect(session, "ignore")).toEqual([
+          { _tag: "ContextCompacted", trigger: "manual" },
+          { _tag: "TurnCompleted", stopReason: "completed" },
+        ]);
+        yield* session.compact("_fixture/compact", { refuse: true }, () => "fixture-a");
+        expect(yield* collect(session, "ignore")).toMatchObject([
+          { _tag: "AgentError", message: expect.stringContaining("Compaction unavailable") },
+          { _tag: "TurnCompleted", stopReason: "error" },
+        ]);
+      }),
+    ));
+
   it("translates a turn's updates and reports its usage and stop reason", () =>
     run(
       Effect.gen(function* () {

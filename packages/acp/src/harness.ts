@@ -28,6 +28,17 @@ export const harnessFailure = (harness: AcpHarness) => (message: string, cause?:
 export const loginRequired = (harness: AcpHarness) =>
   new HarnessUnavailable({ provider: harness.provider, reason: "loggedOut", message: harness.signedOut });
 
+export const requireExecutable = (harness: AcpHarness, executable: string | undefined) =>
+  executable === undefined
+    ? Effect.fail(
+        new HarnessUnavailable({
+          provider: harness.provider,
+          reason: "notInstalled",
+          message: harness.installHint,
+        }),
+      )
+    : Effect.succeed(executable);
+
 /** The installed, signed-in status, or the `HarnessUnavailable` that says why there is none. */
 export const usableStatus = (harness: AcpHarness, status: HarnessStatus) =>
   Effect.gen(function* () {

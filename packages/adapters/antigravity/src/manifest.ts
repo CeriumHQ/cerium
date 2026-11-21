@@ -22,6 +22,8 @@ export const failure = (message: string, cause?: unknown) =>
 
 export const antigravityManifest: CapabilityManifest = {
   provider: PROVIDER,
+  // The TUI's fork and side chat have no ACP equivalent. Its advertised /compact is passed to the
+  // model as prompt text by agy ACP 1.5.14.
   session: { resume: true, fork: false },
   switching: { model: true, effort: true, cacheSafeEffort: false },
   input: { images: true },

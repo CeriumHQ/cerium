@@ -22,7 +22,9 @@ export const grokHarness: AcpHarness = {
 
 export const grokManifest: CapabilityManifest = {
   provider: PROVIDER,
-  session: { resume: true, fork: false },
+  session: { resume: true, fork: true },
+  compact: true,
+  // Grok exposes Fast as a separate model ID in the ACP catalog.
   switching: { model: true, effort: true, cacheSafeEffort: false },
   input: { images: true },
   permissions: { approvals: "hookBridge", readOnlyMode: true },

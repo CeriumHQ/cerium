@@ -121,6 +121,48 @@ describe("Devin translator", () => {
 });
 
 describe.skipIf(process.platform === "win32")("Devin adapter over ACP", () => {
+  it("lists invocable skills and imports nonempty conversations with Devin's timestamps", () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const { adapter, cwd } = yield* fixture();
+        expect(yield* adapter.listSkills(cwd)).toEqual([
+          { name: "repo:review", description: "Review changes", path: join(cwd, "review", "SKILL.md") },
+        ]);
+        const sessions = yield* adapter.listSessions;
+        expect(sessions).toMatchObject([
+          { id: "fixture-1", title: "Saved Devin", createdAt: Date.parse("2026-10-01") },
+        ]);
+        const saved = sessions[0];
+        if (saved === undefined) throw new Error("Missing saved session");
+        expect(yield* adapter.readSession(saved)).toMatchObject({
+          model: "fixture-swe",
+          turns: [
+            {
+              prompt: "Inspect this",
+              at: Date.parse("2026-10-01T00:01:00Z"),
+              events: [
+                { payload: { _tag: "MessageDelta", text: "From the past." } },
+                { payload: { _tag: "MessageCompleted", text: "From the past." } },
+              ],
+            },
+          ],
+        });
+      }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    ));
+
+  it("falls back to Devin's local skill folders when the CLI lacks ACP skill listing", () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const { adapter, cwd, fs } = yield* fixture("devin-no-skill-list");
+        const folder = join(cwd, ".devin", "skills", "local-review");
+        yield* fs.makeDirectory(folder, { recursive: true });
+        yield* fs.writeFileString(join(folder, "SKILL.md"), "---\nname: local-review\n---\n");
+        expect(yield* adapter.listSkills(cwd)).toContainEqual({
+          name: "local-review",
+          path: join(folder, "SKILL.md"),
+        });
+      }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    ));
   it("probes, catalogs every model's efforts, approves once, trusts Cerium's bus, then resumes", () =>
     Effect.runPromise(
       Effect.gen(function* () {

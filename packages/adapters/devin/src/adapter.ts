@@ -1,13 +1,25 @@
-import { usableStatus as acpUsableStatus } from "@cerium/acp";
+import {
+  acpTimestamp,
+  usableStatus as acpUsableStatus,
+  listAcpSessions,
+  probeWorkspace,
+  readAcpSession,
+  record,
+  requireExecutable,
+  string,
+} from "@cerium/acp";
 import { shareProbe, type HarnessAdapter, type SessionOptions } from "@cerium/harness";
 import type { HarnessStatus } from "@cerium/protocol";
 import { Clock, Context, Deferred, Duration, Effect, FileSystem, Layer, Path } from "effect";
 import { ChildProcessSpawner } from "effect/process";
 
+import { makeDevinHub } from "./hub.ts";
 import { PROVIDER, SIGNED_OUT, devinHarness, devinManifest, failure } from "./manifest.ts";
 import { modelIds, toModelInfos, type Variant } from "./models.ts";
-import { discoverDevin, sweepVariants } from "./probe.ts";
+import { connectDevin, discoverDevin, findDevinExecutable, sweepVariants } from "./probe.ts";
 import { startDevinSession } from "./session.ts";
+import { listDevinSkills } from "./skills.ts";
+import { DevinTranslator } from "./translate.ts";
 import { readDevinUsage } from "./usage.ts";
 
 /** How long a sweep's efforts and speeds are trusted before the next listing reads them again. */
@@ -29,6 +41,15 @@ export const makeDevinAdapter = (executable?: string, userConfig?: string) =>
       Path.Path,
     )(yield* Effect.context<ChildProcessSpawner.ChildProcessSpawner | FileSystem.FileSystem | Path.Path>());
     const scope = yield* Effect.scope;
+    const hub = yield* makeDevinHub(userConfig);
+    const cli = Effect.gen(function* () {
+      return yield* requireExecutable(devinHarness, executable ?? (yield* findDevinExecutable));
+    }).pipe(Effect.provide(platform));
+    const history = Effect.gen(function* () {
+      const path = yield* cli;
+      const cwd = yield* probeWorkspace(devinHarness);
+      return yield* connectDevin(path, cwd, userConfig);
+    });
     const discover = discoverDevin(executable).pipe(Effect.provide(platform));
     const probes = yield* shareProbe(discover.pipe(Effect.map(({ status }) => status)));
 
@@ -79,6 +100,7 @@ export const makeDevinAdapter = (executable?: string, userConfig?: string) =>
 
     return {
       provider: PROVIDER,
+      hub: hub.hub,
       hubInstructions: {
         files: [
           { path: "AGENTS.md", primary: true },
@@ -92,6 +114,39 @@ export const makeDevinAdapter = (executable?: string, userConfig?: string) =>
       manifest: devinManifest,
       probe: probes.fresh,
       listModels,
+      listSkills: (cwd) =>
+        history.pipe(
+          Effect.flatMap((acp) => listDevinSkills(acp, cwd, () => hub.listSkills(cwd))),
+          Effect.scoped,
+          Effect.provide(platform),
+        ),
+      listSessions: history.pipe(
+        Effect.flatMap((acp) =>
+          listAcpSessions(acp, (row) => {
+            const meta = record(row["_meta"]);
+            if (meta?.["cognition.ai/hasUserMessages"] === false) return false;
+            const createdAt = acpTimestamp(meta?.["cognition.ai/createdAt"]);
+            return createdAt === undefined ? {} : { createdAt };
+          }),
+        ),
+        Effect.scoped,
+        Effect.provide(platform),
+      ),
+      readSession: (session) =>
+        history.pipe(
+          Effect.flatMap((acp) =>
+            readAcpSession(acp, session, new DevinTranslator(), {
+              promptInfo: (update) => {
+                const meta = record(update["_meta"]);
+                const id = string(meta?.["cognition.ai/eventId"]);
+                const at = acpTimestamp(meta?.["cognition.ai/timestamp"]);
+                return { ...(id === undefined ? {} : { id }), ...(at === undefined ? {} : { at }) };
+              },
+            }),
+          ),
+          Effect.scoped,
+          Effect.provide(platform),
+        ),
       usage: probes.kept.pipe(
         Effect.flatMap(usableStatus),
         Effect.flatMap(({ version }) => readDevinUsage(version).pipe(Effect.provide(platform))),

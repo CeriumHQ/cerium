@@ -9,6 +9,7 @@ All notable changes to Cerium are recorded here. The format follows
 ### Added
 
 - Devin joins the supported harnesses through the Devin CLI's ACP server (`devin acp`), with its whole model catalog, per-model effort and speed, approvals, read-only chat, session resume and Cerium's MCP bus.
+- Antigravity, Devin, and Grok Build now offer MCP and skill management in the Hub, skill suggestions in the composer, and saved-session imports. Grok Build also supports live MCP status, turn-boundary forks, private side questions, compaction, and stopping background commands.
 
 ### Changed
 

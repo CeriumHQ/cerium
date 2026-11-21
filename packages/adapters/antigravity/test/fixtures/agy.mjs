@@ -61,12 +61,25 @@ for await (const line of createInterface({ input: process.stdin })) {
       result(id, {
         protocolVersion: 1,
         agentCapabilities: {
+          loadSession: true,
           mcpCapabilities: { http: true },
           promptCapabilities: { image: true },
-          sessionCapabilities: { resume: {}, close: {} },
+          sessionCapabilities: { list: {}, resume: {}, close: {} },
           _meta: { antigravity: { systemPrompt: { append: true } } },
         },
       });
+      break;
+    case "session/list":
+      assert.deepEqual(params, {});
+      result(id, { sessions: [{ sessionId, cwd: "/antigravity-project", title: "Saved Antigravity" }] });
+      break;
+    case "session/load":
+      assert.deepEqual(params, { sessionId, cwd: "/antigravity-project", mcpServers: [] });
+      assert.ok(args.includes("--include-default-customizations=false"));
+      update({ sessionUpdate: "user_message_chunk", content: { type: "text", text: "Review this" } });
+      update({ sessionUpdate: "tool_call", ...tool, status: "completed" });
+      update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "Looks good" } });
+      result(id, { sessionId, configOptions, models });
       break;
     case "session/new":
     case "session/resume":

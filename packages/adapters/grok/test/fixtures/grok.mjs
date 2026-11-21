@@ -1,13 +1,71 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
 import { createInterface } from "node:readline";
+import { join } from "node:path";
 
 // An ACP peer shaped like the installed Grok 1.0.70. It asserts the client contract before replying.
 if (process.argv.includes("--version")) {
   console.log("grok 1.0.70 (fixture) [stable]");
   process.exit(0);
 }
-assert.deepEqual(process.argv.slice(2), ["--no-auto-update", "agent", "--no-leader", "stdio"]);
+const args = process.argv.slice(2);
+if (args[1] === "mcp" || args[1] === "inspect") {
+  assert.equal(args[0], "--no-auto-update");
+  if (args.includes("--json")) assert.equal(process.env.CERIUM_GROK_HUB_TEST_SECRET, undefined);
+  if (args[1] === "inspect") {
+    assert.deepEqual(args.slice(2), ["--json"]);
+    console.log(
+      JSON.stringify({
+        skills: [
+          {
+            name: "review",
+            description: "Review changes",
+            source: { type: "project", path: join(process.cwd(), ".grok", "skills", "review", "SKILL.md") },
+            userInvocable: true,
+          },
+          {
+            name: "hidden",
+            source: { type: "user", path: join(process.env.GROK_HOME, "skills", "hidden", "SKILL.md") },
+            userInvocable: false,
+          },
+        ],
+      }),
+    );
+  } else if (args[2] === "list") {
+    assert.deepEqual(args.slice(3), ["--json"]);
+    console.log(
+      JSON.stringify([
+        {
+          name: "remote",
+          scope: "user",
+          type: "sse",
+          url: "https://example.invalid/events",
+          enabled: true,
+          headers: { Authorization: "fixture-secret", "X-Empty": "" },
+        },
+      ]),
+    );
+  } else if (args[2] === "disable") {
+    assert.deepEqual(args.slice(3), ["--", "remote"]);
+  } else {
+    assert.deepEqual(args.slice(2), [
+      "add",
+      "--scope",
+      "project",
+      "--transport",
+      "sse",
+      "--header",
+      "Authorization:",
+      "--header",
+      "X-Empty:",
+      "--",
+      "remote",
+      "https://example.invalid/events",
+    ]);
+  }
+  process.exit(0);
+}
+assert.deepEqual(args, ["--no-auto-update", "agent", "--no-leader", "stdio"]);
 assert.equal(process.env.GROK_SANDBOX_AUTO_ALLOW_BASH, "0");
 const send = (message) => console.log(JSON.stringify({ jsonrpc: "2.0", ...message }));
 const sid = "grok-fixture-session";
@@ -34,6 +92,7 @@ let prompt;
 let hookId;
 let resumed = false;
 let authenticated = false;
+let taskRunning = false;
 
 const finish = (stopReason) => {
   send({
@@ -58,7 +117,7 @@ for await (const line of createInterface({ input: process.stdin, crlfDelay: Infi
         protocolVersion: 1,
         agentCapabilities: {
           loadSession: true,
-          sessionCapabilities: { resume: {} },
+          sessionCapabilities: { list: {}, resume: {}, close: {} },
           mcpCapabilities: { http: true },
           promptCapabilities: { image: true },
           _meta: { "x.ai/hooks": { blockingEvents: ["pre_tool_use"] } },
@@ -78,6 +137,11 @@ for await (const line of createInterface({ input: process.stdin, crlfDelay: Infi
     case "session/resume":
     case "session/new": {
       assert(authenticated);
+      if (method === "session/new" && params._meta.agentProfile === undefined) {
+        assert.deepEqual(params.mcpServers, []);
+        reply({ sessionId: "empty-fork" });
+        break;
+      }
       resumed = method === "session/resume";
       assert.equal(params.sessionId, resumed ? sid : undefined);
       assert.equal(params._meta.rules, "fixture instructions");
@@ -103,6 +167,89 @@ for await (const line of createInterface({ input: process.stdin, crlfDelay: Infi
       reply(session());
       break;
     }
+    case "session/list":
+      assert(authenticated);
+      reply({ sessions: [{ sessionId: sid, title: "Saved Grok", cwd: "/grok-project" }] });
+      break;
+    case "session/load":
+      assert.equal(params.sessionId, sid);
+      assert.deepEqual(params.mcpServers, []);
+      assert.equal(params._meta["x.ai/restore_code"], false);
+      update("user_message_chunk", {
+        content: { type: "text", text: "Imported prompt" },
+        _meta: { promptIndex: 0 },
+      });
+      update("agent_message_chunk", { content: { type: "text", text: "Imported answer" } });
+      reply(session());
+      break;
+    case "_x.ai/session/fork":
+      assert.equal(params.sourceSessionId, sid);
+      assert.equal(params.sourceCwd, "/grok-project");
+      assert.equal(params.newCwd, "/grok-project");
+      assert.equal(params.targetPromptIndex, 1);
+      reply({ newSessionId: "forked-grok" });
+      break;
+    case "_x.ai/btw":
+      assert.equal(params.sessionId, sid);
+      assert.equal(params.question, "Only reference the transcript.\n\nWhat happened?");
+      reply({ result: { answer: "The original session stayed put." } });
+      break;
+    case "_x.ai/compact_conversation":
+      assert.deepEqual(params, { session_id: sid });
+      reply({});
+      break;
+    case "_x.ai/mcp/list":
+      assert.deepEqual(params, { sessionId: sid });
+      reply({
+        result: {
+          servers: [
+            {
+              name: "remote",
+              headers: { Authorization: "fixture-secret" },
+              session: {
+                enabled: true,
+                status: "ready",
+                tools: [{ name: "echo", description: "Echo text" }],
+              },
+            },
+            { name: "pending", session: { enabled: true, status: "initializing" } },
+          ],
+        },
+      });
+      break;
+    case "_x.ai/task/list":
+      assert.deepEqual(params, { sessionId: sid });
+      reply({
+        result: {
+          tasks: taskRunning
+            ? [
+                {
+                  task_id: "task-fixture",
+                  owner_session_id: sid,
+                  completed: false,
+                  is_backgrounded: true,
+                  kind: "bash",
+                  command: "sleep 40",
+                  description: "Wait",
+                  output: "ignore",
+                  start_time: { secs_since_epoch: 20, nanos_since_epoch: 2_000_000 },
+                },
+                {
+                  task_id: "task-someone-else",
+                  owner_session_id: "other",
+                  completed: false,
+                  is_backgrounded: true,
+                },
+              ]
+            : [],
+        },
+      });
+      break;
+    case "_x.ai/task/kill":
+      assert.deepEqual(params, { sessionId: sid, taskId: "task-fixture" });
+      taskRunning = false;
+      reply({ result: { taskId: params.taskId, outcome: "killed" } });
+      break;
     case "session/set_config_option":
       assert.equal(params.sessionId, sid);
       assert(config.has(params.configId));
@@ -115,6 +262,12 @@ for await (const line of createInterface({ input: process.stdin, crlfDelay: Infi
       assert.equal(params._meta.verbatim, true);
       prompt = id;
       const text = params.prompt[0].text;
+      if (text === "background fixture") {
+        taskRunning = true;
+        send({ method: "_x.ai/task_backgrounded", params: { sessionId: sid } });
+        finish("end_turn");
+        break;
+      }
       if (text === "allow this" || text === "always-only") {
         const toolCall = { toolCallId: "permission", title: "Write fixture", name: "run_terminal_cmd" };
         const permanent = { kind: "allow_always", optionId: "always" };
@@ -174,6 +327,10 @@ for await (const line of createInterface({ input: process.stdin, crlfDelay: Infi
       assert.equal(params.sessionId, sid);
       assert.equal(id, undefined);
       finish("cancelled");
+      break;
+    case "session/close":
+      assert(["empty-fork", sid].includes(params.sessionId));
+      reply({});
       break;
     case undefined:
       if (id === "allow this" || id === "always-only") {

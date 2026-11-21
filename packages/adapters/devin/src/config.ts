@@ -10,7 +10,7 @@ import { PROVIDER, failure } from "./manifest.ts";
 export const userConfigPath = (path: Path.Path) =>
   process.platform === "win32"
     ? path.join(process.env["APPDATA"] || path.join(homedir(), "AppData", "Roaming"), "devin", "config.json")
-    : path.join(homedir(), ".config", "devin", "config.json");
+    : path.join(process.env["XDG_CONFIG_HOME"] || path.join(homedir(), ".config"), "devin", "config.json");
 
 const rules = (value: unknown) => array(value).filter((rule): rule is string => typeof rule === "string");
 
