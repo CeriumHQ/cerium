@@ -6,11 +6,8 @@ import { createHash } from "node:crypto";
 import { appendFileSync, closeSync, createReadStream, openSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { englishArtifact } from "../apps/desktop/src/chromiumLocales.ts";
-import { mergeUpdateFiles } from "./merge-update-files.ts";
-
 const PREFIX = "cerium-stable-candidate-";
-const MARKER = "cerium stable candidate v2";
+const MARKER = "cerium stable candidate v3";
 const BOT = "github-actions[bot]";
 const DEPLOY_ARCHIVE = "candidate-deploy.tar.gz";
 const CANDIDATE_WORKFLOW = ".github/workflows/stable-candidate.yml";
@@ -114,40 +111,29 @@ const getRelease = (id: number) => api<Release>(`${repo()}/releases/${id}`);
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 const manifestDigest = (body: string) => createHash("sha256").update(body).digest("hex");
 
-const platforms = ["Linux-X64", "Linux-ARM64", "Windows-X64", "Windows-ARM64", "macOS-X64", "macOS-ARM64"];
-const localeVariants = ["full", "english"] as const;
-type LocaleVariant = (typeof localeVariants)[number];
-const builds = platforms.flatMap((platform) => localeVariants.map((locale) => ({ platform, locale })));
+const platforms = ["Linux-X64", "Windows-X64", "macOS-ARM64"];
 const recordName = (build: string) => `candidate-${build}.json`;
 const webTar = () => `cerium-web-${version()}.tar.gz`;
 
-function fullPackageNames(platform: string) {
-  const arm = platform.endsWith("-ARM64");
-  const arch = arm ? "arm64" : "x64";
+function packageNames(platform: string) {
   const label = `Cerium-${version()}`;
-  if (platform.startsWith("Windows-")) {
-    const installer = `Cerium-Setup-${version()}-${arch}.exe`;
-    return { files: [installer, `${installer}.blockmap`], update: "latest.yml" };
+  switch (platform) {
+    case "Windows-X64": {
+      const installer = `Cerium-Setup-${version()}-x64.exe`;
+      return {
+        files: [installer, `${installer}.blockmap`, `cerium-dictation-${version()}.wasm`],
+        update: "latest.yml",
+      };
+    }
+    case "macOS-ARM64": {
+      const zip = `${label}-arm64-mac.zip`;
+      return { files: [`${label}-arm64.dmg`, zip, `${zip}.blockmap`], update: "latest-mac.yml" };
+    }
+    case "Linux-X64":
+      return { files: [`${label}-x86_64.AppImage`], update: "latest-linux.yml" };
+    default:
+      throw new Error(`Unsupported package target: ${platform}`);
   }
-  if (platform.startsWith("macOS-")) {
-    const zip = `${label}-${arch}-mac.zip`;
-    return { files: [`${label}-${arch}.dmg`, zip, `${zip}.blockmap`], update: "latest-mac.yml" };
-  }
-  return {
-    files: [
-      `${label}-${arm ? "arm64" : "x86_64"}.AppImage`,
-      `cerium_${version()}_${arm ? "arm64" : "amd64"}.deb`,
-      `cerium-${version()}.${arm ? "aarch64" : "x86_64"}.rpm`,
-    ],
-    update: arm ? "latest-linux-arm64.yml" : "latest-linux.yml",
-  };
-}
-
-function packageNames(platform: string, locale: LocaleVariant) {
-  const { files, update } = fullPackageNames(platform);
-  if (locale === "english") return { files: files.map(englishArtifact), update };
-  if (platform === "Windows-X64") files.push(`cerium-dictation-${version()}.wasm`);
-  return { files, update };
 }
 
 function config() {
@@ -162,8 +148,8 @@ function adHoc() {
 
 const publicNames = () =>
   new Set([
-    ...builds.flatMap(({ platform, locale }) => {
-      const { files, update } = packageNames(platform, locale);
+    ...platforms.flatMap((platform) => {
+      const { files, update } = packageNames(platform);
       return [...files, update];
     }),
     webTar(),
@@ -404,9 +390,7 @@ function find() {
 async function uploadPackage() {
   const platform = `${env("RUNNER_OS")}-${env("RUNNER_ARCH")}`;
   requireCandidate(platforms.includes(platform), "Unexpected candidate runner.");
-  const locale = env("CHROMIUM_LOCALES");
-  requireCandidate(locale === "full" || locale === "english", "Unexpected candidate Chromium locales.");
-  const { files, update } = packageNames(platform, locale);
+  const { files, update } = packageNames(platform);
   const out = "apps/desktop/out";
   const record: PackageRecord = {
     files: await Promise.all(files.map((name) => digest(join(out, name), name))),
@@ -417,7 +401,7 @@ async function uploadPackage() {
     record.update.split(/\r?\n/).includes(`version: ${version()}`),
     "The package update file names another version.",
   );
-  const recordFile = temp(recordName(`${platform}-${locale}`));
+  const recordFile = temp(recordName(platform));
   writeFileSync(recordFile, JSON.stringify(record));
   upload([...files.map((file) => join(out, file)), recordFile]);
 }
@@ -436,10 +420,9 @@ async function seal() {
   const id = Number(env("RELEASE_ID"));
   const release = getRelease(id);
   const draft = exactDraft(release);
-  const recordBuilds = builds.map(({ platform, locale }) => `${platform}-${locale}`);
-  const recordKeys = [...recordBuilds, "web"];
+  const recordKeys = [...platforms, "web"];
   const initialNames = new Set([
-    ...builds.flatMap(({ platform, locale }) => packageNames(platform, locale).files),
+    ...platforms.flatMap((platform) => packageNames(platform).files),
     webTar(),
     DEPLOY_ARCHIVE,
     ...recordKeys.map(recordName),
@@ -459,27 +442,25 @@ async function seal() {
       ),
       "An uploaded asset does not match the builder's digest.",
     );
-  const records = await Promise.all(recordBuilds.map((key) => readRecord<PackageRecord>(key)));
+  const records = await Promise.all(platforms.map((key) => readRecord<PackageRecord>(key)));
   const configuration = records[0]!.config;
   requireCandidate(
     /^[a-f0-9]{64}$/.test(configuration) && records.every((record) => record.config === configuration),
     "The candidate packages were built with different settings.",
   );
-  const updates = new Map<string, string[]>();
-  for (const [index, { platform, locale }] of builds.entries()) {
-    const { files, update } = packageNames(platform, locale);
+  const updates = new Map<string, string>();
+  for (const [index, platform] of platforms.entries()) {
+    const { files, update } = packageNames(platform);
     const record = records[index]!;
     checkFiles(record.files, files);
-    const texts = updates.get(update) ?? [];
-    texts.push(record.update);
-    updates.set(update, texts);
+    updates.set(update, record.update);
   }
   checkFiles(await readRecord<FileDigest[]>("web"), [DEPLOY_ARCHIVE, webTar()]);
 
   const merged = new Map<string, FileDigest>();
-  for (const [name, texts] of updates) {
+  for (const [name, text] of updates) {
     const path = temp(name);
-    writeFileSync(path, texts.length === 1 ? texts[0]! : mergeUpdateFiles(texts));
+    writeFileSync(path, text);
     merged.set(name, await digest(path, name));
   }
   upload([...updates.keys()].map(temp));

@@ -38,7 +38,6 @@ jobs:
       package: ${{ github.event_name != 'pull_request' || steps.changes.outputs.package == 'true' }}
       everywhere: ${{ steps.changes.outputs.everywhere }}
       tests: ${{ steps.tests.outputs.tests }}
-      windows: ${{ steps.changes.outputs.windows }}
       installer: ${{ steps.changes.outputs.installer }}
       publish: ${{ steps.plan.outputs.publish == 'true' && steps.changes.outputs.package == 'true' }}
       version: ${{ steps.plan.outputs.version }}
@@ -96,15 +95,9 @@ jobs:
               fi
             fi
           fi
-          if [ "$everywhere" = true ]; then
-            windows='[{"arch":"x64","runner":"windows-latest"},{"arch":"Arm64","runner":"windows-11-arm"}]'
-          else
-            windows='[{"arch":"x64","runner":"windows-latest"}]'
-          fi
           {
             echo "package=$package"
             echo "everywhere=$everywhere"
-            echo "windows=$windows"
             echo "installer=$installer"
           } >> "$GITHUB_OUTPUT"
         env:
@@ -276,25 +269,12 @@ jobs:
         with:
           version: ${{ needs.plan.outputs.version }}
 
-  # Every change that reaches main is packaged and started on every platform, on each processor's
-  # own runner, and a pull request on Windows x64 alone unless it touches packaging (plan, above).
-  # Nightlies ship these packages, their Linux ones compressed on every core; a pull request's are
-  # only checked, and packed fast (.github/actions/package). Packaging installs neither
-  # the relay's dependencies nor the website's, which its builds never read: Wrangler's alone brings
-  # Cloudflare's runtime, about a hundred megabytes per platform. A push's packages upload straight to
-  # its nightly's draft release (plan, above), which takes the write permission.
+  # The merge queue smoke-tests every shipped package on its native runner.
   package-linux:
-    name: Package (Linux ${{ matrix.target.arch }}${{ matrix.locales == 'english' && ', English' || '' }})
+    name: Package (Linux x64)
     needs: plan
     if: ${{ needs.plan.outputs.package == 'true' && needs.plan.outputs.everywhere == 'true' }}
-    strategy:
-      fail-fast: false
-      matrix:
-        locales: [full, english]
-        target:
-          - { arch: x64, runner: ubuntu-latest }
-          - { arch: Arm64, runner: ubuntu-24.04-arm }
-    runs-on: ${{ matrix.target.runner }}
+    runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
       contents: write
@@ -310,21 +290,15 @@ jobs:
           version: ${{ needs.plan.outputs.version }}
           release: ${{ needs.plan.outputs.release }}
           github-token: ${{ github.token }}
-          compression: ${{ needs.plan.outputs.release != '' && 'balanced' || 'fast' }}
-          chromium-locales: ${{ matrix.locales }}
+          compression: ${{ needs.plan.outputs.release != '' && 'maximum' || 'fast' }}
           # Only a push's nightly reports crashes; a pull request's packages only check the packaging.
           sentry-dsn: ${{ github.event_name == 'push' && vars.SENTRY_DSN || '' }}
 
   package-windows:
-    name: Package (Windows ${{ matrix.target.arch }}${{ matrix.locales == 'english' && ', English' || '' }})
+    name: Package (Windows x64)
     needs: plan
     if: ${{ needs.plan.outputs.package == 'true' && needs.plan.outputs.installer == 'true' }}
-    strategy:
-      fail-fast: false
-      matrix:
-        locales: ${{ fromJSON(needs.plan.outputs.everywhere == 'true' && '["full","english"]' || '["full"]') }}
-        target: ${{ fromJSON(needs.plan.outputs.windows) }}
-    runs-on: ${{ matrix.target.runner }}
+    runs-on: windows-latest
     timeout-minutes: 30
     permissions:
       contents: write
@@ -340,26 +314,15 @@ jobs:
           version: ${{ needs.plan.outputs.version }}
           release: ${{ needs.plan.outputs.release }}
           github-token: ${{ github.token }}
-          compression: ${{ needs.plan.outputs.release != '' && 'balanced' || 'fast' }}
-          chromium-locales: ${{ matrix.locales }}
+          compression: ${{ needs.plan.outputs.release != '' && 'maximum' || 'fast' }}
           # Only a push's nightly reports crashes; a pull request's packages only check the packaging.
           sentry-dsn: ${{ github.event_name == 'push' && vars.SENTRY_DSN || '' }}
 
-  # Both Mac apps are built and smoke-tested on their own processor's standard hosted runner.
-  # Apple silicon builds once and packages both locale sets, halving its use of the scarce macos-15
-  # runner; Intel keeps one job per set, at ~2.5x slower it would become the run's longest job.
   package-macos:
-    name: Package (macOS ${{ matrix.arch }}${{ matrix.locales == 'english' && ', English' || matrix.locales == 'both' && ', full and English' || '' }})
+    name: Package (macOS Arm64)
     needs: plan
     if: ${{ needs.plan.outputs.package == 'true' && needs.plan.outputs.everywhere == 'true' }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { arch: Arm64, runner: macos-15, locales: both }
-          - { arch: x64, runner: macos-15-intel, locales: full }
-          - { arch: x64, runner: macos-15-intel, locales: english }
-    runs-on: ${{ matrix.runner }}
+    runs-on: macos-15
     timeout-minutes: 30
     permissions:
       contents: write
@@ -375,8 +338,7 @@ jobs:
           version: ${{ needs.plan.outputs.version }}
           release: ${{ needs.plan.outputs.release }}
           github-token: ${{ github.token }}
-          compression: ${{ needs.plan.outputs.release != '' && 'balanced' || 'fast' }}
-          chromium-locales: ${{ matrix.locales }}
+          compression: ${{ needs.plan.outputs.release != '' && 'maximum' || 'fast' }}
           # Only a push's nightly reports crashes; a pull request's packages only check the packaging.
           sentry-dsn: ${{ github.event_name == 'push' && vars.SENTRY_DSN || '' }}
           mac-certificate: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' && secrets.MAC_CERTIFICATE || '' }}

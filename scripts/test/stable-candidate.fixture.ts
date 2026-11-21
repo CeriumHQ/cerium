@@ -9,8 +9,6 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { englishArtifact } from "../../apps/desktop/src/chromiumLocales.ts";
-
 const bot = { login: "github-actions[bot]" };
 const hour = 3_600_000;
 const tag = "cerium-stable-candidate-502";
@@ -284,52 +282,35 @@ function runFixture() {
     console.log("Preparation requires two quiet hours, the successful nightly publisher, and ad hoc config.");
 
     const native = [
+      ["Linux", "X64", "latest-linux.yml", [`Cerium-${version}-x86_64.AppImage`]],
       [
-        "Linux",
+        "Windows",
         "X64",
-        "latest-linux.yml",
-        ["Cerium-1.2.3-x86_64.AppImage", "cerium_1.2.3_amd64.deb", "cerium-1.2.3.x86_64.rpm"],
+        "latest.yml",
+        [
+          `Cerium-Setup-${version}-x64.exe`,
+          `Cerium-Setup-${version}-x64.exe.blockmap`,
+          `cerium-dictation-${version}.wasm`,
+        ],
       ],
       [
-        "Linux",
+        "macOS",
         "ARM64",
-        "latest-linux-arm64.yml",
-        ["Cerium-1.2.3-arm64.AppImage", "cerium_1.2.3_arm64.deb", "cerium-1.2.3.aarch64.rpm"],
+        "latest-mac.yml",
+        [
+          `Cerium-${version}-arm64-mac.zip`,
+          `Cerium-${version}-arm64-mac.zip.blockmap`,
+          `Cerium-${version}-arm64.dmg`,
+        ],
       ],
-      ...["X64", "ARM64"].map(
-        (arch) =>
-          [
-            "Windows",
-            arch,
-            "latest.yml",
-            ["", ".blockmap"].map((ext) => `Cerium-Setup-${version}-${arch.toLowerCase()}.exe${ext}`),
-          ] as const,
-      ),
-      ...["X64", "ARM64"].map(
-        (arch) =>
-          [
-            "macOS",
-            arch,
-            "latest-mac.yml",
-            [".dmg", "-mac.zip", "-mac.zip.blockmap"].map(
-              (ext) => `Cerium-${version}-${arch.toLowerCase()}${ext}`,
-            ),
-          ] as const,
-      ),
     ] as const;
-    for (const [os, arch, update, assets] of native) {
-      for (const locale of ["full", "english"]) {
-        const payload = locale === "english" ? assets.map(englishArtifact) : [...assets];
-        if (os === "Windows" && arch === "X64" && locale === "full") {
-          payload.push(`cerium-dictation-${version}.wasm`);
-        }
-        for (const asset of payload) file(`apps/desktop/out/${asset}`, asset);
-        file(
-          `apps/desktop/out/${update}`,
-          `version: ${version}\nfiles:\n  - url: ${payload[0]}\npath: ${payload[0]}\n`,
-        );
-        run("upload-package", { RUNNER_OS: os, RUNNER_ARCH: arch, CHROMIUM_LOCALES: locale });
-      }
+    for (const [os, arch, update, payload] of native) {
+      for (const asset of payload) file(`apps/desktop/out/${asset}`, asset);
+      file(
+        `apps/desktop/out/${update}`,
+        `version: ${version}\nfiles:\n  - url: ${payload[0]}\npath: ${payload[0]}\n`,
+      );
+      run("upload-package", { RUNNER_OS: os, RUNNER_ARCH: arch });
     }
     file("apps/ui/dist-web/build.json", JSON.stringify({ version }));
     file("apps/site/dist/index.html", "<h1>Cerium</h1>");
@@ -417,16 +398,14 @@ function runFixture() {
     assert.equal(published.draft, false);
     assert.equal(published.tag_name, `v${version}`);
     assert.equal(published.body, "The current release notes.\n");
-    assert.equal(published.assets.length, 38);
+    assert.equal(published.assets.length, 11);
     const publicAssets = new Map(published.assets.map((asset) => [asset.name, asset]));
     assert.ok(publicAssets.has(`cerium-dictation-${version}.wasm`));
     for (const [, , update, files] of native) {
-      for (const file of files) assert.ok(publicAssets.has(englishArtifact(file)));
+      for (const file of files) assert.ok(publicAssets.has(file));
       const metadata = publicAssets.get(update);
       assert.ok(metadata);
-      assert.ok(
-        Buffer.from(metadata.content, "base64").toString("utf8").includes(englishArtifact(files[0]!)),
-      );
+      assert.ok(Buffer.from(metadata.content, "base64").toString("utf8").includes(files[0]));
     }
     console.log(
       "Promotion preserves public assets, removes the private deploy bundle, and publishes fresh notes.",

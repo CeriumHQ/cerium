@@ -7,7 +7,6 @@ import { join } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import { promisify } from "node:util";
 
-import { englishArtifact, localeUpdateFiles } from "../src/chromiumLocales.ts";
 import {
   diskImageUrl,
   downloadMacUpdate,
@@ -72,24 +71,13 @@ describe("Mac release downloads", () => {
     ).toThrow("missing");
   });
 
-  it("uses a matching compact ZIP and disk image, falling back to the full release", () => {
+  it("selects the standard ZIP and disk image when an older feed includes compact artifacts", () => {
     const info = release("full");
     const full = info.files[0]!;
-    const compact = { ...full, url: englishArtifact(full.url) };
-    const otherArch = process.arch === "arm64" ? "x64" : "arm64";
-    const other = { ...compact, url: compact.url.replace(process.arch, otherArch) };
+    const compact = { ...full, url: full.url.replace("Cerium-", "Cerium-english-") };
     const origin = `https://github.com/CeriumHQ/cerium/releases/download/v${info.version}/`;
-    const selected = { ...info, files: localeUpdateFiles([full, compact, other]) };
-    expect(selected.files).toEqual([compact]);
-    expect(macUpdateFile(selected).url).toBe(origin + compact.url);
-    expect(diskImageUrl(info.version, process.arch, selected)).toBe(
-      origin + `Cerium-english-${info.version}-${process.arch}.dmg`,
-    );
-
-    const fallback = { ...info, files: localeUpdateFiles([full, other]) };
-    expect(fallback.files).toEqual([full]);
-    expect(macUpdateFile(fallback).url).toBe(origin + full.url);
-    expect(diskImageUrl(info.version, process.arch, fallback)).toBe(
+    expect(macUpdateFile({ ...info, files: [compact, full] }).url).toBe(origin + full.url);
+    expect(diskImageUrl(info.version, process.arch)).toBe(
       origin + `Cerium-${info.version}-${process.arch}.dmg`,
     );
   });

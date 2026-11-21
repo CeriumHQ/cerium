@@ -54,19 +54,15 @@ jobs:
           VERSION: ${{ inputs.version }}
 
   package:
-    name: Package (${{ matrix.target.platform }} ${{ matrix.target.arch }}${{ matrix.locales == 'english' && ', English' || '' }})
+    name: Package (${{ matrix.target.platform }} ${{ matrix.target.arch }})
     if: ${{ inputs.candidate == '' || github.run_attempt == '1' }}
     strategy:
       fail-fast: false
       matrix:
-        locales: [full, english]
         target:
           - { platform: Linux, arch: x64, runner: ubuntu-latest, timeout: 25 }
-          - { platform: Linux, arch: Arm64, runner: ubuntu-24.04-arm, timeout: 25 }
           - { platform: Windows, arch: x64, runner: windows-latest, timeout: 30 }
-          - { platform: Windows, arch: Arm64, runner: windows-11-arm, timeout: 30 }
           - { platform: macOS, arch: Arm64, runner: macos-15, timeout: 40 }
-          - { platform: macOS, arch: x64, runner: macos-15-intel, timeout: 40 }
     runs-on: ${{ matrix.target.runner }}
     timeout-minutes: ${{ matrix.target.timeout }}
     steps:
@@ -83,7 +79,7 @@ jobs:
         with:
           version: ${{ inputs.version }}
           compression: maximum
-          chromium-locales: ${{ matrix.locales }}
+          upload-artifact: ${{ inputs.candidate == '' }}
           sentry-dsn: ${{ vars.SENTRY_DSN }}
           mac-certificate: ${{ runner.os == 'macOS' && secrets.MAC_CERTIFICATE || '' }}
           mac-certificate-password: ${{ runner.os == 'macOS' && secrets.MAC_CERTIFICATE_PASSWORD || '' }}
@@ -97,5 +93,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           CANDIDATE: ${{ inputs.candidate }}
           VERSION: ${{ inputs.version }}
-          CHROMIUM_LOCALES: ${{ matrix.locales }}
           SENTRY_DSN: ${{ vars.SENTRY_DSN }}

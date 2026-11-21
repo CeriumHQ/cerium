@@ -156,23 +156,14 @@ injects into every session, so every agent stays visible in the thread.
 
 Download the [latest stable release](https://github.com/CeriumHQ/cerium/releases/latest):
 
-- **Windows 10 and 11**: run `Cerium-Setup-<version>-x64.exe`, or `-arm64.exe` on an Arm PC. The
-  installer isn't code-signed yet, so SmartScreen warns that it "protected your PC": choose More info,
-  then Run anyway.
-- **macOS**: open `Cerium-<version>-arm64.dmg` on Apple silicon, or `-x64.dmg` on an Intel Mac, and
-  drag Cerium into Applications. Until it is notarized, open it once, then choose Open Anyway in
-  System Settings → Privacy & Security.
-- **Ubuntu and Debian**: `sudo apt install ./cerium_<version>_amd64.deb` (`arm64` on Arm).
-- **Fedora**: `sudo dnf install ./cerium-<version>.x86_64.rpm` (`aarch64` on Arm).
-- **Any other Linux**: `chmod +x Cerium-<version>-x86_64.AppImage` (`arm64` on Arm) and run it. It
-  needs FUSE 2 (`libfuse2`, or `libfuse2t64` on Ubuntu 24.04 and later).
+- **Windows 11 x64** — run `Cerium-Setup-<version>-x64.exe`. The installer is unsigned, so Windows SmartScreen may prompt for confirmation.
+- **macOS on Apple silicon** — open `Cerium-<version>-arm64.dmg` and drag Cerium into Applications. For an unnotarized build, open it once and choose Open Anyway in System Settings → Privacy & Security.
+- **Linux x64** — run `chmod +x Cerium-<version>-x86_64.AppImage` and launch it. It needs FUSE 2
+  (`libfuse2`, or `libfuse2t64` on Ubuntu 24.04 and later).
 
-For a smaller download and installation, pick the corresponding `-english` installer from the
-release assets. It includes only the English Chromium resources. The standard installers include
-all of Chromium's languages and can replace a compact installation without changing its data.
-In-app updates use the compact installer when the release includes it.
-To switch locale variants of the same version on Linux, use `sudo apt install --reinstall ./<file>.deb`
-or `sudo dnf reinstall ./<file>.rpm`. For an AppImage, replace the old file in place.
+These packages include all Chromium languages. Existing English-only installations on the supported
+targets can update to the standard package. Linux users moving from a distribution package can install
+the AppImage.
 
 Stable releases are tested and come out when something worth shipping has landed. Cerium also
 publishes **nightly** builds of every change as it lands, marked as pre-releases on the

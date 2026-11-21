@@ -4,7 +4,6 @@ import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 
-import { hasEnglishLocalesOnly, localeUpdateFiles } from "./chromiumLocales.ts";
 import { reportCrash } from "./crashReports.ts";
 import { linuxInstall } from "./linuxInstall.ts";
 import {
@@ -166,11 +165,7 @@ export const startUpdater = (host: UpdaterHost) => {
       return true;
     }
   })();
-  // On Linux, an AppImage updates by electron-updater swapping the file its runtime names in APPIMAGE,
-  // and a .deb or .rpm by installing the next package with the system's package manager, which asks
-  // for the user's password (linuxInstall.ts). Anything else, a build run from a folder, doesn't.
-  const updatable = app.isPackaged && (process.platform !== "linux" || linuxInstall() !== undefined);
-  const english = updatable && hasEnglishLocalesOnly(app.getAppPath());
+  const updatable = app.isPackaged && (process.platform !== "linux" || linuxInstall()?.kind === "appimage");
   let status: UpdateStatus = updatable ? { kind: "checking" } : { kind: "unsupported" };
   // Resolve the installation mode before checking, including a check requested immediately at launch.
   let manual = process.platform === "darwin";
@@ -242,12 +237,6 @@ export const startUpdater = (host: UpdaterHost) => {
       .then(
         (result) => {
           if (result?.isUpdateAvailable !== true) return set({ kind: "current", checkedAt: Date.now() });
-          // electron-updater keeps this UpdateInfo for downloadUpdate(). Keep its integrity checks
-          // and replace each file only with the same target and architecture from the same release.
-          if (english) {
-            const files = result.updateInfo.files;
-            files.splice(0, files.length, ...localeUpdateFiles(files));
-          }
           macRelease = result.updateInfo;
           set({ kind: "available", version: result.updateInfo.version });
           if (autoDownload && !manual) void download("background");
@@ -275,7 +264,7 @@ export const startUpdater = (host: UpdaterHost) => {
     if (status.kind !== "available" && status.kind !== "failed") return;
     const { version } = status;
     if (manual) {
-      await shell.openExternal(diskImageUrl(version, process.arch, macRelease));
+      await shell.openExternal(diskImageUrl(version, process.arch));
       return;
     }
     set({ kind: "downloading", version, percent: 0 });
