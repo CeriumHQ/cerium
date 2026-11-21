@@ -48,15 +48,8 @@ describe("the relay's web UI builds", () => {
     expect(redirects(build("0.4.0"))).toBe(
       [
         `/download ${release}/Cerium-Setup-0.4.0-x64.exe 302`,
-        `/download/windows-arm64 ${release}/Cerium-Setup-0.4.0-arm64.exe 302`,
         `/download/linux ${release}/Cerium-0.4.0-x86_64.AppImage 302`,
-        `/download/linux-arm64 ${release}/Cerium-0.4.0-arm64.AppImage 302`,
-        `/download/deb ${release}/cerium_0.4.0_amd64.deb 302`,
-        `/download/deb-arm64 ${release}/cerium_0.4.0_arm64.deb 302`,
-        `/download/rpm ${release}/cerium-0.4.0.x86_64.rpm 302`,
-        `/download/rpm-arm64 ${release}/cerium-0.4.0.aarch64.rpm 302`,
         `/download/mac ${release}/Cerium-0.4.0-arm64.dmg 302`,
-        `/download/mac-intel ${release}/Cerium-0.4.0-x64.dmg 302`,
         "",
       ].join("\n"),
     );
@@ -72,7 +65,7 @@ describe("the relay's web UI builds", () => {
   it("sends downloads to the latest stable release when none is known", () => {
     const latest = "https://github.com/CeriumHQ/cerium/releases/latest 302";
     const lines = redirects(build("0.5.0-nightly.n000031")).trimEnd().split("\n");
-    expect(lines).toHaveLength(10);
+    expect(lines).toHaveLength(3);
     expect(lines.every((line) => line.endsWith(latest))).toBe(true);
     expect(lines[0]).toBe(`/download ${latest}`);
   });

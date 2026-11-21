@@ -60,15 +60,14 @@ jobs:
           RELEASE: ${{ inputs.release }}
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-      # Each runner's update files in a folder of their own, then all in one, with the ones two
-      # runners both wrote merged (scripts/merge-update-files.ts).
+      # Each native runner supplies one platform feed.
       - name: Fetch the update files
         if: ${{ steps.plan.outputs.publish == 'true' }}
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: update-files-*
           path: ${{ runner.temp }}/update-files
-      - name: Merge the update files
+      - name: Gather the update files
         if: ${{ steps.plan.outputs.publish == 'true' }}
         run: node scripts/merge-update-files.ts "$RUNNER_TEMP/update-files" apps/desktop/out
       - name: Fetch the web app

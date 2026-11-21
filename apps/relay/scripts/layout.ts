@@ -27,15 +27,8 @@ const LATEST = "https://github.com/CeriumHQ/cerium/releases/latest";
 /** Each download's path under `/download`, and the file it names, as electron-builder names it. */
 const downloads = (version: string): ReadonlyArray<readonly [string, string]> => [
   ["", `Cerium-Setup-${version}-x64.exe`],
-  ["/windows-arm64", `Cerium-Setup-${version}-arm64.exe`],
   ["/linux", `Cerium-${version}-x86_64.AppImage`],
-  ["/linux-arm64", `Cerium-${version}-arm64.AppImage`],
-  ["/deb", `cerium_${version}_amd64.deb`],
-  ["/deb-arm64", `cerium_${version}_arm64.deb`],
-  ["/rpm", `cerium-${version}.x86_64.rpm`],
-  ["/rpm-arm64", `cerium-${version}.aarch64.rpm`],
   ["/mac", `Cerium-${version}-arm64.dmg`],
-  ["/mac-intel", `Cerium-${version}-x64.dmg`],
 ];
 
 /** Nightlies carry `-nightly.n<run>` in their version (scripts/release.ts). */
@@ -43,9 +36,8 @@ export const isNightly = (version: string): boolean => version.includes("-nightl
 
 /**
  * The relay's `_redirects`: `/download` fetches the Windows installer of the newest stable release,
- * and the paths below it the Arm64 installer, each Linux package and the Mac's disk images (Apple
- * silicon's at `/mac`, Intel's at `/mac-intel`), which the release workflows publish alongside
- * (apps/desktop/electron-builder.ts). Nightlies deploy the relay too but are for people who pick
+ * with Linux x64 AppImage and Apple silicon disk image redirects alongside it.
+ * Nightlies deploy the relay too but are for people who pick
  * that channel, so the website never offers one: a stable deploy names its own version, a nightly's
  * the newest stable scripts/builds.ts found, and where there is none, the downloads go to the
  * releases page's latest stable.

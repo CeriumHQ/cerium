@@ -12,14 +12,6 @@ inputs:
       whole workspace.
     required: false
     default: ""
-  cpu:
-    description: >-
-      Installs the native packages built for these processors too (`bun install --cpu`, `*` for
-      all), for a job that packages the app for a processor other than the runner's. Empty installs
-      the runner's own.
-    required: false
-    default: ""
-
 runs:
   using: composite
   steps:
@@ -28,31 +20,13 @@ runs:
     # machine that lasts one job. Where scanning can't be turned off, the checkout and the temporary
     # folder are left out of it instead.
     - name: Configure Defender
-      if: runner.os == 'Windows' && runner.arch != 'ARM64'
+      if: runner.os == 'Windows' && runner.arch == 'X64'
       shell: pwsh
       run: |
         try {
           Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction SilentlyContinue
           Add-MpPreference -ExclusionPath $env:GITHUB_WORKSPACE, $env:RUNNER_TEMP -ErrorAction SilentlyContinue
           "Defender real-time scanning: $((Get-MpComputerStatus).RealTimeProtectionEnabled)"
-        } catch {
-          "Defender left as it was: $_"
-        }
-
-    # Windows on Arm's runners keep real-time scanning on, so only the path exclusions apply there.
-    # Adding them took about 40 seconds of every job, on the runner whose jobs finish last, so a
-    # process of its own adds them while Bun and Node are set up and the install begins. Started
-    # this way it has a hidden window of its own and none of this step's handles, so the step ends
-    # at once and the process runs on.
-    - name: Configure Defender in the background
-      if: runner.os == 'Windows' && runner.arch == 'ARM64'
-      shell: pwsh
-      run: |
-        try {
-          $command = "Add-MpPreference -ExclusionPath '$env:GITHUB_WORKSPACE', '$env:RUNNER_TEMP' -ErrorAction SilentlyContinue"
-          $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
-          Start-Process -FilePath pwsh -WindowStyle Hidden `
-            -ArgumentList '-NoProfile', '-NonInteractive', '-EncodedCommand', $encoded
         } catch {
           "Defender left as it was: $_"
         }
@@ -73,13 +47,10 @@ runs:
         read -ra patterns <<<"$FILTER"
         filters=()
         for pattern in "${patterns[@]}"; do filters+=(--filter "$pattern"); done
-        bun install --frozen-lockfile "${filters[@]}" ${CPU:+--cpu="$CPU"}
+        bun install --frozen-lockfile "${filters[@]}"
       env:
         FILTER: ${{ inputs.filter }}
-        CPU: ${{ inputs.cpu }}
-        # Hosted Windows runners put the checkout and runner.temp on the same drive (C: on Arm64,
-        # D: on x64 in recent runs). Bun can hard-link within that drive. Keep the cache job-local:
-        # restoring the extracted package cache took longer than downloading packages again.
+        # Keep installs on the same drive as the checkout for hard links.
         BUN_INSTALL_CACHE_DIR: ${{ runner.temp }}/bun-cache
         # CI only starts packaged builds, whose Electron electron-builder fetches itself, so the
         # development binary's download is skipped.

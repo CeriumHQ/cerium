@@ -5,8 +5,6 @@ import { access, lstat, mkdtemp, open, readdir, readFile, rm, writeFile } from "
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 
-import { englishArtifact } from "./chromiumLocales.ts";
-
 // Squirrel.Mac checks the new app against the running app's signing identity. Ad hoc signatures
 // identify just one build, so they can't use Squirrel. Those builds download the release's ZIP,
 // verify its hash and bundle, and leave a helper to replace the app after its backend has stopped.
@@ -47,30 +45,20 @@ export const macUpdateMode = async (bundle: string): Promise<MacUpdateMode> => {
 };
 
 /** Where `version`'s disk image for this Mac's processor downloads from. */
-export const diskImageUrl = (version: string, arch: string, release: MacRelease | undefined): string => {
-  const name = macUpdateName(release, version, arch).replace(/-mac\.zip$/, ".dmg");
-  return `${RELEASES}/v${version}/${name}`;
-};
+export const diskImageUrl = (version: string, arch: string): string =>
+  `${RELEASES}/v${version}/Cerium-${version}-${arch}.dmg`;
 
 export interface MacRelease {
   readonly version: string;
   readonly files: ReadonlyArray<{ readonly url: string; readonly sha512: string; readonly size?: number }>;
 }
 
-const macUpdateName = (release: MacRelease | undefined, version: string, arch: string): string => {
-  const full = `Cerium-${version}-${arch}-mac.zip`;
-  const english = englishArtifact(full);
-  // A compact install already replaced its full file with the compact counterpart when available.
-  const files = release?.files;
-  return files?.some(({ url }) => url === english) && !files.some(({ url }) => url === full) ? english : full;
-};
-
 /** Only the ZIP for the running processor, from the same public release as the checked feed. */
 export const macUpdateFile = (release: MacRelease, arch: string = process.arch) => {
   if (!/^\d+\.\d+\.\d+(?:-nightly\.n?\d+)?$/.test(release.version)) {
     throw new Error("The Mac update has an invalid version.");
   }
-  const name = macUpdateName(release, release.version, arch);
+  const name = `Cerium-${release.version}-${arch}-mac.zip`;
   const file = release.files.find((file) => file.url === name);
   if (file === undefined || !/^[A-Za-z0-9+/]{86}==$/.test(file.sha512)) {
     throw new Error(`The Mac update is missing ${name} or its SHA-512 checksum.`);

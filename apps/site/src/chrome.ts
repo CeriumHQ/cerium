@@ -11,12 +11,12 @@ const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const pointDownloads = () => {
   const point = (arm: boolean) => {
     for (const text of document.querySelectorAll("[data-download-label]")) {
-      text.closest("a")!.href = download(arm);
+      const path = download(arm);
+      text.textContent =
+        path === "/downloads/" ? "View downloads" : `Download for ${system?.name ?? "Windows"}`;
+      text.closest("a")!.href = path;
     }
   };
-  for (const text of document.querySelectorAll("[data-download-label]")) {
-    text.textContent = `Download for ${system?.name ?? "Windows"}`;
-  }
   if (system !== undefined) {
     for (const use of document.querySelectorAll("[data-system-mark] use"))
       use.setAttribute("href", `/icons.svg${system.mark}`);
