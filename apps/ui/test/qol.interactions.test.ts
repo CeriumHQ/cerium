@@ -21,6 +21,15 @@ const choose = (page: Page, label: string, value: string) =>
 const wait = (page: Page, text: string) => page.waitFor({ text }, { timeoutMs: 5_000, gone: false });
 const closed = (page: Page) =>
   page.waitFor({ selector: '[role="dialog"]' }, { gone: true, timeoutMs: 5_000 });
+const openPalette = async (page: Page) => {
+  await click(page, "Open palette");
+  await page.waitFor(input, { timeoutMs: 5_000, gone: false });
+  await expect
+    .poll(() => page.evaluate('document.activeElement?.getAttribute("role")'), { timeout: 5_000 })
+    .toBe("combobox");
+};
+const highlighted = (page: Page) =>
+  page.waitFor({ selector: '[role="dialog"] [data-highlighted]' }, { timeoutMs: 5_000, gone: false });
 const activate = async (page: Page, selector: string) => {
   await page.waitFor({ selector }, { timeoutMs: 5_000, gone: false });
   await page.evaluate(`document.querySelector(${JSON.stringify(selector)}).focus()`);
@@ -73,20 +82,22 @@ describe.skipIf(executable === undefined)("command palette and linked tasks in t
         const page = await Page.open((await pickPage(browser.origin)).webSocketDebuggerUrl);
         try {
           await page.navigate(new URL("fixture", origin).href);
-          await click(page, "Open palette");
+          await openPalette(page);
           await page.type("needle");
           await wait(page, "Archived chat").catch(async (error: unknown) => {
             const contents = await page.evaluate<string>("document.body.innerText");
             throw new Error(`Palette results did not show: ${contents}`, { cause: error });
           });
+          await highlighted(page);
           await page.press(parseKeys("Control+Enter"));
           await closed(page);
           expect(await result(page)).toBe("chat:tab");
 
-          await click(page, "Open palette");
+          await openPalette(page);
           await choose(page, "File search project", "/projects/lib");
           await page.type("index", input);
           await wait(page, "src/index.ts");
+          await highlighted(page);
           await page.press(parseKeys("Alt+Enter"));
           await closed(page);
           expect(await result(page)).toBe("/projects/lib/src/index.ts:split");
@@ -95,16 +106,18 @@ describe.skipIf(executable === undefined)("command palette and linked tasks in t
             page.evaluate(
               `Array.from(document.querySelectorAll('#${id} button[aria-expanded]'), (el) => el.getAttribute('aria-expanded'))`,
             );
-          await click(page, "Open palette");
+          await openPalette(page);
           await page.type("expand", input);
           await wait(page, "Expand all Worked sections");
+          await highlighted(page);
           await page.press(parseKeys("Enter"));
           await closed(page);
           expect(await disclosures("work")).toEqual(["true", "true"]);
           expect(await disclosures("chat")).toEqual(["false", "false"]);
-          await click(page, "Open palette");
+          await openPalette(page);
           await page.type("collapse", input);
           await wait(page, "Collapse all Worked sections");
+          await highlighted(page);
           await page.press(parseKeys("Enter"));
           await closed(page);
           expect(await disclosures("work")).toEqual(["false", "false"]);

@@ -545,6 +545,15 @@ export const checkpointsLayer = (options: { readonly directory: string }) =>
         return entry;
       };
 
+      // Stop watching before restores that can replace a directory with a file (Linux's recursive
+      // watcher throws ENOTDIR when a watched directory becomes a file) and drop any cached snapshot.
+      const dropWatcher = (store: string) => {
+        const entry = watched.get(store);
+        if (entry === undefined) return;
+        watched.delete(store);
+        entry.close();
+      };
+
       /** `folder`'s watcher, started on its first save; none while the OS can't watch it. */
       const watchedFolder = (store: string, folder: string): Watched | undefined => {
         const existing = recentWatcher(store);
@@ -945,6 +954,7 @@ export const checkpointsLayer = (options: { readonly directory: string }) =>
                       ),
                   { discard: true },
                 );
+              if (writing.length > 0 || gone.length > 0) dropWatcher(store);
               yield* remove(gone.filter(related));
               if (writing.length > 0) {
                 yield* gitOk(
@@ -978,6 +988,7 @@ export const checkpointsLayer = (options: { readonly directory: string }) =>
         const sourceStore = storeOf(source);
         const destinationStore = storeOf(destination);
         yield* save(destination);
+        dropWatcher(destinationStore);
         // Seed the temporary index with the new checkout so git removes files absent from the
         // snapshot and handles file/directory replacements, without staging changes in the worktree.
         yield* withScratchIndex(
@@ -992,8 +1003,6 @@ export const checkpointsLayer = (options: { readonly directory: string }) =>
             ),
           false,
         );
-        const entry = recentWatcher(destinationStore);
-        if (entry !== undefined) entry.dirty = true;
       });
 
       return Checkpoints.of({ save, changes, lines, diff, restore, restoreInto });

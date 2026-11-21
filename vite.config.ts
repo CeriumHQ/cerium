@@ -95,7 +95,7 @@ export default defineConfig({
           name: "unit",
           include: [
             "packages/**/test/**/*.test.ts",
-            "apps/**/test/**/*.test.{ts,tsx}",
+            "apps/**/test/**/*.test.ts",
             "scripts/test/**/*.test.ts",
           ],
           exclude: [...ignored, ...browserTests, ...loopbackTests],

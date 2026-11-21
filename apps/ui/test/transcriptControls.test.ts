@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 import { afterEach, beforeEach, describe, expect, it } from "@effect/vitest";
-import { act, createElement as element, useRef, useState } from "react";
+import { act, createElement as element, createRef, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { vi } from "vite-plus/test";
 
@@ -64,8 +64,8 @@ const quote = "First line\nSecond line";
 const askLabel = "Ask /btw about the selected passage";
 
 function SelectionFixture({ ask }: { ask?: AskSide }) {
-  const within = useRef<HTMLDivElement>(null);
-  const composer = useRef<HTMLTextAreaElement>(null);
+  const [within] = useState(() => createRef<HTMLDivElement>());
+  const [composer] = useState(() => createRef<HTMLTextAreaElement>());
   const [side, setSide] = useState<{ id: number; open: boolean; quote?: string }>();
   const box: MessageBox = {
     mention: () => undefined,
@@ -74,29 +74,32 @@ function SelectionFixture({ ask }: { ask?: AskSide }) {
     openSide: (draft) => setSide((was) => ({ ...draft, id: (was?.id ?? 0) + 1, open: true })),
     key: () => "thread",
   };
-  return (
-    <MessageBoxContext value={box}>
-      <div ref={within}>
-        <p data-reply-source="">{quote}</p>
-        <p id="user">User message</p>
-      </div>
-      <SelectionReply within={within} onOpenSideQuestion={ask && ((quote) => box.openSide({ quote }))} />
-      <textarea aria-label="Message" ref={composer} />
-      <button type="button" onClick={() => box.openSide()}>
-        Open side question
-      </button>
-      {side && ask ? (
-        <SideQuestion
-          key={side.id}
-          open={side.open}
-          quote={side.quote}
-          anchor={composer}
-          finalFocus={composer}
-          ask={ask}
-          onClose={() => setSide({ id: side.id, open: false })}
-        />
-      ) : null}
-    </MessageBoxContext>
+  return element(
+    MessageBoxContext,
+    { value: box },
+    element(
+      "div",
+      { ref: within },
+      element("p", { "data-reply-source": "" }, quote),
+      element("p", { id: "user" }, "User message"),
+    ),
+    element(SelectionReply, {
+      within,
+      onOpenSideQuestion: ask && ((selected: string) => box.openSide({ quote: selected })),
+    }),
+    element("textarea", { "aria-label": "Message", ref: composer }),
+    element("button", { type: "button", onClick: () => box.openSide() }, "Open side question"),
+    side && ask
+      ? element(SideQuestion, {
+          key: side.id,
+          open: side.open,
+          quote: side.quote,
+          anchor: composer,
+          finalFocus: composer,
+          ask,
+          onClose: () => setSide({ id: side.id, open: false }),
+        })
+      : null,
   );
 }
 
