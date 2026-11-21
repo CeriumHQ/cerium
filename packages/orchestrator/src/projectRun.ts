@@ -1,4 +1,11 @@
-import type { ScriptKind, ScriptStatus } from "./scripts.ts";
+import type { AgentId } from "@cerium/protocol";
+import { Effect } from "effect";
+
+import type { OrchestratorContext } from "./context.ts";
+import { notAllowed, OrchestratorError } from "./errors.ts";
+import { isHelper } from "./runtime.ts";
+import type { ScriptKind, ScriptsError, ScriptStatus } from "./scripts.ts";
+import type { UserRequests } from "./userRequests.ts";
 
 // What the bus's `project_run` tool asks of a thread's project scripts and what it answers: the
 // agents start, stop and restart the project's run (or setup) in the thread's own terminal, and read
@@ -80,4 +87,104 @@ export const runAnswer = (
     output,
     note,
   };
+};
+
+/**
+ * The `project_run` tool: starts, stops or restarts the caller's thread's project run (or setup), or
+ * reads how it stands. Starting asks like a command does, through `requestApproval`.
+ */
+export const makeProjectRun = (
+  { runtime, scripts, threadInfo }: OrchestratorContext,
+  requestApproval: UserRequests["requestApproval"],
+) => {
+  const projectRun = Effect.fn("Orchestrator.projectRun")(function* (
+    callerId: AgentId,
+    request: ProjectRunRequest,
+  ) {
+    const caller = yield* runtime(callerId);
+    if (isHelper(caller.info)) {
+      return yield* notAllowed("An advisor or reviewer doesn't run the project.");
+    }
+    const kind = request.script ?? "run";
+    const lines = runLines(request.lines);
+    const thread = yield* threadInfo(caller.info.threadId);
+    const folder = thread.cwd;
+    if (thread.mode !== "work" || folder === undefined) {
+      return yield* notAllowed("This thread has no project folder, so there is nothing to run.");
+    }
+    const project = thread.worktree?.project ?? folder;
+    const failed = (error: ScriptsError) =>
+      new OrchestratorError({ reason: "invalid", message: error.message });
+    const command = (yield* scripts.resolve(project).pipe(Effect.mapError(failed)))[kind];
+    const standing = () => scripts.status(thread.id, kind, lines);
+
+    if (request.action === "status") {
+      return runAnswer(kind, yield* standing(), { command: command?.text });
+    }
+    /** Asks as a command does; what the answer is when it isn't allowed, and nothing when it is. */
+    const refusal = Effect.fn("Orchestrator.projectRun.approve")(function* (summary: string) {
+      const decision = yield* requestApproval(callerId, {
+        toolName: "project_run",
+        summary,
+        input: { action: request.action, script: kind },
+      });
+      return decision.decision === "deny"
+        ? ({
+            ...runAnswer(kind, undefined, {
+              command: command?.text,
+              note: decision.message ?? "The user didn't allow this.",
+            }),
+            state: "denied",
+          } satisfies ProjectRunAnswer)
+        : undefined;
+    });
+
+    if (request.action === "stop") {
+      const refused = yield* refusal(`Stop the project's ${kind}`);
+      if (refused !== undefined) return refused;
+      const stopped = yield* scripts.stop(thread.id, kind);
+      return runAnswer(kind, undefined, {
+        command: command?.text,
+        note: stopped ? "Stopped." : "It wasn't running.",
+      });
+    }
+
+    if (command === undefined) {
+      return yield* new OrchestratorError({
+        reason: "invalid",
+        message: `No ${kind} command is set for this project. Ask the user to set one in Settings → Git & GitHub.`,
+      });
+    }
+    if (command.from === "guessed") {
+      return yield* notAllowed(
+        `Cerium only guesses this project's ${kind} (\`${command.text}\`), and a guess never runs by itself. Ask the user to confirm it in Settings → Git & GitHub, or to press ${kind === "run" ? "Run" : "Setup"}.`,
+      );
+    }
+    if (request.action === "start") {
+      const current = yield* standing();
+      if (current?.running === true) {
+        return runAnswer(kind, current, {
+          command: command.text,
+          note: `Already running, so it wasn't started again; \`restart\` runs it again.${
+            current.url === undefined ? "" : ` Serving at ${current.url}.`
+          }`,
+        });
+      }
+    }
+    const refused = yield* refusal(
+      `${request.action === "start" ? "Start" : "Restart"} the project's ${kind}: ${command.text}`,
+    );
+    if (refused !== undefined) return refused;
+    yield* scripts
+      .start({
+        kind,
+        threadId: thread.id,
+        project,
+        cwd: folder,
+        settleWithin: START_WAITS_FOR,
+      })
+      .pipe(Effect.mapError(failed));
+    return runAnswer(kind, yield* standing(), { command: command.text });
+  });
+  return projectRun;
 };
