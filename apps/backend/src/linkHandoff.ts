@@ -54,8 +54,8 @@ export const loopbackHandoff: LinkHandoff = {
           });
         }),
         (server) =>
-          Effect.sync(() => {
-            server.close();
+          Effect.callback<void>((resume) => {
+            server.close((error) => resume(error ? Effect.die(error) : Effect.void));
             server.closeAllConnections();
           }),
       );
