@@ -387,7 +387,9 @@ jobs:
       ]
     runs-on: ubuntu-latest
     timeout-minutes: 1
-    permissions: {}
+    permissions:
+      actions: read
+      contents: read
     steps:
       - name: Require every suite to pass
         env:
@@ -401,6 +403,24 @@ jobs:
                elif $plan.everywhere != "true" and (.key == "test-macos" or .key == "package-linux" or .key == "package-macos") then "skipped"
                else "success" end) == .value.result)
           ' <<<"$RESULTS"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: ${{ !cancelled() }}
+        with:
+          sparse-checkout-cone-mode: false
+          sparse-checkout: /.github/job-budgets.jq
+          persist-credentials: false
+      - name: Require completed jobs to meet their budgets
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs?per_page=100" \
+            --jq '.jobs[]' | jq -sr -f .github/job-budgets.jq > "$RUNNER_TEMP/budget-misses"
+          if [ -s "$RUNNER_TEMP/budget-misses" ]; then
+            tee -a "$GITHUB_STEP_SUMMARY" < "$RUNNER_TEMP/budget-misses"
+            exit 1
+          fi
 
   # A push to main that changes the app publishes its nightly once everything passed: the relay
   # first, so it already reads what the new version sends, then the draft release the packages were
