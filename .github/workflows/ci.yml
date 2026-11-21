@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  merge_group:
+    types: [checks_requested]
   workflow_dispatch:
 
 permissions:
@@ -21,8 +23,8 @@ defaults:
     shell: bash
 
 # The jobs run side by side, the packages without waiting for linting, which the pre-push hook has
-# run already (scripts/pre-push.ts); publishing waits for every check and every package. A commit
-# that only changes documentation is linted but neither tested nor packaged (plan, below).
+# run already (scripts/pre-push.ts); publishing waits for every check and every package. A PR
+# that only changes documentation is linted. The queue and main run the whole suite.
 jobs:
   # The commit messages, whether anything but documentation changed, and the nightly's version, with
   # the draft release a push's nightly is gathered in.
@@ -33,10 +35,10 @@ jobs:
     permissions:
       contents: write
     outputs:
-      package: ${{ steps.changes.outputs.package }}
+      package: ${{ github.event_name != 'pull_request' || steps.changes.outputs.package == 'true' }}
       everywhere: ${{ steps.changes.outputs.everywhere }}
       windows: ${{ steps.changes.outputs.windows }}
-      publish: ${{ steps.plan.outputs.publish }}
+      publish: ${{ steps.plan.outputs.publish == 'true' && steps.changes.outputs.package == 'true' }}
       version: ${{ steps.plan.outputs.version }}
       release: ${{ steps.draft.outputs.tag }}
     steps:
@@ -51,7 +53,7 @@ jobs:
       - name: Check the commit messages
         run: node scripts/check-commits.ts "$BASE" "$HEAD"
         env:
-          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
           HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
       # Commits that only change documentation, which no build reads, are linted but neither tested
       # nor packaged.
@@ -61,7 +63,7 @@ jobs:
         run: |
           package=true
           everywhere=true
-          if [ "$GITHUB_EVENT_NAME" != workflow_dispatch ] && git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+          if [ "$GITHUB_EVENT_NAME" != merge_group ] && [ "$GITHUB_EVENT_NAME" != workflow_dispatch ] && git cat-file -e "$BASE^{commit}" 2>/dev/null; then
             changed=$(git diff --name-only "$BASE...$HEAD")
             app=$(grep -vE '\.md$|^LICENSE$|^\.github/(media|ISSUE_TEMPLATE)/' <<<"$changed" || true)
             changelog=$(grep -xF CHANGELOG.md <<<"$changed" || true)
@@ -97,7 +99,7 @@ jobs:
             echo "windows=$windows"
           } >> "$GITHUB_OUTPUT"
         env:
-          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
           HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
       - id: plan
         name: Plan the nightly
@@ -351,11 +353,35 @@ jobs:
           chromium-locales: ${{ matrix.locales }}
           # Only a push's nightly reports crashes; a pull request's packages only check the packaging.
           sentry-dsn: ${{ github.event_name == 'push' && vars.SENTRY_DSN || '' }}
-          mac-certificate: ${{ secrets.MAC_CERTIFICATE }}
-          mac-certificate-password: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
-          apple-api-key: ${{ secrets.APPLE_API_KEY }}
-          apple-api-key-id: ${{ secrets.APPLE_API_KEY_ID }}
-          apple-api-issuer: ${{ secrets.APPLE_API_ISSUER }}
+          mac-certificate: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' && secrets.MAC_CERTIFICATE || '' }}
+          mac-certificate-password: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' && secrets.MAC_CERTIFICATE_PASSWORD || '' }}
+          apple-api-key: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' && secrets.APPLE_API_KEY || '' }}
+          apple-api-key-id: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' && secrets.APPLE_API_KEY_ID || '' }}
+          apple-api-issuer: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' && secrets.APPLE_API_ISSUER || '' }}
+
+  # A single required status covers the variable package matrices. A skipped or cancelled
+  # dependency in the queue must block the merge, including when the plan itself failed.
+  queue-suite:
+    name: Full merge suite
+    if: ${{ always() && (github.event_name == 'merge_group' || github.event_name == 'pull_request') }}
+    needs:
+      [plan, lint, test-linux, test-windows, test-macos, web, package-linux, package-windows, package-macos]
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    permissions: {}
+    steps:
+      - name: Require every suite to pass
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          jq -e --arg event "$GITHUB_EVENT_NAME" '
+            .plan.outputs as $plan |
+            to_entries | all(.[];
+              (if $event == "merge_group" or .key == "plan" or .key == "lint" then "success"
+               elif $plan.package != "true" then "skipped"
+               elif $plan.everywhere != "true" and (.key == "test-macos" or .key == "package-linux" or .key == "package-macos") then "skipped"
+               else "success" end) == .value.result)
+          ' <<<"$RESULTS"
 
   # A push to main that changes the app publishes its nightly once everything passed: the relay
   # first, so it already reads what the new version sends, then the draft release the packages were
