@@ -1,6 +1,6 @@
 // The hero's scene: Cerium's mark, Prism C, cut from real glass. One white beam comes in from the left,
-// passes through the glass and leaves from the facet split into eight, one band of the spectrum for
-// each harness the lead hands work to. The glass refracts and disperses whatever lies behind it, so
+// passes through the glass and leaves from the facet split into one band of the spectrum for each
+// harness the lead hands work to. The glass refracts and disperses whatever lies behind it, so
 // the beams bend and fringe as the mark turns.
 //
 // It draws only while the hero is on screen, holds still for reduced motion, and leaves the page's
@@ -304,7 +304,9 @@ export const mountPrism = (canvas: HTMLCanvasElement, bands: ReadonlyArray<Band>
     narrow = width < 760;
     camera.fov = narrow ? 44 : 30;
     camera.updateProjectionMatrix();
-    const step = ((narrow ? 10.5 : 7.1) * Math.PI) / 180;
+    // The fan keeps the spread it was drawn with for eight harnesses, however many there are.
+    const spread = ((narrow ? 73.5 : 49.7) * Math.PI) / 180;
+    const step = spread / Math.max(1, fan.length - 1);
     fan.forEach(({ anchor, offset }, i) => {
       anchor.rotation.z = -(offset * step);
       anchor.updateMatrix();

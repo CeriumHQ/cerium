@@ -9,6 +9,7 @@ export const ProviderId = Schema.Literals([
   "antigravity",
   "copilot",
   "grok",
+  "devin",
 ]);
 export type ProviderId = typeof ProviderId.Type;
 
@@ -27,6 +28,7 @@ export const harnessName: Record<ProviderId, string> = {
   antigravity: "Antigravity",
   copilot: "GitHub Copilot",
   grok: "Grok Build",
+  devin: "Devin",
 };
 
 export const ThreadId = Schema.NonEmptyString.pipe(Schema.brand("cerium/ThreadId"));

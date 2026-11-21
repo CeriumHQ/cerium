@@ -12,7 +12,7 @@
 
 <p>
   Local-first desktop app for running Claude Code, Codex, Cursor, OpenCode, Muse Code,
-  Antigravity, GitHub Copilot, and Grok Build together on the plans you already pay for.
+  Antigravity, GitHub Copilot, Grok Build, and Devin together on the plans you already pay for.
 </p>
 
 <p>
@@ -67,12 +67,14 @@ Install any of these locally and sign in as usual — Cerium detects them automa
 | **Antigravity**    | Antigravity CLI over ACP (`agy acp`)  | `agy acp --login`                           |
 | **GitHub Copilot** | Copilot CLI over JSON-RPC             | `copilot login`                             |
 | **Grok Build**     | Grok Build CLI over ACP               | `grok login`                                |
+| **Devin**          | Devin CLI over ACP (`devin acp`)      | `devin auth login`                          |
 
 <details>
 <summary>Harness notes</summary>
 
 - **Antigravity** requires CLI 1.5.0+, runs work threads with your existing MCP config enabled, and cannot enforce read-only mode (so it is unavailable for chat threads). Cerium directs it to delegate over the MCP bus, though its CLI has no flag to disable native subagents.
 - **GitHub Copilot** uses manual approval prompts in Auto mode.
+- **Devin** runs each session on a copy of your Devin settings with native subagents turned off, so helpers coordinate over Cerium's MCP bus. Devin has no appendable system prompt over ACP, so Cerium's instructions open a thread's first turn.
 - **Muse Code on Windows** currently runs commands with Full access only, as `muse serve` cannot sandbox commands on Windows.
 
 </details>
@@ -86,7 +88,7 @@ Install any of these locally and sign in as usual — Cerium detects them automa
 flowchart LR
   UI["Cerium UI<br/>(React)"] <-- "RPC over WebSocket" --> Backend["Cerium backend<br/>(Effect)"]
   Backend --> Store[("SQLite<br/>event log")]
-  Backend --> Harnesses["Local harnesses<br/>(Claude, Codex, Cursor, OpenCode,<br/>Muse, Antigravity, Copilot, Grok)"]
+  Backend --> Harnesses["Local harnesses<br/>(Claude, Codex, Cursor, OpenCode,<br/>Muse, Antigravity, Copilot, Grok, Devin)"]
   Harnesses <-. "MCP bus:<br/>spawn, message, stop" .-> Backend
 ```
 
@@ -124,4 +126,4 @@ Contributions, bug reports, and pull requests are welcome. Report security vulne
 
 ## License
 
-Open source under the [Apache License 2.0](LICENSE). Cerium is an independent project, not affiliated with or endorsed by Anthropic, OpenAI, Anysphere, Anomaly, Meta, Google, GitHub, or xAI.
+Open source under the [Apache License 2.0](LICENSE). Cerium is an independent project, not affiliated with or endorsed by Anthropic, OpenAI, Anysphere, Anomaly, Meta, Google, GitHub, xAI, or Cognition.

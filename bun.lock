@@ -22,6 +22,7 @@
         "@cerium/adapter-codex": "workspace:*",
         "@cerium/adapter-copilot": "workspace:*",
         "@cerium/adapter-cursor": "workspace:*",
+        "@cerium/adapter-devin": "workspace:*",
         "@cerium/adapter-grok": "workspace:*",
         "@cerium/adapter-muse": "workspace:*",
         "@cerium/adapter-opencode": "workspace:*",
@@ -226,6 +227,19 @@
         "effect": "4.0.5",
         "node-pty": "1.2.0-beta.15",
         "zod": "4.6.7",
+      },
+      "devDependencies": {
+        "@effect/platform-node": "4.0.5",
+        "@effect/vitest": "4.0.5",
+      },
+    },
+    "packages/adapters/devin": {
+      "name": "@cerium/adapter-devin",
+      "version": "0.0.0",
+      "dependencies": {
+        "@cerium/harness": "workspace:*",
+        "@cerium/protocol": "workspace:*",
+        "effect": "4.0.5",
       },
       "devDependencies": {
         "@effect/platform-node": "4.0.5",
@@ -481,6 +495,8 @@
     "@cerium/adapter-copilot": ["@cerium/adapter-copilot@workspace:packages/adapters/copilot"],
 
     "@cerium/adapter-cursor": ["@cerium/adapter-cursor@workspace:packages/adapters/cursor"],
+
+    "@cerium/adapter-devin": ["@cerium/adapter-devin@workspace:packages/adapters/devin"],
 
     "@cerium/adapter-grok": ["@cerium/adapter-grok@workspace:packages/adapters/grok"],
 

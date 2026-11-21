@@ -14,6 +14,7 @@
     "@cerium/adapter-codex": "workspace:*",
     "@cerium/adapter-copilot": "workspace:*",
     "@cerium/adapter-cursor": "workspace:*",
+    "@cerium/adapter-devin": "workspace:*",
     "@cerium/adapter-grok": "workspace:*",
     "@cerium/adapter-muse": "workspace:*",
     "@cerium/adapter-opencode": "workspace:*",

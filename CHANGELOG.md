@@ -6,6 +6,10 @@ All notable changes to Cerium are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Devin joins the supported harnesses through the Devin CLI's ACP server (`devin acp`), with its whole model catalog, per-model effort and speed, approvals, read-only chat, session resume and Cerium's MCP bus.
+
 ### Changed
 
 - The website loads its animated homepage sooner and reuses downloaded assets on return visits.
