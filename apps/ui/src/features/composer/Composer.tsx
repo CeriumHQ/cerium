@@ -1,26 +1,6 @@
-import { Button } from "@base-ui/react/button";
+import { useAtomSet, useAtomValue } from "@effect/atom-react";
+import { Paperclip } from "lucide-react";
 import {
-  OFFERED_PROVIDERS,
-  expandPromptTemplate,
-  matchPrompts,
-  parsePromptTemplate,
-  visiblePrompts,
-  type AccessMode,
-  type Attachment,
-  type Mention,
-  type ModelInfo,
-  type ModelSpeed,
-  type PromptContext,
-  type PromptTemplate,
-  type ProviderId,
-  type ReasoningEffort,
-  type UsageSnapshot,
-} from "@cerium/protocol";
-import { RegistryContext, useAtom, useAtomSet, useAtomValue } from "@effect/atom-react";
-import { AsyncResult } from "effect/reactivity";
-import { ArrowRightLeft, ArrowUp, MessageCircleQuestionMark, Paperclip, Square } from "lucide-react";
-import {
-  useContext,
   useEffect,
   useEffectEvent,
   useImperativeHandle,
@@ -28,261 +8,62 @@ import {
   useRef,
   useState,
   type KeyboardEvent,
-  type MouseEvent,
   type ReactNode,
   type Ref,
   type RefObject,
 } from "react";
 
-import { holdRenderer } from "../../desktop/hibernation.ts";
-import { harnessesAtom, manifestsAtom, settingsAtom } from "../../backend/atoms.ts";
-import { saveAttachment } from "../../backend/files.ts";
 import { machineAtom } from "../../backend/machine.ts";
-import { usageAtom } from "../../backend/usage.ts";
-import { useMinute } from "../../lib/useMinute.ts";
-import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { Reveal } from "../../components/Reveal.tsx";
 import { IconButton } from "../../components/ui/IconButton.tsx";
-import { Tooltip } from "../../components/ui/Tooltip.tsx";
-import { useChanged, useMorph, usePresence, useRetained } from "../../lib/motion.ts";
-import { launch } from "./flight.ts";
+import { useChanged, useMorph } from "../../lib/motion.ts";
 import { useKeyboardOpen } from "../../web/viewport.ts";
 import { usesCommandKey } from "../../lib/keys.ts";
 import { bindingFor, isCapturingBinding, matchesBinding, shortcutBindingsAtom } from "../../lib/shortcuts.ts";
-import { matchCommands, type PaletteCommand } from "../palette/palette.ts";
-import { queryWords } from "../threads/threadSearch.ts";
-import { gitBranchAtom } from "../../backend/projects.ts";
+import { type PaletteCommand } from "../palette/palette.ts";
 import { WEB } from "../../backend/target.ts";
 import { DictationControl, DictationNotice } from "../dictation/DictationControl.tsx";
 import { useDictation } from "../dictation/useDictation.ts";
-import {
-  accessAtom,
-  effortAtom,
-  isSendKey,
-  modelAtom,
-  sendKeyAtom,
-  speedAtom,
-  workplaceAtom,
-} from "../settings/preferences.ts";
-import { providerName } from "../threads/model.ts";
-import { contextLabel, ContextRing } from "../agents/ContextMeter.tsx";
-import type { AgentContext } from "../agents/model.ts";
+import { isSendKey, sendKeyAtom } from "../settings/preferences.ts";
 import { AttachmentTray } from "./AttachmentTray.tsx";
 import { BackgroundTray, type Background } from "./BackgroundTray.tsx";
 import { CommentTray } from "./CommentTray.tsx";
-import { isPreviewable, mediaTypeOf, prepareAttachment } from "./attachments.ts";
 import {
-  draftMentions,
   segmentsOf,
-  draftText,
   emptyDraft,
-  hasContent,
-  withComments,
   type Draft,
   type DraftAttachment,
   type DraftStart,
   type Segment,
-  type Trigger,
 } from "./draft.ts";
-import {
-  draftAtom,
-  draftsAtom,
-  isNewDraftKey,
-  revokeLostPreviews,
-  startedNow,
-  withDraft,
-  withoutDraft,
-} from "./drafts.ts";
-import { MentionMenu, useMentionOptions } from "./MentionMenu.tsx";
+import { draftAtom, draftsAtom, isNewDraftKey, startedNow, withDraft } from "./drafts.ts";
 import type { MessageBox, SideQuestionDraft } from "./messageBox.ts";
-import {
-  accessLimit,
-  allowedAccess,
-  effortFor,
-  effortsOf,
-  MAX_AGENTS,
-  modelKey,
-  pickModel,
-  pickModels,
-  speedFor,
-  speedsOf,
-  switchTo,
-  useModels,
-  type HandoffChoice,
-  type ModelSwitch,
-} from "./models.ts";
-import { handoffTarget, runningLow } from "./handoff.ts";
-import type { Followup } from "./followup.ts";
 import { useFollowup } from "./useFollowup.ts";
-import { HandoffDialog, LowLimitNotice, type Handoff } from "./HandoffDialog.tsx";
-import { ModelPicker, ModelsPicker, type ShownModel } from "./ModelPicker.tsx";
-import {
-  chipEffortLabel,
-  FixedChip,
-  AccessMenu,
-  offersSpeed,
-  SpeedMark,
-  type EffortChoice,
-  type EffortPick,
-  type LimitChoice,
-  type SpeedChoice,
-} from "./Pickers.tsx";
+import { HandoffDialog, LowLimitNotice } from "./HandoffDialog.tsx";
+import { AccessMenu } from "./Pickers.tsx";
 import { useCoarsePointer } from "./pointer.ts";
-import { ProjectPicker } from "./ProjectPicker.tsx";
 import { PromptEditor, type PromptEditorHandle } from "./PromptEditor.tsx";
-import { PromptParameters } from "./PromptParameters.tsx";
 import { recalledPrompt, stepPromptHistory, type BrowsingHistory } from "./promptHistory.ts";
-import { projectName } from "./projectList.ts";
-import { sideQuestionOf } from "./btw.ts";
-import { SideQuestion, type AskSide } from "./SideQuestion.tsx";
-import { SlashMenu, slashGroups, type SlashEntry } from "./SlashMenu.tsx";
-import { WorkspacePicker } from "./WorkspacePicker.tsx";
-import { WorktreePicker } from "./WorktreePicker.tsx";
+import { SideQuestion } from "./SideQuestion.tsx";
 import { QueueTray, type Queue } from "./QueueTray.tsx";
 
+import { leadModelChip, startModelChip } from "./ComposerModelChips.tsx";
+import { ComposerProjectControls } from "./ComposerProjectControls.tsx";
+import type { ComposerCommands, ComposerTarget, OutgoingMessage, ThreadSetup } from "./composerTypes.ts";
+import { useComposerActions } from "./useComposerActions.tsx";
+import { useComposerAttachments } from "./useComposerAttachments.ts";
+import { useComposerMenus } from "./useComposerMenus.tsx";
+import { useComposerSubmission } from "./useComposerSubmission.ts";
+import { useLeadSwitch } from "./useLeadSwitch.ts";
+import { useStartChoices } from "./useStartChoices.ts";
+
+export type { ComposerCommands, ComposerTarget, OutgoingMessage, ThreadSetup } from "./composerTypes.ts";
 /**
  * The dictate binding starts and stops dictation, which no browser or Windows key takes in a text
  * box. Control stays the Control key itself, even on a Mac where ⌘M minimizes (lib/shortcuts.ts).
  */
 const isDictationKey = (event: KeyboardEvent<HTMLDivElement>, binding: string, mac: boolean) =>
   matchesBinding(event, binding, mac);
-
-const providers = OFFERED_PROVIDERS;
-const allProviders: ReadonlySet<ProviderId> = new Set(providers);
-
-/**
- * Whether two mention triggers are one: the same character at the same place, with the same query.
- * Out here because the React Compiler skips a component whose condition chains optional comparisons.
- */
-const sameTrigger = (a: Trigger | undefined, b: Trigger | undefined) =>
-  a?.char === b?.char && a?.start === b?.start && a?.query === b?.query;
-
-/** Keeps the last results visible as the menu leaves, while the editor takes its keys back. */
-function ComposerMenu({ children }: { children: ReactNode }) {
-  const open = children != null;
-  const content = useRetained(children, open);
-  const popup = useRef<HTMLDivElement>(null);
-  const phase = usePresence(open, popup);
-  if (phase === "gone") return null;
-  return (
-    <div
-      ref={popup}
-      data-phase={phase}
-      inert={!open}
-      className="input-popup pointer-events-auto absolute inset-x-0 bottom-full z-10 mb-2 overflow-hidden rounded-xl border border-line-subtle bg-surface-overlay shadow-overlay backdrop-blur-2xl"
-    >
-      {content}
-    </div>
-  );
-}
-
-/** A message as the box sends it: its text, which names each mention by its token. */
-export interface OutgoingMessage {
-  readonly text: string;
-  readonly attachments: ReadonlyArray<Attachment>;
-  readonly mentions: ReadonlyArray<Mention>;
-}
-
-/** What a new thread starts with. */
-export interface ThreadSetup {
-  readonly provider: ProviderId;
-  readonly model: string;
-  /** Absent for models the harness offers no effort setting for. */
-  readonly effort?: ReasoningEffort;
-  /** The effort router picks the lead's effort each turn, starting from `effort`. */
-  readonly autoEffort?: boolean;
-  /** Absent for models served at one speed. */
-  readonly speed?: ModelSpeed;
-  readonly access: AccessMode;
-  /** A work thread runs in a git worktree of its own. */
-  readonly worktree?: boolean;
-  readonly workspace?: import("@cerium/protocol").WorkspaceChoice;
-}
-
-export type ComposerTarget =
-  /** Messages go to an existing thread's lead. */
-  | {
-      readonly kind: "thread";
-      readonly provider: ProviderId;
-      /** The model as the transcript names it, for when the harness no longer lists it. */
-      readonly model: string;
-      /** The model as the harness lists it, which the picker matches. */
-      readonly modelId: string;
-      /** Absent for models the harness offers no effort setting for. */
-      readonly effort?: ReasoningEffort | undefined;
-      /** The effort router picks the lead's effort each turn. */
-      readonly autoEffort?: boolean | undefined;
-      /** Absent for a lead at its harness's default speed. */
-      readonly speed?: ModelSpeed | undefined;
-      /** The thread's folder, which `@` tags files from; absent for chats. */
-      readonly folder?: string | undefined;
-      /** The thread's own worktree's branch, and the branch it was made from. */
-      readonly worktree?:
-        | {
-            readonly branch: string;
-            readonly base: string;
-            readonly root: string;
-            readonly project: string;
-          }
-        | undefined;
-      /** The lead stopped or failed; the next message picks the thread back up. */
-      readonly ended?: "stopped" | "failed";
-      /**
-       * Switches the lead to another model of its harness, or another effort or speed, from its next turn.
-       * Resolves false when it didn't go through. Absent where the box can't ask for that.
-       */
-      readonly onSwitch?: (choice: ModelSwitch) => Promise<boolean>;
-      /** The lead's context as its harness last measured it; absent where it reports none. */
-      readonly context?: AgentContext | undefined;
-      /** Asks the lead's harness to compact its conversation, offered where the harness can. */
-      readonly onCompact?: () => void;
-      /** What the thread does when its harness's usage runs out, and sets it; absent where it can't be set. */
-      readonly onLimit?: LimitChoice;
-      /**
-       * Answers a quick question about the thread from its conversation, without adding it to the
-       * thread (`/btw`). Absent where the machine can't.
-       */
-      readonly onAskSide?: AskSide;
-      /**
-       * What the empty box needs to suggest a follow-up after a turn the lead finishes in view; absent
-       * where the machine can't suggest one.
-       */
-      readonly followup?: Followup;
-      /**
-       * Hands the lead to a model of another harness, which the user confirms first; its model menu
-       * then lists every harness. Absent where the machine can't.
-       */
-      readonly handoff?: {
-        /** Harnesses installed and signed in. */
-        readonly available: ReadonlySet<ProviderId>;
-        /** How many of the agents the lead spawned still run. */
-        readonly agents: number;
-        /** Resolves false when it didn't go through. */
-        readonly onHandOff: (choice: HandoffChoice) => Promise<boolean>;
-      };
-    }
-  /** The first message starts a thread with the chosen setup. */
-  | {
-      readonly kind: "new";
-      readonly mode: "work" | "chat";
-      /** Work threads need a folder before they can start. */
-      readonly folder: string | undefined;
-      readonly onChooseFolder: (folder: string) => void;
-      /** Providers whose harness is installed and logged in. */
-      readonly available: ReadonlySet<ProviderId>;
-      /** The machine can give a thread a worktree of its own. */
-      readonly worktrees?: boolean;
-      readonly workspaceControls?: boolean;
-    };
-
-/** The `/` list's entry that writes `/btw `. */
-const SIDE_QUESTION_COMMAND = "slash-side-question";
-const SWITCH_MODEL_COMMAND = "slash-switch-model";
-
-export interface ComposerCommands {
-  readonly openModels: () => boolean;
-  readonly steerNow: () => boolean;
-}
 
 interface ComposerProps {
   readonly target: ComposerTarget;
@@ -367,12 +148,6 @@ export function Composer({
   const input = inputRef ?? ownRef;
   const editor = useRef<PromptEditorHandle>(null);
   const filePicker = useRef<HTMLInputElement>(null);
-  /** The `@` or `$` tag being typed. */
-  const [trigger, setTrigger] = useState<Trigger>();
-  /** A tag whose list Esc closed; it stays closed until another tag starts. */
-  const [dismissed, setDismissed] = useState<Trigger>();
-  const [active, setActive] = useState(0);
-  const [dragging, setDragging] = useState(false);
   const [projectsOpen, setProjectsOpen] = useState(false);
   /**
    * Writing in the box, or using what it opened, which unfolds a new thread's setup row. Focus that
@@ -381,95 +156,65 @@ export function Composer({
    */
   const [focused, setFocused] = useState(takesFocus);
   const focusMoves = useRef(0);
-  const registry = useContext(RegistryContext);
   const storedDraft = useAtomValue(draftAtom(draftKey)) ?? emptyDraft;
   const [recall, setRecall] = useState<{ key: string; history: BrowsingHistory }>();
   const history =
     recall?.key === draftKey && recall.history.draft === storedDraft.segments ? recall.history : undefined;
   if (recall !== undefined && history === undefined) setRecall(undefined);
   const draft = history === undefined ? storedDraft : { ...storedDraft, segments: recalledPrompt(history) };
-  // New threads start with the model, effort and speed the last one was given, which are also the
-  // defaults in settings. Access always starts from the settings default. A pick here stays with the draft.
-  const [defaultModel, setDefaultModel] = useAtom(modelAtom);
-  const [defaultEffort, setDefaultEffort] = useAtom(effortAtom);
-  const [defaultSpeed, setDefaultSpeed] = useAtom(speedAtom);
-  const defaultAccess = useAtomValue(accessAtom);
-  const modelId = draft.start?.model ?? defaultModel;
-  const effort = draft.start?.effort ?? defaultEffort;
-  const speed = draft.start?.speed ?? defaultSpeed;
-  const pickedAccess = draft.start?.access ?? defaultAccess;
-  // While the machine's effort router is on, a new thread starts on Auto unless taken off it.
-  const settings = useAtomValue(settingsAtom);
-  const routerOn = AsyncResult.isSuccess(settings) && settings.value.effortRouter.enabled;
-  const autoEffort = routerOn && (draft.start?.autoEffort ?? true);
-  const [workplace, setWorkplace] = useAtom(workplaceAtom);
-  /** A worktree is offered for a work thread in a folder git keeps, on a machine that makes them. */
-  const gitFolder =
-    target.kind === "new" && target.mode === "work" && target.worktrees === true ? target.folder : undefined;
-  const workFolder =
-    target.kind === "thread" ? target.folder : target.mode === "work" ? target.folder : undefined;
-  const checkout =
-    target.kind === "thread"
-      ? (target.worktree?.root ?? workFolder)
-      : (draft.start?.workspace?.path ?? workFolder);
-  const branchFolder = gitFolder ?? checkout;
-  const branch = AsyncResult.getOrElse(
-    useAtomValue(gitBranchAtom(connecting ? "" : (branchFolder ?? ""))),
-    () => undefined,
-  );
-  const checkoutBranch = AsyncResult.getOrElse(
-    useAtomValue(gitBranchAtom(connecting || checkout === branchFolder ? "" : (checkout ?? ""))),
-    () => undefined,
-  );
-  const worktree =
-    gitFolder !== undefined && branch !== undefined && (draft.start?.worktree ?? workplace === "worktree");
+  /** How the open thread not started yet starts, the first time the user writes or picks anything in it. */
+  const startOf = (current: Draft): DraftStart | undefined =>
+    current.start ??
+    (target.kind === "new"
+      ? startedNow({
+          mode: target.mode,
+          ...(machine ? { machine: machine.id } : {}),
+          ...(target.mode === "work" && target.folder !== undefined ? { folder: target.folder } : {}),
+        })
+      : undefined);
+
+  const updateDraft = (key: string, update: (current: Draft) => Draft) =>
+    setDrafts((current) =>
+      withDraft(current, key, (each) => {
+        const next = update(each);
+        // Only the open draft learns how it starts; a file finishing for another one keeps its own.
+        const start = key === draftKey && isNewDraftKey(key) ? startOf(next) : next.start;
+        return start ? { ...next, start } : next;
+      }),
+    );
   const sendKey = useAtomValue(sendKeyAtom);
   const bindings = useAtomValue(shortcutBindingsAtom);
   const touch = useCoarsePointer();
-
-  const models = useModels();
-  const usable = target.kind === "new" ? target.available : allProviders;
-  const model = pickModel(models, modelId, usable);
-  const isNew = target.kind === "new";
-  /** Multi agent: the models the first message starts a thread each with, side by side. */
-  const multi = isNew && draft.start?.models !== undefined;
-  const chosen = multi ? pickModels(models, draft.start?.models ?? [], usable) : [];
-  /** What the message starts: a thread with each chosen model, else one with the model. */
-  const starting = multi && chosen.length > 0 ? chosen : model ? [model] : [];
-  // A mode a starting model's harness can't run here is offered disabled; the pick stays with the
-  // draft, for when that model is swapped out.
-  const limit = accessLimit(
-    AsyncResult.getOrElse(useAtomValue(harnessesAtom), () => []),
-    starting,
-  );
-  const access = isNew && target.mode === "chat" ? "readOnly" : allowedAccess(pickedAccess, limit);
-  const blockedAccess = isNew && limit?.blocks.includes(access) ? limit.reason : undefined;
-  /** One effort for every model starting; each model that lacks it runs at its own default. */
-  const efforts = effortsOf(starting);
-  // Keep the effort valid when switching to a model with fewer levels.
-  const activeEffort =
-    multi && effort !== undefined && efforts.includes(effort)
-      ? effort
-      : starting.map((each) => effortFor(each, effort)).find((each) => each !== undefined);
-  /** One speed for every model starting, the same way; each model that lacks it runs at its default. */
-  const speeds = speedsOf(starting);
-  const activeSpeed =
-    multi && speed !== undefined && speeds.includes(speed)
-      ? speed
-      : starting.map((each) => speedFor(each, speed)).find((each) => each !== undefined);
   const [modelsOpen, setModelsOpen] = useState(false);
-  const [parameters, setParameters] = useState<{
-    readonly key: string;
-    readonly draft: ReadonlyArray<Segment>;
-    readonly prompt: string;
-    readonly template: PromptTemplate;
-    readonly context: PromptContext;
-    readonly replace: (text: string, cursor?: number) => void;
-    readonly trigger: Trigger;
-  }>();
-  const filling =
-    parameters?.key === draftKey && parameters.draft === storedDraft.segments ? parameters : undefined;
-  if (parameters !== undefined && filling === undefined) setParameters(undefined);
+  const start = useStartChoices({
+    target,
+    draft,
+    draftKey,
+    connecting,
+    updateDraft,
+    startOf,
+    onOpenModels: () => setModelsOpen(true),
+  });
+  const { isNew, starting } = start;
+  const lead = useLeadSwitch({ target, draftKey, models: start.models, routerOn: start.routerOn, running });
+  const { thread, threadShown, handoff, handingOff, setHandingOff, askHandoff, low, lowTarget, now } = lead;
+  const menus = useComposerMenus({
+    target,
+    draft,
+    draftKey,
+    storedDraft,
+    browsing: history !== undefined,
+    editor,
+    input,
+    start,
+    bindings,
+    running,
+    onStop,
+    slashCommands,
+    offersSwitch: lead.offersSwitch,
+    onOpenModels: () => setModelsOpen(true),
+  });
+  const { filling } = menus;
   /** The side question's pop-over: a new `id` each time it opens, so nothing of the last one stays. */
   const [side, setSide] = useState<
     SideQuestionDraft & {
@@ -485,72 +230,28 @@ export function Composer({
   if (side !== undefined && (side.draftKey !== draftKey || target.kind !== "thread" || !target.onAskSide)) {
     setSide(undefined);
   }
-  const needsFolder = isNew && target.mode === "work" && target.folder === undefined;
-  const text = draftText(draft.segments);
-  const preparing = draft.attachments.some((attachment) => attachment.state._tag === "Preparing");
-  const comments = draft.comments ?? [];
-  const ready = [
-    ...draft.attachments.flatMap((attachment) =>
-      attachment.state._tag === "Ready" ? [attachment.state.attachment] : [],
-    ),
-    ...comments.flatMap((comment) => (comment.element ? [comment.element.screenshot] : [])),
-  ];
-  const written = text.trim() !== "" || ready.length > 0 || comments.length > 0;
-  // As the editor counts it: only line breaks left, no files, no comments.
-  const blankBox =
-    draft.segments.every((segment) => segment.kind === "text" && segment.text.replace(/\n/g, "") === "") &&
-    draft.attachments.length === 0 &&
-    comments.length === 0;
-  const sendable =
-    written &&
-    !preparing &&
-    !connecting &&
-    !blockedAccess &&
-    filling === undefined &&
-    (!isNew || starting.length > 0);
-  const canSend = sendable && !needsFolder;
-  /** A finished message waits only for a project: sending opens the project list rather than doing nothing. */
-  const asksForProject = sendable && needsFolder;
-
-  // `@` tags files in the thread's folder; `$` the skills of the harness the message goes to.
-  const sources = {
-    folder: workFolder,
-    provider: target.kind === "thread" ? target.provider : starting[0]?.provider,
-    chat: target.kind === "thread" ? target.folder === undefined : target.mode === "chat",
-  };
-  // Esc shuts a list for the one `@`, `$` or `/` it was opened by; once that is gone, as when the
-  // message is cleared, the next one opens its list again.
-  if (
-    dismissed !== undefined &&
-    (trigger === undefined || trigger.char !== dismissed.char || trigger.start !== dismissed.start)
-  ) {
-    setDismissed(undefined);
-  }
-  const menuTrigger =
-    history === undefined &&
-    filling === undefined &&
-    trigger !== undefined &&
-    trigger.char !== "/" &&
-    !(trigger.char === dismissed?.char && trigger.start === dismissed.start)
-      ? trigger
-      : undefined;
-  const results = useMentionOptions(menuTrigger, sources);
-  // A `$` that matches no skill is most likely just a dollar sign ("$5"), so its list stays shut.
-  const menuOpen =
-    menuTrigger !== undefined &&
-    (menuTrigger.char === "@" || menuTrigger.query === "" || results.options.length > 0);
-  const activeIndex = Math.min(active, Math.max(0, results.options.length - 1));
-
-  // `/` at the start of the message: the user's saved prompts, then the actions that answer here.
-  const slashTrigger =
-    history === undefined && filling === undefined && trigger?.char === "/" ? trigger : undefined;
-  const slashOpen =
-    slashTrigger !== undefined &&
-    !(slashTrigger.char === dismissed?.char && slashTrigger.start === dismissed.start);
-  const storedPrompts = AsyncResult.isSuccess(settings) ? settings.value.prompts.prompts : [];
-  const slashPrompts = slashOpen
-    ? matchPrompts(visiblePrompts(storedPrompts, sources.folder), slashTrigger?.query ?? "")
-    : [];
+  const { text, comments, written, blankBox, needsFolder, canSend, asksForProject, send, steerNow } =
+    useComposerSubmission({
+      target,
+      draft,
+      draftKey,
+      connecting,
+      filling: filling !== undefined,
+      start,
+      input,
+      running,
+      queue,
+      onSend,
+      onSteer,
+      openSide,
+      onChooseProject: () => setProjectsOpen(true),
+      onClear: () => {
+        setRecall(undefined);
+        setEpoch((current) => current + 1);
+        menus.clearTrigger();
+      },
+      onRestore: () => setEpoch((current) => current + 1),
+    });
   // A long draft, attached files and waiting approvals all grow the box over the transcript's end.
   // An effect rather than a ref callback: reporting re-renders the box, which would re-run the callback.
   const box = useRef<HTMLDivElement>(null);
@@ -590,222 +291,16 @@ export function Composer({
   });
   useEffect(() => focusOnOpen(), [input, draftKey]);
 
-  /** How the open thread not started yet starts, the first time the user writes or picks anything in it. */
-  const startOf = (current: Draft): DraftStart | undefined =>
-    current.start ??
-    (target.kind === "new"
-      ? startedNow({
-          mode: target.mode,
-          ...(machine ? { machine: machine.id } : {}),
-          ...(target.mode === "work" && target.folder !== undefined ? { folder: target.folder } : {}),
-        })
-      : undefined);
-
-  const updateDraft = (key: string, update: (current: Draft) => Draft) =>
-    setDrafts((current) =>
-      withDraft(current, key, (each) => {
-        const next = update(each);
-        // Only the open draft learns how it starts; a file finishing for another one keeps its own.
-        const start = key === draftKey && isNewDraftKey(key) ? startOf(next) : next.start;
-        return start ? { ...next, start } : next;
-      }),
-    );
-
-  /** Remembers a pick in the open new thread's draft; nothing else changes it. */
-  const pickForDraft = (
-    pick: Partial<
-      Pick<
-        DraftStart,
-        | "folder"
-        | "model"
-        | "models"
-        | "effort"
-        | "autoEffort"
-        | "speed"
-        | "access"
-        | "worktree"
-        | "workspace"
-      >
-    >,
-  ) =>
-    updateDraft(draftKey, (current) => {
-      const start = startOf(current);
-      return start ? { ...current, start: { ...start, ...pick } } : current;
-    });
-  /** Multi agent on, starting from the model picked so far with its list open to add more, or off, back to the first one picked. */
-  const setMulti = (on: boolean) => {
-    if (on) {
-      pickForDraft({ models: model ? [modelKey(model)] : [] });
-      setModelsOpen(true);
-      return;
-    }
-    const first = chosen[0];
-    if (first) setDefaultModel(modelKey(first));
-    updateDraft(draftKey, (current) => {
-      if (current.start === undefined) return current;
-      const { models: _, ...start } = current.start;
-      return { ...current, start: first ? { ...start, model: modelKey(first) } : start };
-    });
-  };
-  const setModelId = (value: string) => {
-    setDefaultModel(value);
-    pickForDraft({ model: value });
-  };
-  /** A level picked by hand: on Auto, the one the thread falls back to. */
-  const setEffort = (value: ReasoningEffort) => {
-    setDefaultEffort(value);
-    pickForDraft({ effort: value });
-  };
-  const setSpeed = (value: ModelSpeed) => {
-    setDefaultSpeed(value);
-    pickForDraft({ speed: value });
-  };
-  const setAccess = (value: AccessMode) => pickForDraft({ access: value });
-
-  // An open thread's lead can take another model of its harness, or another effort or speed, when the
-  // harness can switch a session. A machine too old to say (it has no manifests) offers nothing to switch.
-  const thread = target.kind === "thread" ? target : undefined;
-  const manifests = useAtomValue(manifestsAtom);
-  const switching =
-    thread?.onSwitch !== undefined && AsyncResult.isSuccess(manifests)
-      ? manifests.value.find((manifest) => manifest.provider === thread.provider)?.switching
-      : undefined;
-  /** A pick the machine hasn't confirmed yet, which holds only while the thread still has what it was made against. */
-  const [pending, setPending] = useState<{ readonly base: string; readonly choice: ModelSwitch }>();
-  const base = `${draftKey}|${thread?.modelId}|${thread?.effort}|${thread?.autoEffort}|${thread?.speed}`;
-  const picked = pending?.base === base ? pending.choice : undefined;
-  const threadModel =
-    thread === undefined
-      ? undefined
-      : models.find(
-          (candidate) =>
-            candidate.provider === thread.provider && candidate.id === (picked?.model ?? thread.modelId),
-        );
-  // Turning Auto on asks for no level, so the lead's own shows until the router picks one.
-  const threadEffort = threadModel ? effortFor(threadModel, picked?.effort ?? thread?.effort) : undefined;
-  const threadAuto = routerOn && (picked ? picked.autoEffort === true : thread?.autoEffort === true);
-  const threadSpeed = threadModel ? speedFor(threadModel, picked?.speed ?? thread?.speed) : undefined;
-  const switchLead = (choice: ModelSwitch) => {
-    if (thread?.onSwitch === undefined) return;
-    setPending({ base, choice });
-    void thread.onSwitch(choice).then((done) => {
-      // A refusal undoes only its own pick, not one made since.
-      if (!done) setPending((current) => (current?.choice === choice ? undefined : current));
-    });
-  };
-
-  // Another harness's model takes the thread over once the user confirms what goes across.
-  const handoff = thread?.handoff;
-  const [handingOff, setHandingOff] = useState<Handoff & { readonly choice: HandoffChoice }>();
-  const askHandoff = (picked: ModelInfo) => {
-    if (thread === undefined) return;
-    setHandingOff({
-      from: thread.provider,
-      to: picked.provider,
-      label: picked.label,
-      choice: { provider: picked.provider, ...switchTo(picked, threadEffort, true, threadAuto, threadSpeed) },
-    });
-  };
-  // While the lead's harness runs low, the box offers to carry on in one that isn't.
-  const usage = AsyncResult.getOrElse(useAtomValue(usageAtom), (): UsageSnapshot | undefined => undefined);
-  const now = useMinute();
-  const low = thread && handoff ? runningLow(usage?.usage ?? [], thread.provider) : undefined;
-  const lowTarget =
-    thread && handoff && low
-      ? handoffTarget(models, handoff.available, usage?.usage ?? [], thread.provider)
-      : undefined;
-
-  const setAttachment = (key: string, id: string, state: DraftAttachment["state"]) =>
-    updateDraft(key, (current) => ({
-      ...current,
-      attachments: current.attachments.map((attachment) =>
-        attachment.id === id ? { ...attachment, state } : attachment,
-      ),
-    }));
-
-  /** Attaches pasted, dropped or picked files; each shows at once and is ready once it is on disk. */
-  const addFiles = (files: ReadonlyArray<File>) => {
-    const key = draftKey;
-    for (const file of files) {
-      const id = crypto.randomUUID();
-      const preview = isPreviewable(file) ? URL.createObjectURL(file) : undefined;
-      updateDraft(key, (current) => ({
-        ...current,
-        attachments: [
-          ...current.attachments,
-          {
-            id,
-            name: file.name || "Pasted image",
-            mediaType: mediaTypeOf(file),
-            ...(preview ? { preview } : {}),
-            state: { _tag: "Preparing" },
-          },
-        ],
-      }));
-      const release = holdRenderer();
-      void prepareAttachment(file, (payload) => saveAttachment(registry, id, payload))
-        .then(
-          (attachment) => setAttachment(key, id, { _tag: "Ready", attachment }),
-          (error: unknown) =>
-            setAttachment(key, id, {
-              _tag: "Failed",
-              message: error instanceof Error ? error.message : `${file.name} couldn't be attached.`,
-            }),
-        )
-        .finally(release);
-    }
-  };
-
-  // Files dropped anywhere on the window attach here, not only onto the box: elsewhere the browser
-  // would open the file in place of the app. While the box is out of view (settings or another pane
-  // over it, which keep its layout but make it inert, or a dialog hiding it), drops are left alone.
-  const takeFiles = useEffectEvent((files: ReadonlyArray<File>) => addFiles(files));
-  useEffect(() => {
-    const showing = () =>
-      box.current !== null &&
-      box.current.getClientRects().length > 0 &&
-      box.current.closest('[inert], [aria-hidden="true"]') === null;
-    const carriesFiles = (event: DragEvent) => event.dataTransfer?.types.includes("Files") === true;
-    const over = (event: DragEvent) => {
-      if (!carriesFiles(event) || !showing()) return;
-      event.preventDefault();
-      setDragging(true);
-    };
-    // Leaving for the window's edge; moving between its elements names the one entered.
-    const leave = (event: DragEvent) => {
-      if (event.relatedTarget === null) setDragging(false);
-    };
-    const drop = (event: DragEvent) => {
-      setDragging(false);
-      if (!carriesFiles(event) || !showing()) return;
-      event.preventDefault();
-      takeFiles([...(event.dataTransfer?.files ?? [])]);
-    };
-    window.addEventListener("dragover", over);
-    window.addEventListener("dragleave", leave);
-    window.addEventListener("drop", drop);
-    return () => {
-      window.removeEventListener("dragover", over);
-      window.removeEventListener("dragleave", leave);
-      window.removeEventListener("drop", drop);
-    };
-  }, []);
-
-  // An attachment control can take focus on click. Keep writing at the editor's caret.
   const restoreEditorFocus = () => {
     if (focused) input.current?.focus({ preventScroll: true });
   };
-
-  const removeAttachment = (id: string) => {
-    restoreEditorFocus();
-    const removed = draft.attachments.find((attachment) => attachment.id === id);
-    if (removed?.preview) URL.revokeObjectURL(removed.preview);
-    updateDraft(draftKey, (current) => ({
-      ...current,
-      attachments: current.attachments.filter((attachment) => attachment.id !== id),
-    }));
-  };
-
+  const { addFiles, removeAttachment, dragging } = useComposerAttachments({
+    draftKey,
+    attachments: draft.attachments,
+    box,
+    updateDraft,
+    restoreEditorFocus,
+  });
   const resumes = thread?.ended !== undefined;
   const oneLine = useKeyboardOpen();
   // A message that wraps on the one line opens the box, so it isn't squeezed into the space left
@@ -927,135 +422,6 @@ export function Composer({
       return kept.length > 0 ? { ...rest, comments: kept } : rest;
     });
 
-  const pick = (mention: Mention) => {
-    editor.current?.insertMention(mention);
-    setActive(0);
-  };
-
-  /** A `/` entry: a saved prompt's text in place of the command, or the action run at once. */
-  const pickSlash = (entry: SlashEntry) => {
-    if (entry.kind === "prompt") {
-      const replace = editor.current?.captureSlashReplacement();
-      if (replace && slashTrigger) {
-        const template = parsePromptTemplate(entry.prompt.text);
-        const workspace = draft.start?.workspace;
-        const currentBranch =
-          target.kind === "thread"
-            ? (branch ?? target.worktree?.branch)
-            : (workspace?.branch ?? workspace?.existingBranch ?? checkoutBranch ?? branch);
-        const project = target.kind === "thread" ? (target.worktree?.project ?? workFolder) : workFolder;
-        const context: PromptContext = {
-          ...(currentBranch === undefined ? {} : { branch: currentBranch }),
-          ...(project === undefined ? {} : { project: projectName(project) }),
-        };
-        if (template.parameters.length === 0) {
-          const expanded = expandPromptTemplate(template, context);
-          replace(expanded.text, expanded.cursor);
-        } else {
-          setParameters({
-            key: draftKey,
-            draft: storedDraft.segments,
-            prompt: entry.prompt.name,
-            template,
-            context,
-            replace,
-            trigger: slashTrigger,
-          });
-        }
-      }
-    } else if (entry.command.id === SIDE_QUESTION_COMMAND) {
-      editor.current?.captureSlashReplacement()?.("/btw ");
-    } else {
-      if (entry.command.id === SWITCH_MODEL_COMMAND) editor.current?.captureSlashReplacement()?.("");
-      entry.command.run();
-    }
-    setTrigger(undefined);
-    setActive(0);
-  };
-
-  const send = (afterDelivery?: () => void) => {
-    if (filling !== undefined) return;
-    const asked = thread?.onAskSide ? sideQuestionOf(text) : undefined;
-    if (asked !== undefined) {
-      // A side question never joins the thread: the box empties and the pop-over answers.
-      revokeLostPreviews({ [draftKey]: draft }, {});
-      setDrafts((current) => withoutDraft(current, draftKey));
-      setRecall(undefined);
-      setEpoch((current) => current + 1);
-      setTrigger(undefined);
-      openSide({ initial: asked });
-      return;
-    }
-    if (asksForProject) {
-      setProjectsOpen(true);
-      return;
-    }
-    const setupOf = (each: ModelInfo): ThreadSetup => {
-      const level = effortFor(each, activeEffort);
-      const pace = speedFor(each, activeSpeed);
-      return {
-        provider: each.provider,
-        model: each.id,
-        ...(level ? { effort: level } : {}),
-        ...(level && autoEffort ? { autoEffort } : {}),
-        ...(pace ? { speed: pace } : {}),
-        access,
-        ...(worktree ? { worktree } : {}),
-        ...(draft.start?.workspace
-          ? { workspace: draft.start.workspace }
-          : worktree
-            ? { workspace: {} }
-            : {}),
-      };
-    };
-    const [first, ...rest] = starting;
-    if (!canSend || first === undefined) return;
-    const key = draftKey;
-    const sent = draft;
-    const message = withComments(text, comments);
-    // Its text stays where it was written until the transcript shows it and flies it there. One sent
-    // behind a running turn waits in the box instead.
-    if (!running && input.current) launch(input.current, message);
-    setDrafts((current) => withoutDraft(current, key));
-    setRecall(undefined);
-    setEpoch((current) => current + 1);
-    setTrigger(undefined);
-    const release = holdRenderer();
-    void onSend(
-      { text: message, attachments: ready, mentions: draftMentions(draft.segments) },
-      [setupOf(first), ...rest.map(setupOf)],
-      sent.start?.taskId,
-    )
-      .then((delivered) => {
-        if (delivered) {
-          for (const attachment of sent.attachments) {
-            if (attachment.preview) URL.revokeObjectURL(attachment.preview);
-          }
-          afterDelivery?.();
-          return;
-        }
-        // Give an undelivered message back, unless the user has started writing another.
-        setDrafts((current) => (hasContent(current[key]) ? current : { ...current, [key]: sent }));
-        setEpoch((current) => current + 1);
-      })
-      .finally(release);
-  };
-
-  const steerNow = () => {
-    if (!running || onSteer === undefined || filling !== undefined) return false;
-    if (written) {
-      if (!canSend || (thread?.onAskSide && sideQuestionOf(text) !== undefined)) return false;
-      // The backend accepts and queues the message before resolving the send.
-      send(onSteer);
-      return true;
-    }
-    if (blankBox && queue?.onSteer && !queue.ended && queue.messages.length > 0) {
-      queue.onSteer();
-      return true;
-    }
-    return false;
-  };
-
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const composing = event.nativeEvent.isComposing;
     if (
@@ -1090,42 +456,7 @@ export function Composer({
         }
       }
     }
-    const count = results.options.length;
-    if (menuOpen && count > 0 && !event.nativeEvent.isComposing) {
-      if (plain && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
-        event.preventDefault();
-        setActive((activeIndex + (event.key === "ArrowDown" ? 1 : count - 1)) % count);
-        return;
-      }
-      if ((event.key === "Enter" || event.key === "Tab") && plain) {
-        event.preventDefault();
-        pick(results.options[activeIndex]!.mention);
-        return;
-      }
-    }
-    // The `/` list answers the same keys: arrows move, Enter or Tab runs, Esc closes it.
-    const slashCount = slashPrompts.length + slashActions.length;
-    if (slashOpen && slashCount > 0 && !event.nativeEvent.isComposing) {
-      if (plain && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
-        event.preventDefault();
-        setActive((slashActive + (event.key === "ArrowDown" ? 1 : slashCount - 1)) % slashCount);
-        return;
-      }
-      if ((event.key === "Enter" || event.key === "Tab") && plain) {
-        event.preventDefault();
-        pickSlash(
-          slashActive < slashPrompts.length
-            ? { kind: "prompt", prompt: slashPrompts[slashActive]! }
-            : { kind: "action", command: slashActions[slashActive - slashPrompts.length]! },
-        );
-        return;
-      }
-    }
-    if ((menuOpen || slashOpen) && event.key === "Escape") {
-      event.preventDefault();
-      setDismissed(menuTrigger ?? slashTrigger);
-      return;
-    }
+    if (menus.onKeyDown(event, plain)) return;
     if (
       thread?.onAskSide &&
       !isCapturingBinding() &&
@@ -1151,7 +482,7 @@ export function Composer({
       return;
     }
     if (!composing && plain && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
-      const blocked = menuOpen || slashOpen || suggestion !== undefined || filling !== undefined || listening;
+      const blocked = menus.open || suggestion !== undefined || filling !== undefined || listening;
       const atStart = history !== undefined || editor.current?.atStart() === true;
       const step = stepPromptHistory({
         direction: event.key === "ArrowUp" ? "older" : "newer",
@@ -1168,7 +499,7 @@ export function Composer({
       if (step !== undefined) {
         event.preventDefault();
         setRecall(step.history === undefined ? undefined : { key: draftKey, history: step.history });
-        setTrigger(undefined);
+        menus.clearTrigger();
         return;
       }
     }
@@ -1198,116 +529,41 @@ export function Composer({
       }
     />
   );
-  // On one line the box keeps focus when sending, so the keyboard stays up for the next message.
-  const keepFocus = oneLine ? (event: MouseEvent) => event.preventDefault() : undefined;
-  const discSize = oneLine
-    ? "m-0.5 size-9"
-    : inline
-      ? "m-1 size-8 pointer-coarse:size-10 max-md:size-10"
-      : "size-8 pointer-coarse:size-10 max-md:size-10";
-  const actionsRow = useRef<HTMLDivElement>(null);
-  const leadingActions = useRef<HTMLDivElement>(null);
-  const stopDisc = useRef<HTMLSpanElement>(null);
-  const sendSlot = useRef<HTMLDivElement>(null);
-  const sendDisc = useRef<HTMLSpanElement>(null);
-  const showSend = !running || written;
-  const sendPhase = usePresence(showSend, sendDisc);
-  const leavingSend = sendPhase === "leaving";
-  const sendDisabled = useRetained(!canSend && !asksForProject, showSend);
-  const glide = useRef({ draftKey, running, showSend, animations: [] as Animation[] });
-
-  // Only a draft crossing empty while the turn runs shifts the controls. Move their visuals
-  // from the previous slot, including any glide still in flight, while Stop's hit area snaps into place.
-  useLayoutEffect(() => {
-    const was = glide.current;
-    const animations: Animation[] = [];
-    glide.current = { draftKey, running, showSend, animations };
-    const row = actionsRow.current;
-    const stop = stopDisc.current;
-    const slot = sendSlot.current;
-    const shifted = was.draftKey === draftKey && was.running && running && was.showSend !== showSend;
-    const from =
-      shifted && stop && was.animations.length ? parseFloat(getComputedStyle(stop).translate) || 0 : 0;
-    for (const animation of was.animations) animation.cancel();
-    if (!shifted || !row || !stop || !slot || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const style = getComputedStyle(row);
-    const distance = slot.offsetWidth + parseFloat(style.columnGap);
-    const offset = from + (showSend ? distance : -distance);
-    const timing = {
-      duration: 180,
-      easing: style.getPropertyValue("--ease-out-soft"),
-      fill: "backwards",
-    } as const;
-    for (const element of [stop, leadingActions.current]) {
-      if (element)
-        animations.push(element.animate([{ translate: `${offset}px` }, { translate: "0px" }], timing));
-    }
-  }, [draftKey, inline, running, showSend]);
-
-  useEffect(
-    () => () => {
-      for (const animation of glide.current.animations) animation.cancel();
-    },
-    [],
-  );
-
-  // Stop pops in as a turn starts, and send as it ends, once the box has seen one change.
-  const turned = useChanged(running);
-  const stopButton = (
-    <Tooltip label="Stop" shortcut="Esc">
-      <Button
-        onClick={onStop}
-        onMouseDown={keepFocus}
-        aria-label="Stop"
-        className={`group relative z-1 shrink-0 rounded-full ${discSize}`}
-      >
-        {/* The ring turns with the disc, so the one control that ends the turn stands out. */}
-        <span
-          ref={stopDisc}
-          className={`pointer-events-none relative grid size-full place-items-center rounded-full bg-accent text-accent-fg shadow-button transition-[opacity,scale,filter] before:absolute ${turned ? "swap-in" : ""} before:-inset-1 before:animate-spin before:rounded-full before:border-[1.5px] before:border-transparent before:border-t-fg-secondary group-hover:opacity-90 group-active:scale-95 motion-reduce:transition-none motion-reduce:before:animate-none`}
-        >
-          <Square size={11} fill="currentColor" strokeWidth={0} />
-        </span>
-      </Button>
-    </Tooltip>
-  );
-  const sendLabel =
-    blockedAccess ?? (asksForProject ? "Choose a project first" : running ? "Send after this turn" : "Send");
-  const sendPops = turned || (running && sendPhase === "entering");
-  // The glass can change rows as the draft clears. Send still fades from a full disc in the new row.
-  const sendMotion = leavingSend
-    ? "scale-[0.85] opacity-0 transition-[opacity,scale,filter] duration-150 ease-in-soft starting:scale-100 starting:opacity-100"
-    : `transition-[opacity,scale,filter,background-color] group-hover:opacity-90 group-active:scale-95 group-disabled:opacity-100 ${sendPops ? "swap-in" : ""}`;
-  const sendButton = (
-    <Tooltip
-      label={sendLabel}
-      {...(touch || asksForProject ? {} : { shortcut: sendKey === "enter" ? "Enter" : "Ctrl Enter" })}
-    >
-      <Button
-        onClick={() => send()}
-        onMouseDown={keepFocus}
-        disabled={sendDisabled}
-        aria-label={sendLabel}
-        className={`group block shrink-0 rounded-full ${discSize}`}
-      >
-        {/* An empty draft gets an outlined ring. The disc pops without scaling the hit area. */}
-        <span
-          ref={sendDisc}
-          className={`pointer-events-none grid size-full place-items-center rounded-full bg-accent text-accent-fg shadow-button group-disabled:shadow-none group-disabled:bg-transparent group-disabled:text-fg-tertiary group-disabled:ring-1 group-disabled:ring-line-strong group-disabled:ring-inset ${sendMotion}`}
-        >
-          <ArrowUp size={16} strokeWidth={2.25} />
-        </span>
-      </Button>
-    </Tooltip>
-  );
-  /** What the model picker shows for an open thread: the model it runs, or the name the transcript gives it. */
-  const threadShown: ShownModel | undefined = thread
-    ? {
-        provider: thread.provider,
-        label: threadModel?.label ?? thread.model,
-        ...(threadModel ? { key: modelKey(threadModel) } : {}),
-      }
-    : undefined;
+  const actions = useComposerActions({
+    inline,
+    oneLine,
+    draftKey,
+    running,
+    written,
+    canSend,
+    asksForProject,
+    touch,
+    sendKey,
+    blockedAccess: start.blockedAccess,
+    onSend: () => send(),
+    onStop,
+    children: (
+      <>
+        {!oneLine || modelsOpen
+          ? target.kind === "new"
+            ? startModelChip({ target, start, open: modelsOpen, onOpenChange: setModelsOpen })
+            : leadModelChip({
+                lead,
+                models: start.models,
+                open: modelsOpen,
+                onOpenChange: setModelsOpen,
+                running,
+              })
+          : null}
+        {target.kind === "new" &&
+        target.mode === "work" &&
+        (!inline || (rests && start.access !== "auto")) ? (
+          <AccessMenu value={start.access} onPick={start.setAccess} limit={start.limit} />
+        ) : null}
+        {dictates ? <DictationControl dictation={dictation} /> : null}
+      </>
+    ),
+  });
 
   const placeholder = listening
     ? "Listening…"
@@ -1317,7 +573,7 @@ export function Composer({
         ? thread?.ended === "failed"
           ? "Send a message to try again"
           : "Send a message to pick this thread back up"
-        : isNew
+        : target.kind === "new"
           ? starting.length > 1
             ? `Message ${starting.length} models at once`
             : target.mode === "chat"
@@ -1325,321 +581,25 @@ export function Composer({
               : "Describe the task"
           : `Message ${threadShown?.label}`;
 
-  // The lead's model, effort and speed as one chip in the box's line. It opens the harness's models,
-  // with the speed and effort under them, as far as the harness can switch each mid-thread.
-  const switchesModel = switching?.model === true;
-  const switchesEffort = switching?.effort === true;
-  const switchesSpeed = switching?.speed === true;
-  const threadEffortShown: EffortPick | undefined = threadEffort
-    ? threadAuto
-      ? "auto"
-      : threadEffort
-    : undefined;
-  const threadEffortChoice: EffortChoice | undefined =
-    threadModel && threadEffort && switchesEffort
-      ? {
-          levels: threadModel.efforts,
-          value: threadEffort,
-          onPick: (next) => switchLead({ model: threadModel.id, effort: next, autoEffort: threadAuto }),
-          ...(routerOn
-            ? {
-                auto: {
-                  on: threadAuto,
-                  onToggle: (on: boolean) =>
-                    switchLead({ model: threadModel.id, effort: threadEffort, autoEffort: on }),
-                },
-              }
-            : {}),
-        }
-      : undefined;
-  // A speed picked keeps the lead's effort, and Auto.
-  const threadSpeedChoice: SpeedChoice | undefined =
-    threadModel && switchesSpeed
-      ? {
-          speeds: threadModel.speeds ?? [],
-          value: threadSpeed ?? "standard",
-          onPick: (next) => switchLead(switchTo(threadModel, threadEffort, switchesEffort, threadAuto, next)),
-        }
-      : undefined;
-  // With a handoff the menu lists every harness: the lead's own models as far as it switches them
-  // mid-thread, and every other harness's, which take the thread over once the user confirms.
-  const ownModels = thread
-    ? switchesModel
-      ? models.filter((each) => each.provider === thread.provider)
-      : threadModel
-        ? [threadModel]
-        : []
-    : [];
-  // A lead between turns can compact its conversation where its harness can when asked.
-  const compacts =
-    AsyncResult.isSuccess(manifests) &&
-    manifests.value.find((manifest) => manifest.provider === thread?.provider)?.compact === true;
-  const onCompact =
-    thread?.onCompact && compacts && !running && thread.ended === undefined ? thread.onCompact : undefined;
-  const threadPicker =
-    handoff ||
-    switchesModel ||
-    threadEffortChoice ||
-    offersSpeed(threadSpeedChoice) ||
-    onCompact ||
-    thread?.onLimit;
   const openModels = () => {
-    if (!isNew && !threadPicker) return false;
+    if (!isNew && !lead.threadPicker) return false;
     input.current?.focus({ preventScroll: true });
     setModelsOpen(true);
     return true;
   };
   useImperativeHandle(commands, () => ({ openModels, steerNow }));
-  // Switching models and stopping the turn live in the box, beside the palette's actions.
-  const slashLocal: ReadonlyArray<PaletteCommand> = [
-    ...(target.kind === "thread" && target.onAskSide
-      ? [
-          {
-            id: SIDE_QUESTION_COMMAND,
-            group: "Actions" as const,
-            label: "Side question",
-            icon: MessageCircleQuestionMark,
-            keywords: "btw ask aside quick",
-            // Picking it writes `/btw ` (`pickSlash`); the box's ref stays out of render.
-            run: () => undefined,
-          },
-        ]
-      : []),
-    ...(isNew || handoff || switchesModel || threadEffortChoice || offersSpeed(threadSpeedChoice)
-      ? [
-          {
-            id: SWITCH_MODEL_COMMAND,
-            group: "Actions" as const,
-            label: "Switch model",
-            icon: ArrowRightLeft,
-            keywords: "model effort speed",
-            keys: bindingFor(bindings, "open-model-picker"),
-            run: () => setModelsOpen(true),
-          },
-        ]
-      : []),
-    ...(running
-      ? [
-          {
-            id: "slash-stop",
-            group: "Actions" as const,
-            label: "Stop this turn",
-            icon: Square,
-            keywords: "interrupt cancel halt",
-            run: onStop,
-          },
-        ]
-      : []),
-  ];
-  const slashActions = slashOpen
-    ? matchCommands([...slashLocal, ...slashCommands], queryWords(slashTrigger?.query ?? ""))
-    : [];
-  const slashActive = Math.min(active, Math.max(0, slashPrompts.length + slashActions.length - 1));
-
-  const threadChip =
-    thread && threadShown ? (
-      threadPicker ? (
-        <ModelPicker
-          open={modelsOpen}
-          onOpenChange={setModelsOpen}
-          models={
-            handoff
-              ? [...ownModels, ...models.filter((each) => each.provider !== thread.provider)]
-              : ownModels
-          }
-          shown={threadShown}
-          providers={handoff ? providers : [thread.provider]}
-          available={new Set([thread.provider, ...(handoff?.available ?? [])])}
-          effort={threadEffortChoice}
-          effortShown={threadEffortShown}
-          speed={threadSpeedChoice}
-          speedShown={threadSpeed}
-          limit={thread.onLimit}
-          leaves={(picked) => picked.provider !== thread.provider}
-          onPick={(picked) =>
-            picked.provider === thread.provider
-              ? switchLead(switchTo(picked, threadEffort, switchesEffort, threadAuto, threadSpeed))
-              : askHandoff(picked)
-          }
-          context={thread.context}
-          onCompact={onCompact}
-          {...(running
-            ? { note: "Applies from the next turn" }
-            : switchesModel || handoff
-              ? {}
-              : { note: `${providerName[thread.provider]} can't switch models mid-thread` })}
-        />
-      ) : (
-        <FixedChip
-          tip={[
-            ...(thread.context ? [contextLabel(thread.context)] : []),
-            AsyncResult.isFailure(manifests)
-              ? "Update Cerium on that computer to switch models"
-              : switching
-                ? `${providerName[thread.provider]} can't switch models mid-thread`
-                : "The model this thread started with",
-          ].join(" · ")}
-        >
-          <ProviderLogo provider={thread.provider} size={13} />
-          <span className="max-w-40 truncate font-medium text-fg-primary">{threadShown.label}</span>
-          {threadEffortShown ? <span>{chipEffortLabel[threadEffortShown]}</span> : null}
-          <SpeedMark speed={threadSpeed} />
-          <ContextRing context={thread.context} />
-        </FixedChip>
-      )
-    ) : null;
-
-  // A new thread's model and effort, the same chip; on Auto, the level picked is its fallback.
-  const newEffortShown: EffortPick | undefined = activeEffort
-    ? autoEffort
-      ? "auto"
-      : activeEffort
-    : undefined;
-  const newEffortChoice: EffortChoice | undefined = activeEffort
-    ? {
-        levels: efforts,
-        value: activeEffort,
-        onPick: setEffort,
-        ...(routerOn
-          ? { auto: { on: autoEffort, onToggle: (on: boolean) => pickForDraft({ autoEffort: on }) } }
-          : {}),
-      }
-    : undefined;
-  const newSpeedChoice: SpeedChoice = { speeds, value: activeSpeed ?? "standard", onPick: setSpeed };
-  // Several models at once, switched on in the model menu's foot, once there are several to pick.
-  const several =
-    target.kind === "new" && models.filter((each) => target.available.has(each.provider)).length > 1
-      ? { on: multi, onChange: setMulti }
-      : undefined;
-  const newChip =
-    target.kind === "new" ? (
-      multi ? (
-        <ModelsPicker
-          models={models}
-          chosen={starting}
-          providers={providers}
-          available={target.available}
-          max={MAX_AGENTS}
-          open={modelsOpen}
-          onOpenChange={setModelsOpen}
-          effort={newEffortChoice}
-          effortShown={newEffortShown}
-          speed={newSpeedChoice}
-          speedShown={activeSpeed}
-          several={several}
-          onPick={(keys) => pickForDraft({ models: keys })}
-          // Agents that may edit share the one folder, where they can undo each other's work.
-          {...(target.mode === "work" && !worktree && access !== "readOnly" && starting.length > 1
-            ? {
-                note: "They share the folder, so their edits can collide",
-                ...(gitFolder !== undefined && branch !== undefined
-                  ? {
-                      onUseWorktrees: () => {
-                        setWorkplace("worktree");
-                        pickForDraft({ worktree: true, workspace: undefined });
-                      },
-                    }
-                  : {}),
-              }
-            : {})}
-        />
-      ) : (
-        <ModelPicker
-          models={models}
-          shown={model ? { provider: model.provider, label: model.label, key: modelKey(model) } : undefined}
-          providers={providers}
-          available={target.available}
-          // Shared with multi agent's menu, so switching between them keeps the menu open.
-          open={modelsOpen}
-          onOpenChange={setModelsOpen}
-          effort={newEffortChoice}
-          effortShown={newEffortShown}
-          speed={newSpeedChoice}
-          speedShown={activeSpeed}
-          several={several}
-          onPick={(picked) => setModelId(modelKey(picked))}
-        />
-      )
-    ) : null;
-
-  // What the agents may do unasked, shown on its button once it isn't Auto.
-  const accessMenu =
-    target.kind === "new" && target.mode === "work" ? (
-      <AccessMenu value={access} onPick={setAccess} limit={limit} />
-    ) : null;
-
-  /** Access other than Auto stays in sight while the box rests and its setup row is folded away. */
-  const restingAccess = rests && target.kind === "new" && target.mode === "work" && access !== "auto";
-
-  // While a turn runs, a message written meanwhile waits for it to end, so send stays beside stop. The
-  // model chip leads the right-hand group with access after it, what the message goes to and how it
-  // may act; dictation sits by send, both being how the message is written and sent.
-  const actions = (
-    <div ref={actionsRow} className="relative isolate flex min-w-0 shrink-0 items-center gap-1">
-      <div ref={leadingActions} className="flex min-w-0 items-center gap-1 empty:hidden">
-        {!oneLine || modelsOpen ? (thread ? threadChip : newChip) : null}
-        {!inline || restingAccess ? accessMenu : null}
-        {dictates ? <DictationControl dictation={dictation} /> : null}
-      </div>
-      {running ? stopButton : null}
-      {/* Send leaves from the right edge while the row closes the gap underneath it. */}
-      {sendPhase === "gone" ? null : (
-        <div
-          ref={sendSlot}
-          inert={leavingSend}
-          className={`z-2 ${leavingSend ? "pointer-events-none absolute end-0 top-1/2 -translate-y-1/2" : "relative"}`}
-        >
-          {sendButton}
-        </div>
-      )}
-    </div>
-  );
-
-  // Where a new work thread runs, as a path (project / branch or new worktree), leading the setup row.
   const newPlace =
     target.kind === "new" && target.mode === "work" ? (
-      <div className={`flex min-w-0 items-center ${unfolded ? "write-in [--write-delay:90ms]" : ""}`}>
-        <ProjectPicker
-          folder={target.folder}
-          open={projectsOpen}
-          onOpenChange={setProjectsOpen}
-          needed={asksForProject}
-          returnFocus={input}
-          onChoose={(folder) => {
-            target.onChooseFolder(folder);
-            pickForDraft({ folder });
-          }}
-        />
-        {gitFolder !== undefined && branch !== undefined ? (
-          <>
-            <span aria-hidden className="text-meta text-fg-disabled">
-              /
-            </span>
-            {target.workspaceControls ? (
-              <WorkspacePicker
-                key={gitFolder}
-                root={gitFolder}
-                branch={branch}
-                value={worktree}
-                workspace={draft.start?.workspace}
-                onPick={(picked, workspace) => {
-                  setWorkplace(picked ? "worktree" : "local");
-                  pickForDraft({ worktree: picked, workspace });
-                }}
-              />
-            ) : (
-              <WorktreePicker
-                branch={branch}
-                value={worktree}
-                onPick={(picked) => {
-                  setWorkplace(picked ? "worktree" : "local");
-                  pickForDraft({ worktree: picked, workspace: undefined });
-                }}
-              />
-            )}
-          </>
-        ) : null}
-      </div>
+      <ComposerProjectControls
+        target={target}
+        start={start}
+        draft={draft}
+        projectsOpen={projectsOpen}
+        setProjectsOpen={setProjectsOpen}
+        asksForProject={asksForProject}
+        input={input}
+        unfolded={unfolded}
+      />
     ) : null;
 
   return (
@@ -1703,29 +663,8 @@ export function Composer({
             finalFocus={input}
           />
         ) : null}
-        <ComposerMenu>
-          {menuOpen ? (
-            <MentionMenu
-              trigger={menuTrigger}
-              sources={sources}
-              results={results}
-              active={activeIndex}
-              onActive={setActive}
-              onPick={pick}
-            />
-          ) : null}
-        </ComposerMenu>
-        <ComposerMenu>
-          {slashOpen ? (
-            <SlashMenu
-              groups={slashGroups(slashPrompts, slashActions)}
-              query={slashTrigger?.query ?? ""}
-              active={slashActive}
-              onActive={setActive}
-              onPick={pickSlash}
-            />
-          ) : null}
-        </ComposerMenu>
+        {menus.mentionMenu}
+        {menus.slashMenu}
         {/* A film a step above the conversation's own: the box stands apart by that, its lit edge, the
             blur of what scrolls under it and the shadow it casts below, never as a dark slab over the glass. */}
         <div
@@ -1767,24 +706,7 @@ export function Composer({
               })
             }
           />
-          {filling ? (
-            <PromptParameters
-              prompt={filling.prompt}
-              parameters={filling.template.parameters}
-              onInsert={(values) => {
-                const expanded = expandPromptTemplate(filling.template, filling.context, values);
-                setParameters(undefined);
-                filling.replace(expanded.text, expanded.cursor);
-                setTrigger(undefined);
-              }}
-              onCancel={() => {
-                setParameters(undefined);
-                input.current?.focus({ preventScroll: true });
-                setTrigger(filling.trigger);
-                setDismissed(filling.trigger);
-              }}
-            />
-          ) : null}
+          {menus.parameters}
           <Reveal carry className={inline ? "min-w-0 basis-full" : ""}>
             {comments.length > 0 ? (
               <CommentTray comments={comments} onEdit={editComment} onRemove={removeComment} />
@@ -1805,22 +727,13 @@ export function Composer({
             placeholder={placeholder}
             onChange={(segments) => {
               setRecall(undefined);
-              setParameters(undefined);
+              menus.clearParameters();
               updateDraft(draftKey, (current) => ({ ...current, segments }));
             }}
-            onTrigger={(next) => {
-              if (!sameTrigger(next, trigger)) setActive(0);
-              setTrigger(next);
-            }}
+            onTrigger={menus.setTrigger}
             onKeyDown={onKeyDown}
             onFiles={addFiles}
-            activeOption={
-              menuOpen && results.options.length > 0
-                ? `mention-option-${activeIndex}`
-                : slashOpen && slashPrompts.length + slashActions.length > 0
-                  ? `slash-option-${slashActive}`
-                  : undefined
-            }
+            activeOption={menus.activeOption}
             // While the lead works and nothing is written, the line says what it's doing.
             cover={compact && running ? activity : undefined}
             suggestion={suggestion}
