@@ -2,6 +2,7 @@ import { makeFakeAdapter } from "@cerium/harness/testing";
 import type { ThreadId } from "@cerium/protocol";
 import { assert, describe, it } from "@effect/vitest";
 import { Duration, Effect } from "effect";
+import { TestClock } from "effect/testing";
 
 import { cleanTitle, Orchestrator, UserSettings, type CatalogEntry } from "../src/index.ts";
 import { recordEvents, testLayer } from "./fakes.ts";
@@ -96,17 +97,24 @@ describe("thread titles", () => {
     );
   });
 
-  it.live("keeps the name the user gave while the title was being made", () => {
+  it.effect("keeps the name the user gave while the title was being made", () => {
+    const started = Promise.withResolvers<void>();
     const fake = makeFakeAdapter("claude", { complete: () => "Generated", completeDuration: "50 millis" });
+    const adapter = {
+      ...fake.adapter,
+      complete: (request: Parameters<typeof fake.adapter.complete>[0]) =>
+        Effect.sync(() => started.resolve()).pipe(Effect.andThen(fake.adapter.complete(request))),
+    };
     return Effect.gen(function* () {
       const orchestrator = yield* Orchestrator;
       const { thread, lead } = yield* startThread("first line");
       yield* orchestrator.sendUserMessage(lead.id, "first line of a long message");
+      yield* Effect.promise(() => started.promise);
       yield* orchestrator.renameThread(thread.id, "Mine");
-      yield* Effect.sleep(Duration.millis(150));
+      yield* TestClock.adjust("50 millis");
       assert.lengthOf(fake.completions, 1);
       assert.strictEqual(yield* titleOf(thread.id), "Mine");
-    }).pipe(Effect.provide(testLayer([fake.adapter], { catalog: everyHarness })), Effect.scoped);
+    }).pipe(Effect.provide(testLayer([adapter], { catalog: everyHarness })), Effect.scoped);
   });
 
   it.live("uses the model the user picked, and nothing while titles are off", () => {
