@@ -3,7 +3,8 @@
 // Shared sources, migrations, scripts, fixtures, configuration, lockfiles, renames and deletions
 // all run everything. A new boundary needs an audit of runtime reads as well as static imports.
 import { execFileSync, spawnSync } from "node:child_process";
-import { appendFileSync } from "node:fs";
+import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
+import { join, relative, sep } from "node:path";
 
 const testFile = /^(?:apps\/[\w-]+|packages\/(?:adapters\/)?[\w-]+|scripts)\/test\/[\w./-]+\.test\.ts$/;
 
@@ -41,8 +42,32 @@ if (import.meta.main) {
       process.env["GITHUB_EVENT_NAME"] === "pull_request"
         ? JSON.parse(process.env["TEST_FILTERS"] || "[]")
         : [];
-    const run = spawnSync("bun", ["run", "test", "--run", ...filters], { stdio: "inherit" });
+    const temp = process.env["RUNNER_TEMP"];
+    const report = filters.length === 0 && temp ? join(temp, "vitest-results.json") : undefined;
+    const reporters = report ? ["--reporter=default", "--reporter=json", `--outputFile.json=${report}`] : [];
+    const run = spawnSync("bun", ["run", "test", "--run", ...reporters, ...filters], { stdio: "inherit" });
     if (run.error) throw run.error;
     process.exitCode = run.status ?? 1;
+    if (run.status === 0 && report && temp) {
+      const { testResults } = JSON.parse(readFileSync(report, "utf8")) as {
+        testResults: { name: string; startTime: number; endTime: number }[];
+      };
+      const expected = new Set(
+        execFileSync("git", ["ls-files", "-z", "*.test.ts"], { encoding: "utf8" })
+          .split("\0")
+          .filter(Boolean),
+      );
+      const timings: Record<string, number> = {};
+      for (const result of testResults) {
+        const file = relative(process.cwd(), result.name).split(sep).join("/");
+        if (!expected.delete(file)) throw new Error(`Unexpected or duplicate test module: ${file}`);
+        const ms = result.endTime - result.startTime;
+        if (!Number.isFinite(ms) || ms < 0) throw new Error(`Invalid file duration for ${file}: ${ms}`);
+        timings[file] = Math.ceil(ms);
+      }
+      if (expected.size) throw new Error(`Missing test modules: ${[...expected].join(", ")}`);
+      console.log(`Verified all ${testResults.length} tracked test modules.`);
+      writeFileSync(join(temp, "test-file-times.json"), JSON.stringify(timings, null, 2));
+    }
   }
 }
