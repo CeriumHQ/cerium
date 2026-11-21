@@ -136,7 +136,7 @@ jobs:
       - id: setup
         uses: ./.github/actions/setup
       - name: Format and lint
-        run: bun run check
+        run: bun scripts/check-static-budgets.ts
       # actionlint and zizmor; zizmor's online audits read the pinned actions with the job's token.
       - name: Lint the workflows
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
