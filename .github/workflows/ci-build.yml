@@ -190,6 +190,14 @@ jobs:
           TEST_FILTERS: ${{ needs.plan.outputs.tests }}
           CERIUM_BROWSER_LOGS: ${{ runner.temp }}/browser-logs
       # Everything each browser printed, and a screenshot of a failing test's page.
+      - name: Save verified per-file timings
+        if: github.event_name != 'pull_request' || needs.plan.outputs.tests == '[]'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: test-file-times-${{ runner.os }}
+          path: ${{ runner.temp }}/test-file-times.json
+          if-no-files-found: error
+          retention-days: 14
       - name: Keep the browser's logs
         if: ${{ failure() && steps.test.outcome == 'failure' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -219,6 +227,14 @@ jobs:
           TEMP: ${{ runner.temp }}
           TMP: ${{ runner.temp }}
           CERIUM_BROWSER_LOGS: ${{ runner.temp }}/browser-logs
+      - name: Save verified per-file timings
+        if: github.event_name != 'pull_request' || needs.plan.outputs.tests == '[]'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: test-file-times-${{ runner.os }}
+          path: ${{ runner.temp }}/test-file-times.json
+          if-no-files-found: error
+          retention-days: 14
       - name: Keep the browser's logs
         if: ${{ failure() && steps.test.outcome == 'failure' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -246,6 +262,14 @@ jobs:
         env:
           TEST_FILTERS: ${{ needs.plan.outputs.tests }}
           CERIUM_BROWSER_LOGS: ${{ runner.temp }}/browser-logs
+      - name: Save verified per-file timings
+        if: github.event_name != 'pull_request' || needs.plan.outputs.tests == '[]'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: test-file-times-${{ runner.os }}
+          path: ${{ runner.temp }}/test-file-times.json
+          if-no-files-found: error
+          retention-days: 14
       - name: Keep the browser's logs
         if: ${{ failure() && steps.test.outcome == 'failure' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
