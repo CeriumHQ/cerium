@@ -22,6 +22,24 @@ export default defineConfig({
   lint: {
     ignorePatterns: ignored,
     plugins: ["typescript"],
+    rules: {
+      "block-scoped-var": "error",
+      "no-extend-native": "error",
+      "no-extra-bind": "error",
+      "no-implied-eval": "error",
+      "no-new": "error",
+      "no-unexpected-multiline": "error",
+      "no-unneeded-ternary": "error",
+      "no-useless-call": "error",
+      "no-useless-concat": "error",
+      "no-useless-constructor": "error",
+      "preserve-caught-error": "error",
+      "typescript/no-confusing-non-null-assertion": "error",
+      "typescript/no-extraneous-class": "error",
+      "typescript/no-generated-empty-object-type": "error",
+      "typescript/no-unnecessary-template-expression": "error",
+      "typescript/no-unnecessary-type-constraint": "error",
+    },
     options: {
       // Type-aware rules include Effect's diagnostics (patched in by `effect-tsgo patch`).
       // `tsc -b` remains the authoritative type gate.
