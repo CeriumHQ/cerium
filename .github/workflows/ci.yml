@@ -126,7 +126,7 @@ jobs:
   # The platform-independent gates, once, on the fastest and cheapest runner. Each step after setup
   # runs even when an earlier one fails, so one run reports every problem.
   lint:
-    name: Lint and typecheck
+    name: Lint
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -137,15 +137,23 @@ jobs:
         uses: ./.github/actions/setup
       - name: Format and lint
         run: bun run check
-      - name: Typecheck
-        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
-        run: bun run typecheck
       # actionlint and zizmor; zizmor's online audits read the pinned actions with the job's token.
       - name: Lint the workflows
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: bun run lint:workflows
         env:
           GH_TOKEN: ${{ github.token }}
+
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - run: bun run typecheck
 
   test-linux:
     name: Test (Linux)
@@ -365,7 +373,18 @@ jobs:
     name: Full merge suite
     if: ${{ always() && (github.event_name == 'merge_group' || github.event_name == 'pull_request') }}
     needs:
-      [plan, lint, test-linux, test-windows, test-macos, web, package-linux, package-windows, package-macos]
+      [
+        plan,
+        lint,
+        typecheck,
+        test-linux,
+        test-windows,
+        test-macos,
+        web,
+        package-linux,
+        package-windows,
+        package-macos,
+      ]
     runs-on: ubuntu-latest
     timeout-minutes: 1
     permissions: {}
@@ -377,7 +396,7 @@ jobs:
           jq -e --arg event "$GITHUB_EVENT_NAME" '
             .plan.outputs as $plan |
             to_entries | all(.[];
-              (if $event == "merge_group" or .key == "plan" or .key == "lint" then "success"
+              (if $event == "merge_group" or .key == "plan" or .key == "lint" or .key == "typecheck" then "success"
                elif $plan.package != "true" then "skipped"
                elif $plan.everywhere != "true" and (.key == "test-macos" or .key == "package-linux" or .key == "package-macos") then "skipped"
                else "success" end) == .value.result)
@@ -391,7 +410,8 @@ jobs:
   # finishes after a later push's publishes nothing (scripts/release.ts) and drops its draft.
   nightly-deploy:
     name: Nightly deployment
-    needs: [plan, lint, test-linux, test-windows, web, package-linux, package-windows, package-macos]
+    needs:
+      [plan, lint, typecheck, test-linux, test-windows, web, package-linux, package-windows, package-macos]
     if: ${{ github.event_name == 'push' && needs.plan.outputs.publish == 'true' && needs.plan.outputs.package == 'true' }}
     permissions:
       contents: write
