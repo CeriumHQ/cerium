@@ -1,0 +1,28 @@
+amends "package://github.com/jdx/hk/releases/download/v2.13.0/hk@2.13.0#/Config.pkl"
+
+hooks {
+  ["pre-commit"] {
+    fix = true
+    stash = "git"
+    steps {
+      ["format"] {
+        glob = "**/*"
+        exclude = List(".agents/**", ".claude/**", "vendor/**", "skills-lock.json")
+        fix = "bun fmt --ignore-unknown -- {{files}}"
+      }
+      ["lint"] {
+        depends = "format"
+        glob = List("**/*.{js,cjs,mjs,jsx,ts,cts,mts,tsx}")
+        check = "bun run lint -- {{files}}"
+      }
+    }
+  }
+  ["pre-push"] {
+    steps {
+      ["verify"] {
+        check = "node scripts/pre-push.ts"
+        stdin = "{{hook_stdin}}"
+      }
+    }
+  }
+}

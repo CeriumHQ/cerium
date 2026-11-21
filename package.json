@@ -11,7 +11,8 @@
   "type": "module",
   "scripts": {
     "effort:eval": "node apps/backend/scripts/effort-eval.ts",
-    "check": "bun fmt --check && vp check --no-fmt",
+    "check": "bun fmt --check && bun run lint",
+    "lint": "vp check --no-fmt",
     "fix": "vp check --fix",
     "test": "vp test",
     "typecheck": "tsc -b",
