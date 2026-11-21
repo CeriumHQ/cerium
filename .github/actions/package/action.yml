@@ -97,7 +97,7 @@ runs:
         ) > "$RUNNER_TEMP/fedora.log" 2>&1 &
         (
           status=0
-          sudo apt-get -o Acquire::Retries=3 update -q || status=$?
+          sudo apt-get update -q || status=$?
           echo "$status" > "$RUNNER_TEMP/apt-ready"
         ) > "$RUNNER_TEMP/apt.log" 2>&1 &
       env:
@@ -148,16 +148,15 @@ runs:
 
     # Both architectures install the .deb during the smoke test. The image's package lists can
     # refer to superseded Ubuntu packages even when rpmbuild is already installed. They were refreshed
-    # while the app built (above); a refresh that failed there is made again here.
+    # while the app built (above). Surface that operation's result before using either package.
     - name: Wait for Ubuntu's package lists and ensure rpmbuild is installed
       if: runner.os == 'Linux'
       shell: bash
       run: |
         for _ in $(seq 120); do [ -s "$RUNNER_TEMP/apt-ready" ] && break; sleep 1; done
         cat "$RUNNER_TEMP/apt.log"
-        if [ "$(cat "$RUNNER_TEMP/apt-ready" 2>/dev/null)" != 0 ]; then
-          sudo apt-get -o Acquire::Retries=3 update -q
-        fi
+        status=$(cat "$RUNNER_TEMP/apt-ready")
+        if [ "$status" != 0 ]; then exit "$status"; fi
         command -v rpmbuild > /dev/null || sudo apt-get install -y -q --no-install-recommends rpm
 
     # The patched Windows packager builds its uninstaller in a separate executable, so makensis
@@ -396,8 +395,6 @@ runs:
             }
           ) > "$RUNNER_TEMP/rpm-smoke-test.log" 2>&1 &
           rpm=$!
-          # Refresh before installing so a mirror update cannot leave the runner using old package URLs.
-          sudo apt-get update -q
           sudo apt-get install -y "$GITHUB_WORKSPACE/$out"/cerium*.deb
           smoke deb xvfb-run -a cerium
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
