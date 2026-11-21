@@ -3,7 +3,7 @@ import { usdPrecise } from "../../lib/format.ts";
 import { defaultSettings } from "@cerium/protocol";
 import { useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
-import { Route, Users } from "lucide-react";
+import { ArrowUpRight, Route, Users } from "lucide-react";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 
 import {
@@ -24,18 +24,18 @@ import {
   SettingsRow,
   SettingsSection,
   SettingsSwitch,
-  SettingsTag,
 } from "./parts.tsx";
+import { OPENROUTER_KEYS_URL, routerHint } from "./effortRouterModel.ts";
 import { RowButton } from "./ToolRow.tsx";
 import { useSetting } from "./useSetting.ts";
 
 const childrenLabel = { router: "Auto", lead: "Lead's level" } as const;
 
 /**
- * The experimental effort router: a decision model, through the user's own OpenRouter
- * key, picks the reasoning effort of agents on Auto before each turn. The key is typed only into the
- * desktop app of the computer whose agents use it; another device sees that there is one, and can
- * remove it.
+ * The effort router: a decision model, through the user's own OpenRouter key (BYOK), picks the
+ * reasoning effort of agents on Auto before each turn. The key is typed only into the desktop app of
+ * the computer whose agents use it, and saving one that checks out turns the router on; another
+ * device sees that there is one, and can remove it.
  */
 export function EffortRouterSettings() {
   const status = useAtomValue(effortRouterStatusAtom);
@@ -81,6 +81,12 @@ export function EffortRouterSettings() {
   const known = AsyncResult.isSuccess(status) ? status.value : undefined;
   const key = known?.key;
   const local = !WEB && machine === undefined;
+  const switchHint = routerHint({
+    enabled: router.enabled,
+    hasKey: known === undefined ? undefined : key !== undefined,
+    local,
+    machineName: machine?.name,
+  });
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -92,6 +98,8 @@ export function EffortRouterSettings() {
         setDraft("");
         setBusy(false);
         refreshStatus();
+        // The backend turned the router on with the key.
+        refreshSettings();
       },
       (failure: unknown) => {
         setBusy(false);
@@ -120,7 +128,13 @@ export function EffortRouterSettings() {
       <SettingsList>
         <SettingsRow
           label="Pick effort automatically"
-          hint={key === undefined && !router.enabled ? "Needs an OpenRouter key" : undefined}
+          hint={
+            switchHint === undefined ? undefined : switchHint.attention ? (
+              <span className="text-attention-text">{switchHint.text}</span>
+            ) : (
+              switchHint.text
+            )
+          }
           error={routerError}
           control={(labelledBy) => (
             <SettingsSwitch
@@ -159,11 +173,22 @@ export function EffortRouterSettings() {
         <SettingsRow
           label="OpenRouter key"
           hint={
-            key
-              ? undefined
-              : local
-                ? "Kept encrypted on this computer and sent only to OpenRouter."
-                : `Add it in the Cerium app on ${machine?.name ?? "that computer"}.`
+            key ? undefined : local ? (
+              <>
+                Kept encrypted on this computer and sent only to OpenRouter.{" "}
+                <a
+                  href={OPENROUTER_KEYS_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-0.5 text-fg-secondary transition-colors hover:text-fg-primary"
+                >
+                  Create a key
+                  <ArrowUpRight size={11} strokeWidth={2} aria-hidden="true" />
+                </a>
+              </>
+            ) : (
+              `Add it in the Cerium app on ${machine?.name ?? "that computer"}.`
+            )
           }
           error={keyError}
           control={() =>
@@ -219,13 +244,8 @@ function EffortRouterPage({ children }: { children: ReactNode }) {
   return (
     <SettingsPage
       perMachine
-      title={
-        <>
-          Effort router
-          <SettingsTag>Experimental</SettingsTag>
-        </>
-      }
-      description="Before each turn of an agent on Auto, a decision model picks its reasoning effort, through your own OpenRouter key."
+      title="Effort router"
+      description="Before each turn of an agent on Auto, a decision model picks its reasoning effort. It runs on your own OpenRouter key and bills your OpenRouter account."
     >
       {children}
     </SettingsPage>
