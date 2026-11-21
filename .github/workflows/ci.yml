@@ -38,6 +38,7 @@ jobs:
       package: ${{ github.event_name != 'pull_request' || steps.changes.outputs.package == 'true' }}
       everywhere: ${{ steps.changes.outputs.everywhere }}
       windows: ${{ steps.changes.outputs.windows }}
+      installer: ${{ steps.changes.outputs.installer }}
       publish: ${{ steps.plan.outputs.publish == 'true' && steps.changes.outputs.package == 'true' }}
       version: ${{ steps.plan.outputs.version }}
       release: ${{ steps.draft.outputs.tag }}
@@ -62,6 +63,7 @@ jobs:
         name: Find what changed
         run: |
           package=true
+          installer=true
           everywhere=true
           if [ "$GITHUB_EVENT_NAME" != merge_group ] && [ "$GITHUB_EVENT_NAME" != workflow_dispatch ] && git cat-file -e "$BASE^{commit}" 2>/dev/null; then
             changed=$(git diff --name-only "$BASE...$HEAD")
@@ -85,7 +87,18 @@ jobs:
             fi
             if [ "$GITHUB_EVENT_NAME" = pull_request ] && [ -z "$packaging" ]; then
               everywhere=false
-              echo "Nothing that packaging reads changed, so only Windows x64 is packaged."
+              # Site and relay code is built and checked in the web job. Neither workspace is
+              # installed by the desktop packager. Keep both sides of moves in the comparison.
+              if git diff --quiet --no-renames "$BASE...$HEAD" -- . \
+                ':(exclude)apps/site/src/**' ':(exclude)apps/site/public/**' \
+                ':(exclude)apps/relay/src/**' ':(exclude)apps/relay/public/**' ':(exclude)apps/relay/test/**'; then
+                installer=false
+                echo "Only site or relay files changed. The queue will check every installer."
+              else
+                status=$?
+                [ "$status" = 1 ] || exit "$status"
+                echo "Only Windows x64 is packaged for this PR."
+              fi
             fi
           fi
           if [ "$everywhere" = true ]; then
@@ -97,6 +110,7 @@ jobs:
             echo "package=$package"
             echo "everywhere=$everywhere"
             echo "windows=$windows"
+            echo "installer=$installer"
           } >> "$GITHUB_OUTPUT"
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
@@ -292,7 +306,7 @@ jobs:
   package-windows:
     name: Package (Windows ${{ matrix.target.arch }}${{ matrix.locales == 'english' && ', English' || '' }})
     needs: plan
-    if: ${{ needs.plan.outputs.package == 'true' }}
+    if: ${{ needs.plan.outputs.package == 'true' && needs.plan.outputs.installer == 'true' }}
     strategy:
       fail-fast: false
       matrix:
@@ -379,6 +393,7 @@ jobs:
             to_entries | all(.[];
               (if $event == "merge_group" or .key == "plan" or .key == "lint" then "success"
                elif $plan.package != "true" then "skipped"
+               elif .key == "package-windows" and $plan.installer == "false" then "skipped"
                elif $plan.everywhere != "true" and (.key == "test-macos" or .key == "package-linux" or .key == "package-macos") then "skipped"
                else "success" end) == .value.result)
           ' <<<"$RESULTS"
