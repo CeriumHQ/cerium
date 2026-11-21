@@ -128,6 +128,13 @@ export class CodexTranslator {
     return this.#items.get(itemId)?.item;
   }
 
+  /** The process a background task runs in, which `thread/backgroundTerminals/terminate` names. */
+  processOf(taskId: string): string | undefined {
+    if (!this.#background.has(taskId)) return undefined;
+    const item = this.#items.get(taskId)?.item;
+    return item?.type === "commandExecution" ? (item.processId ?? undefined) : undefined;
+  }
+
   /** The latest running MCP tool call on `server`, which an approval elicitation is about. */
   runningMcpCall(server: string): McpToolCall | undefined {
     let found: McpToolCall | undefined;
@@ -293,6 +300,8 @@ export class CodexTranslator {
             description: displayCommand(entry.item),
             callId: id,
             startedAt: entry.at,
+            // `thread/backgroundTerminals/terminate` stops it by its process id (`processOf`).
+            stoppable: true,
           },
         ];
       }),
@@ -457,7 +466,7 @@ const displayCommand = (item: Extract<ThreadItem, { type: "commandExecution" }>)
 
 /** A unified-exec command, whose process outlives its call when it runs past the call's wait. */
 const runsOn = (item: ThreadItem) =>
-  item.type === "commandExecution" && item.processId !== null && item.source !== "userShell";
+  item.type === "commandExecution" && typeof item.processId === "string" && item.source !== "userShell";
 
 /** Tool names follow the model-facing Codex tools, and Claude's `mcp__<server>__<tool>` for MCP. */
 const toolCall = (item: ToolItem): { readonly toolName: string; readonly input: unknown } => {

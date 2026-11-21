@@ -8,7 +8,9 @@ export const INSTALL_HINT =
 export const copilotManifest: CapabilityManifest = {
   provider: "copilot",
   releases: { npmPackage: "@github/copilot", updateCommand: "copilot update" },
-  session: { resume: true, fork: false },
+  // `sessions.fork` copies a session's journal up to an event into a new local session.
+  session: { resume: true, fork: true },
+  // Copilot has no faster tier to switch to.
   switching: { model: true, effort: true, cacheSafeEffort: false },
   input: { images: true },
   permissions: { approvals: "protocol", readOnlyMode: true },
@@ -16,5 +18,7 @@ export const copilotManifest: CapabilityManifest = {
   nativeSubagents: "disableable",
   // Copilot's cost field is a billing multiplier, not USD.
   usageReporting: "tokens",
+  // `session.history.compact`.
+  compact: true,
   defaultConcurrency: 4,
 };

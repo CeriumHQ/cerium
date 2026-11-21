@@ -28,6 +28,7 @@ export const opencodeManifest: CapabilityManifest = {
   // Every step ends with its tokens and its cost in USD (0 on free models).
   usageReporting: "tokensAndCost",
   // `session.compact`, which runs as an execution of its own.
+  // The v2 API has no structured todo list or todo update event.
   compact: true,
   defaultConcurrency: 4,
 };
