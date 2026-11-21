@@ -14,11 +14,11 @@ export const museManifest: CapabilityManifest = {
   provider: "muse",
   // The SDK versions in lockstep with the CLI, which updates itself when it starts.
   releases: { npmPackage: "@muse-code/sdk" },
-  // `session/resume` takes the id `SessionStarted` reports. MSP's `session/fork` is not wired: sessions
-  // have no fork option yet.
-  session: { resume: true, fork: false },
+  // MSP resumes a session by ID and forks it through a completed native turn. Its side chats
+  // require a durable host, and MSP has no way to delete the resulting session.
+  session: { resume: true, fork: true },
   // `session/setModel` and `session/setReasoningEffort` apply mid-session. Whether an effort switch keeps
-  // Meta's prompt cache has no live evidence yet, so it is not claimed.
+  // Meta's prompt cache has no live evidence yet. MSP has no service-tier switch.
   switching: { model: true, effort: true, cacheSafeEffort: false },
   input: { images: true },
   // `:read-only` profile plus `--disable-write --disable-shell` on the host; approvals are MSP

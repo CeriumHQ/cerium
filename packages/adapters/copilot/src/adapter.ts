@@ -12,11 +12,16 @@ import { ChildProcessSpawner } from "effect/process";
 import { resolve } from "node:path";
 
 import { completeWithCopilot } from "./complete.ts";
+import { forkCopilotSession } from "./fork.ts";
+import { makeCopilotHub } from "./hub.ts";
 import { copilotManifest, INSTALL_HINT, SIGN_IN } from "./manifest.ts";
 import { listCopilotModels } from "./models.ts";
 import { findCopilotExecutable, readAuth, readVersion } from "./probe.ts";
-import { failure, openCopilot } from "./rpc.ts";
+import { failure, openCopilot, type CopilotHost } from "./rpc.ts";
 import { startCopilotSession } from "./session.ts";
+import { listCopilotSessions, readCopilotSession } from "./sessions.ts";
+import { askCopilotSideQuestion } from "./sideQuestion.ts";
+import { listCopilotSkills } from "./skills.ts";
 import { readCopilotUsage } from "./usage.ts";
 
 export class CopilotAdapter extends Context.Service<CopilotAdapter, HarnessAdapter>()(
@@ -75,6 +80,13 @@ export class CopilotAdapter extends Context.Service<CopilotAdapter, HarnessAdapt
         return status.executablePath;
       });
 
+      /** A private connection to the CLI for one call, started outside any project. */
+      const withHost = <A, E>(use: (host: CopilotHost) => Effect.Effect<A, E>) =>
+        Effect.gen(function* () {
+          const host = yield* openCopilot(yield* ready, yield* scratch);
+          return yield* use(host);
+        }).pipe(Effect.scoped);
+
       return CopilotAdapter.of({
         provider: "copilot",
         hubInstructions: {
@@ -94,6 +106,17 @@ export class CopilotAdapter extends Context.Service<CopilotAdapter, HarnessAdapt
         probe: probes.fresh.pipe(
           Effect.catchTag("HarnessUnavailable", (error) => Effect.fail(failure(error.message)(undefined))),
         ),
+        listSkills: (cwd) => withHost((host) => listCopilotSkills(host, resolve(cwd))),
+        fork: (request) => withHost((host) => forkCopilotSession(host, request)),
+        sideQuestion: (request) =>
+          withHost((host) =>
+            listCopilotModels(host).pipe(
+              Effect.flatMap((models) => askCopilotSideQuestion(host, request, models)),
+            ),
+          ),
+        listSessions: withHost(listCopilotSessions),
+        readSession: (session) => withHost((host) => readCopilotSession(host, session)),
+        hub: makeCopilotHub(withHost, platform),
         listModels: Effect.gen(function* () {
           const host = yield* openCopilot(yield* ready, yield* scratch);
           return yield* listCopilotModels(host);

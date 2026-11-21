@@ -1,99 +1,63 @@
 import {
-  type AdapterEvent,
-  type AgentSession,
-  type HarnessFailure,
-  type PermissionDecision,
-  type SessionOptions,
-} from "@cerium/harness";
-import type { EventPayload } from "@cerium/protocol";
-import { Effect, Queue, Stream, type Cause } from "effect";
-import { randomUUID } from "node:crypto";
+  acpMcpServers,
+  answerOnce,
+  array,
+  cancelledOutcome,
+  hasHttpMcp,
+  makeAcpSession,
+  makeConfigState,
+  onceOptions,
+  openSession,
+  readConfigOptions,
+  record,
+  string,
+  type ApprovalRequest,
+  type RequestHandler,
+} from "@cerium/acp";
+import type { AgentSession, SessionOptions, TurnExtras } from "@cerium/harness";
+import { Effect } from "effect";
 
-import { authenticate, initialize, signedOut } from "./catalog.ts";
-import { LOGIN_COMMAND, SIGNED_OUT } from "./manifest.ts";
-import { array, connect, failure, object, string, type Incoming, type RpcId } from "./rpc.ts";
-import { toolName, TurnUpdates, usageFromPrompt } from "./translate.ts";
+import { authenticate, connectGrok } from "./catalog.ts";
+import { PROVIDER, failure } from "./manifest.ts";
+import { grokTranslator, toolName } from "./translate.ts";
 
 const READ_TOOLS = ["read_file", "list_dir", "grep"];
 const CODING_TOOLS = ["run_terminal_cmd", "run_terminal_command", "search_replace", "write", "todo_write"];
 const HOOK_ID = "cerium-pre-tool-use";
-const APPROVAL_TIMEOUT_MS = 240_000;
-
-const timed = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
-  effect.pipe(
-    Effect.timeoutOrElse({
-      duration: "30 seconds",
-      orElse: () => Effect.fail(failure("Grok Build did not respond to the ACP request")),
-    }),
-  );
-
-const mcpServersFor = (options: SessionOptions) =>
-  Object.entries(options.mcpServers).flatMap(([name, server]) => {
-    if (options.access === "readOnly" && !options.trustedMcpServers?.includes(name)) return [];
-    return [
-      server.type === "http"
-        ? {
-            type: "http",
-            name,
-            url: server.url,
-            headers: Object.entries(server.headers ?? {}).map(([name, value]) => ({ name, value })),
-          }
-        : {
-            name,
-            command: server.command,
-            args: server.args,
-            env: Object.entries(server.env ?? {}).map(([name, value]) => ({ name, value })),
-          },
-    ];
-  });
-
-interface PendingPermission {
-  readonly timer: ReturnType<typeof setTimeout>;
-  readonly reply: (allow: boolean, message?: string) => boolean;
-}
+/** Grok waits 300 seconds for the hook; an unanswered approval is denied before then. */
+const APPROVAL_TIMEOUT = "240 seconds";
 
 const denyHook = (message = "Cerium denied this tool call.") => ({
   decision: "deny",
   systemMessage: message,
 });
 const continueHook = { decision: "continue" };
-const cancelPermission = { outcome: { outcome: "cancelled" } };
 
 export const startGrokSession = Effect.fn("GrokAdapter.startSession")(function* (
   executable: string,
   options: SessionOptions,
 ) {
-  const scope = yield* Effect.scope;
   const readOnly = options.access === "readOnly";
   const fullAccess = options.access === "fullAccess";
-  const client = yield* connect(
+  const acp = yield* connectGrok(
     executable,
     options.cwd,
     readOnly ? "read-only" : fullAccess ? "off" : "workspace",
     !readOnly && options.includeUserMcpServers,
   );
-  const info = yield* timed(initialize(client));
-  yield* timed(authenticate(client, info));
+  yield* authenticate(acp);
 
-  const capabilities = object(info["agentCapabilities"]);
-  const meta = object(capabilities?.["_meta"]);
-  const hooks = object(meta?.["x.ai/hooks"]);
+  const hooks = record(record(acp.agent.capabilities?.["_meta"])?.["x.ai/hooks"]);
   if (!array(hooks?.["blockingEvents"]).includes("pre_tool_use")) {
     return yield* failure(
       "This version of Grok Build does not advertise the tool approval hook Cerium requires",
     );
   }
-  if (
-    options.resume !== undefined &&
-    object(capabilities?.["sessionCapabilities"])?.["resume"] === undefined
-  ) {
+  if (options.resume !== undefined && !acp.agent.resumeSession) {
     return yield* failure("This version of Grok Build does not support ACP session resume");
   }
-  const mcpServers = mcpServersFor(options);
-  if (
-    mcpServers.some((server) => "type" in server) &&
-    object(capabilities?.["mcpCapabilities"])?.["http"] !== true
-  ) {
+  const mcpServers = acpMcpServers(options);
+  if (hasHttpMcp(mcpServers) && !acp.agent.httpMcp) {
     return yield* failure("This version of Grok Build cannot use Cerium's HTTP MCP servers");
   }
 
@@ -111,9 +75,10 @@ export const startGrokSession = Effect.fn("GrokAdapter.startSession")(function* 
       { id: "GrokBuild:todo_write" },
     );
   }
-  const params = {
+  const result = yield* openSession(acp, options.resume === undefined ? "session/new" : "session/resume", {
     cwd: options.cwd,
     mcpServers,
+    ...(options.resume === undefined ? {} : { sessionId: options.resume }),
     _meta: {
       clientIdentifier: "cerium",
       "x.ai/restore_code": false,
@@ -129,72 +94,29 @@ export const startGrokSession = Effect.fn("GrokAdapter.startSession")(function* 
       },
       "x.ai/hooks": { PreToolUse: [{ hookCallbackIds: [HOOK_ID], timeout: 300 }] },
     },
-  };
-
-  let setup = object(
-    yield* timed(
-      client.request(
-        options.resume === undefined ? "session/new" : "session/resume",
-        options.resume === undefined ? params : { ...params, sessionId: options.resume },
-      ),
-    ).pipe(Effect.mapError((error) => (error.cause === -32000 ? signedOut() : error))),
-  );
+  });
+  const setup = record(result);
   const sessionId = options.resume ?? string(setup?.["sessionId"]);
   if (setup === undefined || sessionId === undefined)
     return yield* failure("Grok Build did not open a session");
+  // Grok reports each option's current value only, not the values it offers.
+  const config = makeConfigState({
+    acp,
+    sessionId,
+    initial: readConfigOptions(setup["configOptions"]),
+    requireOffered: false,
+  });
 
-  const configValue = (configId: string) =>
-    array(setup?.["configOptions"])
-      .map(object)
-      .find((entry) => entry?.["id"] === configId)?.["currentValue"];
-  const configure = (configId: string, value: string) =>
-    Effect.gen(function* () {
-      if (configValue(configId) === value) return;
-      const response = object(
-        yield* timed(client.request("session/set_config_option", { sessionId, configId, value })),
-      );
-      if (response !== undefined) setup = response;
-      if (configValue(configId) !== value)
-        return yield* failure(`Grok Build did not apply the ${configId} setting`);
-    });
-
-  yield* configure("model", options.model);
-  if (options.effort !== undefined) yield* configure("reasoning_effort", options.effort);
-
-  const events = yield* Queue.unbounded<AdapterEvent, Cause.Done>();
-  const emit = (payload: EventPayload) => Queue.offerUnsafe(events, { payload });
-  const permissions = new Map<string, PendingPermission>();
-  const approvedCalls = new Map<string, string>();
   const injectedNames = mcpServers.map(({ name }) => name);
   const trustedNames = injectedNames.filter((name) => options.trustedMcpServers?.includes(name));
-  let turn: TurnUpdates | undefined;
-  let interrupted = false;
-
-  const resolve = (requestId: string, decision: PermissionDecision) => {
-    const pending = permissions.get(requestId);
-    if (pending === undefined) return;
-    permissions.delete(requestId);
-    clearTimeout(pending.timer);
-    const allowed = pending.reply(decision.decision === "allow" && !interrupted, decision.message);
-    // Grok's *_always options persist in its own project store. Cerium only grants once.
-    emit({ _tag: "PermissionResolved", requestId, decision: allowed ? "allow" : "deny", scope: "once" });
-  };
-  const expirePermissions = () => {
-    for (const id of permissions.keys()) resolve(id, { decision: "deny", scope: "once" });
-  };
-  const ask = (name: string, summary: string, input: unknown, reply: PendingPermission["reply"]) => {
-    const requestId = randomUUID();
-    const timer = setTimeout(
-      () => resolve(requestId, { decision: "deny", scope: "once" }),
-      APPROVAL_TIMEOUT_MS,
-    );
-    timer.unref();
-    permissions.set(requestId, { timer, reply });
-    emit({ _tag: "PermissionRequested", requestId, toolName: name, summary, input });
-  };
+  /** Calls the hook let through, which Grok's own permission request for the same call then repeats. */
+  const approvedCalls = new Map<string, string>();
+  const approvalKey = (name: string, input: unknown) => JSON.stringify([name, input]);
 
   const fromServer = (tool: string, names: ReadonlyArray<string>) =>
     tool.includes("__") && names.includes(tool.split("__", 1)[0] ?? "");
+  const runsFreely = (name: string) =>
+    READ_TOOLS.includes(name) || name === "search_tool" || fromServer(name, trustedNames);
   const acceptsTool = (name: string) =>
     !readOnly &&
     (CODING_TOOLS.includes(name) ||
@@ -204,7 +126,7 @@ export const startGrokSession = Effect.fn("GrokAdapter.startSession")(function* 
   // target and inline arguments, never an opaque file-backed target or a native tool via the wrapper.
   const toolTarget = (tool: string | undefined, input: unknown) => {
     if (tool !== "use_tool") return { name: tool, input };
-    const body = object(input);
+    const body = record(input);
     const target = string(body?.["tool_name"]);
     return {
       name:
@@ -214,200 +136,93 @@ export const startGrokSession = Effect.fn("GrokAdapter.startSession")(function* 
       input: body?.["tool_input"],
     };
   };
-  const approvalKey = (name: string, input: unknown) => JSON.stringify([name, input]);
-  const hookRequest = (id: RpcId, params: Incoming["params"]) => {
+
+  /** Grok's blocking `pre_tool_use` hook, which every tool call passes before it runs. */
+  const hook: RequestHandler = (id, params, session) => {
     const { name, input } = toolTarget(string(params["toolName"]), params["toolInput"]);
     const callId = string(params["toolUseId"]);
     if (
       params["hookCallbackId"] !== HOOK_ID ||
-      params["sessionId"] !== sessionId ||
-      turn === undefined ||
-      interrupted ||
+      !session.accepting(params) ||
       name === undefined ||
       callId === undefined
     ) {
-      client.respond(id, denyHook());
-      return;
+      return acp.respond(id, denyHook());
     }
-    if (READ_TOOLS.includes(name) || name === "search_tool" || fromServer(name, trustedNames)) {
+    if (runsFreely(name)) {
       approvedCalls.set(callId, approvalKey(name, input));
-      client.respond(id, continueHook);
-      return;
+      return acp.respond(id, continueHook);
     }
     // Grok can merge configured MCP tools even into curated profiles. Scope their execution here.
-    if (!acceptsTool(name)) {
-      client.respond(id, denyHook("This tool is outside the session's access policy."));
-      return;
-    }
-    if (fullAccess || options.access === "auto" || name === "todo_write") {
-      client.respond(id, continueHook);
-      return;
-    }
-    const summary = string(object(input)?.["command"]) ?? string(object(input)?.["description"]) ?? name;
-    ask(name, summary, input, (allow, message) => {
-      if (allow) approvedCalls.set(callId, approvalKey(name, input));
-      client.respond(id, allow ? continueHook : denyHook(message));
-      return allow;
+    if (!acceptsTool(name))
+      return acp.respond(id, denyHook("This tool is outside the session's access policy."));
+    if (fullAccess || options.access === "auto" || name === "todo_write")
+      return acp.respond(id, continueHook);
+    const body = record(input);
+    return session.ask({
+      id,
+      toolName: name,
+      summary: string(body?.["command"]) ?? string(body?.["description"]) ?? name,
+      input,
+      answer: ({ allow, message }) => {
+        if (allow) approvedCalls.set(callId, approvalKey(name, input));
+        return { allowed: allow, result: allow ? continueHook : denyHook(message) };
+      },
     });
   };
 
-  const nativePermission = (id: RpcId, params: Incoming["params"]) => {
-    const call = object(params["toolCall"]);
-    if (params["sessionId"] !== sessionId || turn === undefined || interrupted || call === undefined) {
-      client.respond(id, cancelPermission);
-      return;
-    }
-    const choices = array(params["options"]).map(object);
-    const reply = (allow: boolean) => {
-      if (interrupted) {
-        client.respond(id, cancelPermission);
-        return false;
-      }
-      const optionId = string(
-        choices.find((option) => option?.["kind"] === (allow ? "allow_once" : "reject_once"))?.["optionId"],
-      );
-      client.respond(
-        id,
-        optionId === undefined ? cancelPermission : { outcome: { outcome: "selected", optionId } },
-      );
-      return allow && optionId !== undefined;
-    };
-    const toolMeta = object(object(call["_meta"])?.["x.ai/tool"]);
+  /** ACP's own permission request, which Grok also sends for some calls the hook has seen. */
+  const permission: RequestHandler = (id, params, session) => {
+    const call = record(params["toolCall"]);
+    if (!session.accepting(params) || call === undefined) return acp.respond(id, cancelledOutcome);
+    const answer: ApprovalRequest["answer"] = answerOnce(onceOptions(params));
+    const toolMeta = record(record(call["_meta"])?.["x.ai/tool"]);
     const { name, input } = toolTarget(toolName(call), toolMeta?.["input"] ?? call["rawInput"]);
     const callId = string(call["toolCallId"]);
-    if (name === undefined) {
-      reply(false);
-    } else if (
-      READ_TOOLS.includes(name) ||
-      name === "search_tool" ||
-      fromServer(name, trustedNames) ||
+    const reply = (allow: boolean) => acp.respond(id, answer({ allow, cancelled: false }).result);
+    if (name === undefined) return reply(false);
+    if (
+      runsFreely(name) ||
       (callId !== undefined && approvedCalls.get(callId) === approvalKey(name, input))
     ) {
-      reply(true);
-    } else if (!acceptsTool(name)) {
-      reply(false);
-    } else {
-      ask(name, string(call["title"]) ?? name, input, reply);
+      return reply(true);
     }
+    if (!acceptsTool(name)) return reply(false);
+    return session.ask({ id, toolName: name, summary: string(call["title"]) ?? name, input, answer });
   };
 
-  client.receive(({ method, id, params }) => {
-    if (id !== undefined) {
-      if (method === "_x.ai/hooks/run" || method === "x.ai/hooks/run") hookRequest(id, params);
-      else if (method === "session/request_permission") nativePermission(id, params);
-      else client.unsupported(id);
-      return;
-    }
-    if (params["sessionId"] !== sessionId || method !== "session/update") return;
-    const update = object(params["update"]);
-    if (update !== undefined) turn?.update(update);
+  const session = yield* makeAcpSession({
+    acp,
+    sessionId,
+    translator: grokTranslator(),
+    permission,
+    requests: { "_x.ai/hooks/run": hook, "x.ai/hooks/run": hook },
+    approvalTimeout: APPROVAL_TIMEOUT,
+    closeOnExit: false,
+    idleExitMessage: "The Grok Build process exited.",
+    onTurnEnd: () => approvedCalls.clear(),
   });
 
-  yield* Effect.addFinalizer(() =>
-    Effect.sync(() => {
-      interrupted = true;
-      expirePermissions();
-      Queue.endUnsafe(events);
-    }),
-  );
-  const emitError = (message: string) =>
-    emit({ _tag: "AgentError", kind: "unknown", message, retryable: false });
-  yield* client.exited.pipe(
-    Effect.andThen(
-      Effect.sync(() => {
-        // An active prompt observes the same exit through its pending RPC request.
-        if (turn === undefined) {
-          emitError("The Grok Build process exited.");
-          Queue.endUnsafe(events);
-        }
-      }),
-    ),
-    Effect.forkScoped,
-  );
-  emit({
+  yield* config.set("model", options.model);
+  if (options.effort !== undefined) yield* config.set("reasoning_effort", options.effort);
+  yield* session.emit({
     _tag: "SessionStarted",
-    provider: "grok",
+    provider: PROVIDER,
     providerSessionId: sessionId,
     model: options.model,
     ...(options.effort === undefined ? {} : { effort: options.effort }),
   });
 
+  const model = () => config.current("model")?.currentValue ?? options.model;
   return {
-    events: Stream.fromQueue(events),
-    send: (text, extras) =>
-      Effect.gen(function* () {
-        if (client.isClosed()) return yield* failure("The Grok Build ACP connection closed");
-        if (turn !== undefined) return yield* failure("Grok Build already has a turn in flight");
-        if (extras?.images?.length && object(capabilities?.["promptCapabilities"])?.["image"] !== true) {
-          return yield* failure("This version of Grok Build does not accept ACP images");
-        }
-        const currentTurn = new TurnUpdates(emit);
-        turn = currentTurn;
-        interrupted = false;
-        const prompt = [
-          { type: "text", text },
-          ...(extras?.images ?? []).map(({ data, mediaType }) => ({
-            type: "image",
-            data,
-            mimeType: mediaType,
-          })),
-        ];
-        yield* client
-          .request("session/prompt", {
-            sessionId,
-            prompt,
-            _meta: { verbatim: true, promptId: extras?.turnId },
-          })
-          .pipe(
-            Effect.match({
-              onSuccess: (response) => {
-                currentTurn.flush();
-                expirePermissions();
-                turn = undefined;
-                approvedCalls.clear();
-                const usage = usageFromPrompt(response);
-                if (usage !== undefined) emit(usage);
-                const reason = object(response)?.["stopReason"];
-                if (reason === "cancelled" || interrupted) {
-                  emit({ _tag: "TurnCompleted", stopReason: "interrupted" });
-                } else if (reason === "max_turn_requests" || reason === "max_tokens") {
-                  emit({ _tag: "TurnCompleted", stopReason: "maxTurns" });
-                } else if (reason === "end_turn" || reason === "stop_sequence") {
-                  emit({ _tag: "TurnCompleted", stopReason: "completed" });
-                } else {
-                  emitError("Grok Build stopped before completing the turn.");
-                  emit({ _tag: "TurnCompleted", stopReason: "error" });
-                }
-              },
-              onFailure: (error) => {
-                currentTurn.flush();
-                expirePermissions();
-                turn = undefined;
-                approvedCalls.clear();
-                if (error.cause === -32000)
-                  emit({
-                    _tag: "AuthRequired",
-                    provider: "grok",
-                    reason: SIGNED_OUT,
-                    loginCommand: LOGIN_COMMAND,
-                  });
-                else if (!interrupted) emitError(error.message);
-                emit({ _tag: "TurnCompleted", stopReason: interrupted ? "interrupted" : "error" });
-                if (client.isClosed()) Queue.endUnsafe(events);
-              },
-            }),
-            Effect.forkIn(scope, { startImmediately: true }),
-            Effect.asVoid,
-          );
-      }),
-    respondToPermission: (requestId, decision) => Effect.sync(() => resolve(requestId, decision)),
-    interrupt: Effect.suspend((): Effect.Effect<void, HarnessFailure> => {
-      if (turn === undefined) return Effect.void;
-      interrupted = true;
-      expirePermissions();
-      return client.notify("session/cancel", { sessionId });
-    }),
-    setModel: (next) => configure("model", next),
-    setEffort: (effort) => configure("reasoning_effort", effort),
+    events: session.events,
+    send: (text: string, extras?: TurnExtras) =>
+      session.send(text, extras, () =>
+        Effect.succeed({ model: model(), meta: { verbatim: true, promptId: extras?.turnId } }),
+      ),
+    respondToPermission: session.respondToPermission,
+    interrupt: session.interrupt,
+    setModel: (next) => session.whenIdle(config.set("model", next)),
+    setEffort: (effort) => session.whenIdle(config.set("reasoning_effort", effort)),
   } satisfies AgentSession;
 });

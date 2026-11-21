@@ -8,13 +8,20 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Added
 
+- GitHub Copilot gains local session import, forks, side questions, compaction, todos, background task controls, and Hub support. Muse gains native forks and Hub support. The composer lists skills for Copilot, Muse, and Cursor. Cursor can toggle MCP servers per project, Codex can stop individual background commands, and OpenCode gains side questions and background job tracking with shell cancellation.
+
+- Nightly builds show a small superscript NIGHTLY beside the Cerium brand in the desktop titlebar only. Hovering the mark shows the exact build version.
 - Devin joins the supported harnesses through the Devin CLI's ACP server (`devin acp`), with its whole model catalog, per-model effort and speed, approvals, read-only chat, session resume and Cerium's MCP bus.
 
 ### Changed
 
 - The workspace, message composer, and settings Hub now use smaller modules for navigation, message controls, MCP servers, and skills.
+- The orchestrator's 5,700-line service is split into focused modules (sessions, turns, limits, rewinding, threads, the agent team and more) around a shared context, and the backend's branch, pull request and snapshot services each move their git and GitHub parsing into modules of their own. Nothing changes in how Cerium behaves.
+- The effort router, the advisor and composer autocomplete are no longer experimental or beta. The effort router still runs only on your own OpenRouter key: saving a key that checks out now turns it on, the key's row links to OpenRouter's key page, and a router left on without a key says so. The advisor's model row says when no model is chosen or the chosen one is no longer offered. Composer autocomplete moves to Settings → Keyboard, so the web client can turn it off too.
 
 - A new set of themes replaces every earlier one, Cerium included. Settings → Appearance and the welcome now offer eleven, each in dark and light, and they differ in more than hue: how deep the dark glass sits, how much colour the glass carries and how much of the desktop shows through, whether the text is tinted, whether the accent is pale or deep, and whether the code is muted, pastel or vivid. Cerium is now warm charcoal with a champagne accent (deep bronze in light mode). Ink is pure monochrome, Paper is cream with fountain-pen blue, Dusk is soft and lifted, and Blush, Ember, Moss, Phosphor, Lagoon, Midnight and Neon go round the colour wheel. Each theme shows a short description under its name, and Dusk, Blush, Neon and Phosphor tune the terminal's colours too. A window set to a removed theme opens in Cerium. Desktop still follows the wallpaper and accent colour.
+
+- Antigravity, Devin and Grok Build now share one ACP client, `@cerium/acp`, for their connection, sessions, approvals and event translation, so they behave the same where ACP does. A stray non-JSON line from an agent no longer ends its session. Grok Build reports context usage, closes tool calls left running when a turn ends, and refuses model changes mid-turn like the others. An interrupted Antigravity turn always shows as interrupted.
 
 - The website loads its animated homepage sooner and reuses downloaded assets on return visits.
 

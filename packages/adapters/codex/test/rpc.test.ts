@@ -22,6 +22,9 @@ const serverScript = `
       console.log(JSON.stringify(error
         ? { id, error: { code: -32600, message: 'askForApproval.granular requires experimentalApi capability' } }
         : { id, result: { thread: { id: 'read-only-thread' } } }));
+    } else if (method === 'thread/backgroundTerminals/terminate') {
+      const terminated = experimental && params.threadId === 'read-only-thread' && params.processId === 'terminal-1';
+      console.log(JSON.stringify({ id, result: { terminated } }));
     }
   });
 `;
@@ -54,5 +57,10 @@ it.live("negotiates the capability required to start read-only Codex threads", (
       approvalsReviewer: policy.approvalsReviewer,
     });
     assert.equal(response.thread.id, "read-only-thread");
+    const stopped = yield* server.request("thread/backgroundTerminals/terminate", {
+      threadId: response.thread.id,
+      processId: "terminal-1",
+    });
+    assert.equal(stopped.terminated, true);
   }).pipe(Effect.scoped, Effect.timeout("10 seconds"), Effect.provide(NodeServices.layer)),
 );

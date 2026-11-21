@@ -46,7 +46,7 @@ import {
   SettingsSection,
   SettingsSwitch,
 } from "./parts.tsx";
-import { autocompleteAtom, editorAtom } from "./preferences.ts";
+import { editorAtom } from "./preferences.ts";
 import { RowButton } from "./ToolRow.tsx";
 import { DEFAULT_LIMIT_POLICY, limitLabel, limitPolicies } from "./limitPolicy.ts";
 import { useSetting } from "./useSetting.ts";
@@ -100,11 +100,6 @@ export function GeneralSettings() {
           </SettingsList>
         </SettingsSection>
       ) : null}
-      <SettingsSection title="Composer">
-        <SettingsList>
-          <AutocompleteRow />
-        </SettingsList>
-      </SettingsSection>
       {local ? (
         <SettingsSection title="Storage">
           <SettingsList>
@@ -139,31 +134,6 @@ function ChromiumNoticesSection({ open }: { readonly open: () => Promise<void> }
         />
       </SettingsList>
     </SettingsSection>
-  );
-}
-
-/** Beta: the message box suggests a follow-up after a turn; Tab takes it. Kept in this window. */
-function AutocompleteRow() {
-  const [autocomplete, setAutocomplete] = useAtom(autocompleteAtom);
-  return (
-    <SettingsRow
-      label={
-        <span className="flex items-center gap-2">
-          Autocomplete
-          <span className="rounded-[5px] border border-line-subtle px-1.5 text-caption leading-snug text-fg-tertiary">
-            Beta
-          </span>
-        </span>
-      }
-      hint="Suggests what to send next once a turn finishes. Press Tab to use it."
-      control={(labelledBy) => (
-        <SettingsSwitch
-          checked={autocomplete === "on"}
-          onCheckedChange={(next) => setAutocomplete(next ? "on" : "off")}
-          labelledBy={labelledBy}
-        />
-      )}
-    />
   );
 }
 

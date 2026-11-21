@@ -30,7 +30,9 @@ export const NATIVE_QUESTION_TOOLS = ["askQuestion"] as const;
 export const cursorManifest: CapabilityManifest = {
   provider: "cursor",
   // The harness is the pinned `@cursor/sdk`, not the user's CLI, so it updates with Cerium.
-  // Local agents resume from the SDK's own store; the SDK has no fork.
+  // Local agents resume from the SDK's workspace-scoped store. Its listing and message APIs only
+  // see SDK agents, while the standalone CLI's `ls` is an interactive picker for its own chats.
+  // The local SDK has no fork, on-demand compaction, or background-task control.
   session: { resume: true, fork: false },
   // Model and effort ride on each `send()`, so they switch from the next turn. Whether an effort
   // change keeps the prompt cache has not been measured.

@@ -1,190 +1,11 @@
 import { NodeServices } from "@effect/platform-node";
-import type { AgentSession, SessionOptions } from "@cerium/harness";
-import { Effect, Fiber, FileSystem, Layer, Stream } from "effect";
-import { createServer } from "node:http";
+import type { SessionOptions } from "@cerium/harness";
+import { Effect, FileSystem, Layer } from "effect";
 import { delimiter, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { expect, it } from "vite-plus/test";
 
 import { CopilotAdapter } from "../src/index.ts";
-
-const fixture = fileURLToPath(new URL("./fixtures/copilot.mjs", import.meta.url));
-const liveCli = process.env["CERIUM_COPILOT_E2E_CLI"];
-
-interface ModelRequest {
-  model: string;
-  stream?: boolean;
-  messages: ReadonlyArray<{ role: string; content: unknown }>;
-  tools?: ReadonlyArray<{ function: { name: string } }>;
-}
-
-const startModel = (calls: Array<ModelRequest>) =>
-  Effect.suspend(() => {
-    const server = modelServer(calls);
-    return Effect.acquireRelease(
-      Effect.promise(
-        () =>
-          new Promise<string>((resolve) => {
-            server.listen(0, "127.0.0.1", () => {
-              const address = server.address();
-              if (address !== null && typeof address !== "string")
-                resolve(`http://127.0.0.1:${address.port}/v1`);
-            });
-          }),
-      ),
-      () =>
-        Effect.sync(() => {
-          server.closeAllConnections();
-          server.close();
-        }),
-    );
-  });
-
-const image = {
-  path: "fixture.png",
-  mediaType: "image/png",
-  data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jf1sAAAAASUVORK5CYII=",
-};
-
-function modelServer(calls: Array<ModelRequest>) {
-  return createServer(async (request, response) => {
-    const body: Array<Uint8Array> = [];
-    for await (const chunk of request) body.push(chunk);
-    const input: unknown = body.length === 0 ? null : JSON.parse(Buffer.concat(body).toString("utf8"));
-    if (request.url === "/mcp") {
-      if (request.method !== "POST") {
-        response.writeHead(405).end();
-        return;
-      }
-      const rpc = input as { id?: number; method: string; params?: { protocolVersion: string } };
-      if (rpc.id === undefined) {
-        response.writeHead(202).end();
-        return;
-      }
-      const results = {
-        initialize: {
-          protocolVersion: rpc.params?.protocolVersion,
-          capabilities: { tools: {} },
-          serverInfo: { name: "fixture-mcp", version: "1.0.0" },
-        },
-        "tools/list": {
-          tools: [{ name: "echo", description: "Echo a fixture response", inputSchema: { type: "object" } }],
-        },
-        "tools/call": { content: [{ type: "text", text: "fixture MCP reply" }] },
-      };
-      response.writeHead(200, { "Content-Type": "application/json" });
-      response.end(
-        JSON.stringify({
-          jsonrpc: "2.0",
-          id: rpc.id,
-          result: results[rpc.method as keyof typeof results] ?? {},
-        }),
-      );
-      return;
-    }
-    const call = input as ModelRequest;
-    calls.push(call);
-    const latest = call.messages.findLast(({ role }) => role === "user");
-    const file = /write ([a-z-]+\.txt)/.exec(JSON.stringify(latest?.content ?? ""))?.[1];
-    const write =
-      file !== undefined &&
-      call.tools?.some(({ function: tool }) => tool.name === "create") === true &&
-      call.messages.at(-1)?.role !== "tool";
-    if (call.stream !== true) {
-      response.writeHead(200, { "Content-Type": "application/json" });
-      response.end(
-        JSON.stringify({
-          id: "chat_helper",
-          object: "chat.completion",
-          created: 1,
-          model: call.model,
-          choices: [
-            { index: 0, finish_reason: "stop", message: { role: "assistant", content: "fixture reply" } },
-          ],
-          usage: { prompt_tokens: 24, completion_tokens: 3, total_tokens: 27 },
-        }),
-      );
-      return;
-    }
-    const echo =
-      !write &&
-      JSON.stringify(latest?.content ?? "").includes("ping bus") &&
-      call.tools?.some(({ function: tool }) => tool.name === "cerium-echo") === true &&
-      call.messages.at(-1)?.role !== "tool";
-    const tool = write
-      ? { name: "create", arguments: JSON.stringify({ path: file, file_text: "fixture" }) }
-      : echo
-        ? { name: "cerium-echo", arguments: "{}" }
-        : undefined;
-    const chunks = [
-      { choices: [{ index: 0, delta: { role: "assistant" } }] },
-      {
-        choices: [
-          {
-            index: 0,
-            delta: tool
-              ? {
-                  tool_calls: [
-                    {
-                      index: 0,
-                      id: `call_${calls.length}`,
-                      type: "function",
-                      function: tool,
-                    },
-                  ],
-                }
-              : { content: "fixture reply" },
-          },
-        ],
-      },
-      { choices: [{ index: 0, delta: {}, finish_reason: tool ? "tool_calls" : "stop" }] },
-      {
-        choices: [],
-        usage: {
-          prompt_tokens: 24,
-          completion_tokens: 3,
-          total_tokens: 27,
-          prompt_tokens_details: { cached_tokens: 4 },
-        },
-      },
-    ];
-    response.writeHead(200, { "Content-Type": "text/event-stream" });
-    for (const chunk of chunks) {
-      response.write(
-        `data: ${JSON.stringify({
-          id: `chat_fixture_${calls.length}`,
-          object: "chat.completion.chunk",
-          created: 1,
-          model: call.model,
-          ...chunk,
-        })}\n\n`,
-      );
-    }
-    response.end("data: [DONE]\n\n");
-  });
-}
-
-const turn = (
-  session: AgentSession,
-  prompt: string,
-  decision?: "allow" | "deny" | "interrupt",
-  extras?: Parameters<AgentSession["send"]>[1],
-) =>
-  Effect.gen(function* () {
-    const observer = yield* session.events.pipe(
-      Stream.tap(({ payload }) => {
-        if (payload._tag !== "PermissionRequested") return Effect.void;
-        if (decision === "interrupt") return session.interrupt;
-        if (decision === undefined) throw new Error(`Unexpected prompt ${payload.summary}`);
-        return session.respondToPermission(payload.requestId, { decision, scope: "once" });
-      }),
-      Stream.takeUntil(({ payload }) => payload._tag === "TurnCompleted"),
-      Stream.runCollect,
-      Effect.forkScoped,
-    );
-    yield* session.send(prompt, extras);
-    return (yield* Fiber.join(observer)).map(({ payload }) => payload);
-  });
+import { fixture, image, liveCli, startModel, turn, withVariables, type ModelRequest } from "./support.ts";
 
 it.skipIf(process.platform === "win32")(
   "drives Copilot through the installed-executable adapter boundary",
@@ -228,23 +49,7 @@ it.skipIf(process.platform === "win32")(
           CERIUM_COPILOT_E2E_MODEL_URL: modelUrl,
           CERIUM_COPILOT_E2E_LOGOUT: "true",
         };
-        yield* Effect.acquireRelease(
-          Effect.sync(() => {
-            const saved = Object.fromEntries(Object.keys(variables).map((name) => [name, process.env[name]]));
-            for (const [name, value] of Object.entries(variables)) {
-              if (value === undefined) delete process.env[name];
-              else process.env[name] = value;
-            }
-            return saved;
-          }),
-          (saved) =>
-            Effect.sync(() => {
-              for (const [name, value] of Object.entries(saved)) {
-                if (value === undefined) delete process.env[name];
-                else process.env[name] = value;
-              }
-            }),
-        );
+        yield* withVariables(variables);
 
         const adapter = yield* CopilotAdapter;
         expect(yield* adapter.probe).toMatchObject({
@@ -342,8 +147,37 @@ it.skipIf(process.platform === "win32")(
         );
 
         if (liveCli) {
+          const { hub } = adapter;
+          if (!adapter.fork || !adapter.readSession || !adapter.sideQuestion || !hub?.status)
+            throw new Error("Missing Copilot capability");
+          const forked = yield* adapter.fork({ cwd, sessionId, through: { index: 1, id: "fixture-turn" } });
+          const history = yield* adapter.readSession({ cwd, id: forked, title: "Fork", updatedAt: 0 });
+          expect(history.turns.map(({ prompt }) => prompt)).toEqual([
+            "write denied.txt",
+            "write allowed.txt",
+          ]);
+          expect(
+            yield* adapter.sideQuestion({
+              cwd,
+              sessionId,
+              model: options.model,
+              instructions: "Answer this question without changes.",
+              prompt: "What happened?",
+            }),
+          ).toBe("fixture reply");
+          expect(yield* hub.status(cwd)).toContainEqual(
+            expect.objectContaining({
+              name: "personal",
+              connection: "connected",
+            }),
+          );
           expect(calls[0]?.tools?.map(({ function: tool }) => tool.name)).not.toContain("personal-echo");
-          const readOnly = calls.at(-1)?.tools?.map(({ function: tool }) => tool.name) ?? [];
+          const readOnly =
+            calls
+              .findLast(({ messages }) =>
+                (JSON.stringify(messages.at(-1)?.content) ?? "").includes("write read-only.txt"),
+              )
+              ?.tools?.map(({ function: tool }) => tool.name) ?? [];
           expect(readOnly.sort()).toEqual(["cerium-echo", "glob", "grep", "view"]);
           yield* Effect.scoped(
             Effect.gen(function* () {

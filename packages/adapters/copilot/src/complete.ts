@@ -1,4 +1,4 @@
-import type { CompletionRequest } from "@cerium/harness";
+import type { AgentSession, CompletionRequest, CompletionUsage } from "@cerium/harness";
 import type { ModelInfo } from "@cerium/protocol";
 import { Effect, Stream } from "effect";
 import { resolve } from "node:path";
@@ -23,13 +23,22 @@ export const completeWithCopilot = Effect.fn("CopilotAdapter.complete")(function
       ...(effort === undefined ? {} : { effort }),
     },
     models,
-    completionInstructions: request.instructions,
+    answering: { instructions: request.instructions, conversation: false },
   });
+  return yield* answer(session, request.prompt, request.onUsage, "its completion");
+});
 
+/** Sends an answering session its one prompt and resolves with the reply, reporting its usage. */
+export const answer = Effect.fn("CopilotAdapter.answer")(function* (
+  session: AgentSession,
+  prompt: string,
+  onUsage: ((usage: CompletionUsage) => void) | undefined,
+  what: string,
+) {
   let text = "";
   let error: string | undefined;
   let reported = false;
-  const terminal = yield* session.send(request.prompt).pipe(
+  const terminal = yield* session.send(prompt).pipe(
     Effect.andThen(
       session.events.pipe(
         Stream.map(({ payload }) => payload),
@@ -49,7 +58,7 @@ export const completeWithCopilot = Effect.fn("CopilotAdapter.complete")(function
               case "UsageReported": {
                 const { inputTokens, outputTokens, cachedInputTokens, unreported } = payload;
                 reported = true;
-                request.onUsage?.({
+                onUsage?.({
                   inputTokens,
                   outputTokens,
                   ...(cachedInputTokens === undefined ? {} : { cachedInputTokens }),
@@ -66,11 +75,11 @@ export const completeWithCopilot = Effect.fn("CopilotAdapter.complete")(function
     ),
     Effect.timeoutOrElse({
       duration: "90 seconds",
-      orElse: () => Effect.fail(failure("GitHub Copilot CLI did not finish its completion")(undefined)),
+      orElse: () => Effect.fail(failure(`GitHub Copilot CLI did not finish ${what}`)(undefined)),
     }),
     Effect.ensuring(
       Effect.sync(() => {
-        if (!reported) request.onUsage?.({ inputTokens: 0, outputTokens: 0, unreported: true });
+        if (!reported) onUsage?.({ inputTokens: 0, outputTokens: 0, unreported: true });
       }),
     ),
   );

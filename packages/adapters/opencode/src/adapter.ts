@@ -17,6 +17,7 @@ import { readCatalog, toModelInfos } from "./models.ts";
 import { probeOpenCode, readAuth } from "./probe.ts";
 import { startOpenCodeSession } from "./session.ts";
 import { listOpenCodeSessions, readOpenCodeSession } from "./sessions.ts";
+import { askOpenCodeSideQuestion } from "./sideQuestion.ts";
 import { listOpenCodeSkills } from "./skills.ts";
 import { readOpenCodeUsage } from "./usage.ts";
 
@@ -136,6 +137,12 @@ export class OpenCodeAdapter extends Context.Service<OpenCodeAdapter, HarnessAda
           ready.pipe(
             Effect.flatMap((executablePath) =>
               withServer(executablePath, (client) => forkOpenCodeSession(client, request)),
+            ),
+          ),
+        sideQuestion: (request) =>
+          ready.pipe(
+            Effect.flatMap((executablePath) =>
+              withServer(executablePath, (client) => askOpenCodeSideQuestion(client, request)),
             ),
           ),
         listSessions: ready.pipe(

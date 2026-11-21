@@ -69,7 +69,7 @@ export class EffortRouter extends Context.Service<
   {
     readonly decider: EffortDecider["Service"];
     readonly status: Effect.Effect<EffortRouterStatus, EffortDecisionError>;
-    /** Checks the key with one decision, then keeps it. */
+    /** Checks the key with one decision, then keeps it and turns the router on. */
     save(key: string): Effect.Effect<EffortRouterStatus, EffortDecisionError>;
     /** Forgets the key and turns the router off. */
     readonly remove: Effect.Effect<EffortRouterStatus, EffortDecisionError>;
@@ -196,6 +196,15 @@ export class EffortRouter extends Context.Service<
         return { ...(key === undefined ? {} : { key: { last4: last4(key) } }), ...spend };
       });
 
+      const setEnabled = (enabled: boolean) =>
+        Effect.gen(function* () {
+          const { effortRouter } = yield* settings.get;
+          if (effortRouter.enabled === enabled) return;
+          yield* settings
+            .update({ effortRouter: { ...effortRouter, enabled } })
+            .pipe(Effect.mapError((error) => new EffortDecisionError({ message: error.message })));
+        });
+
       const save = (given: string) =>
         Effect.gen(function* () {
           const key = given.trim();
@@ -205,6 +214,8 @@ export class EffortRouter extends Context.Service<
             .write(key)
             .pipe(Effect.mapError((error) => new EffortDecisionError({ message: error.message })));
           yield* Ref.set(loaded, Option.some(key));
+          // A key is saved to be used: it turns the router on, as removing it turns the router off.
+          yield* setEnabled(true);
           return yield* status;
         });
 
@@ -213,12 +224,7 @@ export class EffortRouter extends Context.Service<
           .write(undefined)
           .pipe(Effect.mapError((error) => new EffortDecisionError({ message: error.message })));
         yield* Ref.set(loaded, Option.some(undefined));
-        const { effortRouter } = yield* settings.get;
-        if (effortRouter.enabled) {
-          yield* settings
-            .update({ effortRouter: { ...effortRouter, enabled: false } })
-            .pipe(Effect.mapError((error) => new EffortDecisionError({ message: error.message })));
-        }
+        yield* setEnabled(false);
         return yield* status;
       });
 
