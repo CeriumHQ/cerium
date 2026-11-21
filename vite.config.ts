@@ -15,6 +15,10 @@ const ignored = [
 /** Tests that drive a real Edge or Chrome, which can take most of a minute to start on a busy machine. */
 const browserTests = ["packages/browser/test/page.test.ts", "packages/artifacts/test/preview.test.ts"];
 
+// Restarting a listener must reacquire its previous port. A released ephemeral port is available
+// to every other socket on the machine, so run this fixture after the parallel projects finish.
+const loopbackTests = ["apps/backend/test/linkHandoff.test.ts"];
+
 /** GitHub Actions sets CI. */
 const ci = process.env["CI"] === "true";
 
@@ -89,7 +93,7 @@ export default defineConfig({
             "apps/**/test/**/*.test.ts",
             "scripts/test/**/*.test.ts",
           ],
-          exclude: [...ignored, ...browserTests],
+          exclude: [...ignored, ...browserTests, ...loopbackTests],
           maxWorkers: "100%",
         },
       },
@@ -100,6 +104,15 @@ export default defineConfig({
           include: browserTests,
           // Run after the unit project with a real browser dedicated to each file.
           sequence: { groupOrder: 1 },
+          maxWorkers: 1,
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: "loopback",
+          include: loopbackTests,
+          sequence: { groupOrder: 2 },
           maxWorkers: 1,
         },
       },
