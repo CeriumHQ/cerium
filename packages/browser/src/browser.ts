@@ -265,7 +265,14 @@ export const launchBrowser = async (options: {
   let browserSocket: string | undefined;
   const close = async () => {
     await shut({ socket: browserSocket, profile }, child).catch(() => undefined);
-    void removeProfile(profile).catch(() => undefined);
+    // Chromium can acknowledge Browser.close before flushing its profile. Removing it while
+    // the process is alive lets that last write recreate a partially deleted profile.
+    const cleanup = () => void removeProfile(profile).catch(() => undefined);
+    if (child.pid !== undefined && child.exitCode === null && child.signalCode === null) {
+      child.once("exit", cleanup);
+    } else {
+      cleanup();
+    }
   };
   const portFile = join(profile, "DevToolsActivePort");
   // Edge's first start on a loaded two-core CI runner takes up to 20 s, so the wait leaves room.

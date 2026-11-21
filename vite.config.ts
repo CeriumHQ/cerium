@@ -79,11 +79,9 @@ export default defineConfig({
         test: {
           name: "browser",
           include: browserTests,
-          // After the rest, one file at a time, so no other test slows the browser's start. In CI a
-          // failure gets a second try, and the job summary lists the tests that needed one.
+          // Run after the unit project with a real browser dedicated to each file.
           sequence: { groupOrder: 1 },
           maxWorkers: 1,
-          retry: ci ? 1 : 0,
         },
       },
     ],

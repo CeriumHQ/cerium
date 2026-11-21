@@ -22,6 +22,9 @@ describe("key presses", () => {
 });
 
 const browser = findBrowser();
+if (process.env["CI"] === "true" && browser === undefined) {
+  throw new Error("The CI browser suite requires Edge or Chrome on this runner.");
+}
 
 /**
  * Runs `test` on a browser of its own and closes it after. When the test fails and
