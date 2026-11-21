@@ -34,6 +34,9 @@
       "path": "../../packages/adapters/grok"
     },
     {
+      "path": "../../packages/adapters/devin"
+    },
+    {
       "path": "../../packages/adapters/claude"
     },
     {

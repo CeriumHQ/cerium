@@ -288,4 +288,5 @@ export const providerName: Record<ProviderId, string> = {
   antigravity: "Antigravity",
   copilot: "Copilot",
   grok: "Grok Build",
+  devin: "Devin",
 };

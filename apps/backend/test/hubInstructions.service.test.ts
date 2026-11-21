@@ -34,7 +34,7 @@ const find = (files: ReadonlyArray<HubInstructionFile>, path: string) => {
 const review = ({ path, revision }: HubInstructionFile) => ({ path, revision });
 
 describe("Hub project instructions", () => {
-  it.effect("discovers standard files and supplemental rules for all eight adapters", () =>
+  it.effect("discovers standard files and supplemental rules for all nine adapters", () =>
     Effect.gen(function* () {
       const { project, fs, at, read } = yield* fixture;
       yield* fs.makeDirectory(at(".cursor/rules/nested"), { recursive: true });
@@ -54,7 +54,7 @@ describe("Hub project instructions", () => {
       const canonical = find(files, AGENTS);
       assert.sameMembers(
         [...canonical.providers],
-        ["antigravity", "claude", "codex", "copilot", "cursor", "grok", "muse", "opencode"],
+        ["antigravity", "claude", "codex", "copilot", "cursor", "devin", "grok", "muse", "opencode"],
       );
       assert.deepEqual(find(files, COPILOT).providers, ["copilot"]);
       assert.strictEqual(canonical.content, "Common guidance\r\n");

@@ -3,6 +3,7 @@ import { ClaudeAdapter } from "@cerium/adapter-claude";
 import { CodexAdapter } from "@cerium/adapter-codex";
 import { CopilotAdapter } from "@cerium/adapter-copilot";
 import { CursorAdapter } from "@cerium/adapter-cursor/adapter";
+import { DevinAdapter } from "@cerium/adapter-devin";
 import { GrokAdapter } from "@cerium/adapter-grok";
 import { MuseAdapter } from "@cerium/adapter-muse/adapter";
 import { OpenCodeAdapter } from "@cerium/adapter-opencode";
@@ -93,6 +94,7 @@ export const AdaptersLive = Layer.effect(
       yield* AntigravityAdapter,
       yield* CopilotAdapter,
       yield* GrokAdapter,
+      yield* DevinAdapter,
     ];
     return new Map(adapters.map((adapter) => [adapter.provider, adapter]));
   }),
@@ -107,6 +109,7 @@ export const AdaptersLive = Layer.effect(
       AntigravityAdapter.layer,
       CopilotAdapter.layer,
       GrokAdapter.layer,
+      DevinAdapter.layer,
     ),
   ),
 );
