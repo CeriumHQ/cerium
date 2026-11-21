@@ -203,16 +203,23 @@
     margin-top: calc(var(--md-gap) * 1.25);
   }
 
-  /* Tables: rows ruled lightly, the header set apart by its weight and a firmer rule. */
+  /*
+   * Tables: rows ruled lightly, the header set apart by its weight and a firmer rule. A table is as
+   * wide as what it holds, up to the column: stretched across it, a short table's values sat a
+   * hand's width from the rows they belong to.
+   */
+  .md :where([data-md="table"]) {
+    width: fit-content;
+    max-width: 100%;
+  }
   .md :where([data-md="table"] table) {
-    width: 100%;
     border-collapse: collapse;
     font-size: 0.93em;
     font-variant-numeric: tabular-nums;
   }
   .md :where([data-md="table"] th) {
     border-bottom: 1px solid var(--line-strong);
-    padding: 0.45em 1em 0.5em 0;
+    padding: 0.45em 2em 0.5em 0;
     text-align: left;
     font-size: 0.93em;
     font-weight: 500;
@@ -221,7 +228,7 @@
   }
   .md :where([data-md="table"] td) {
     border-bottom: 1px solid var(--line-subtle);
-    padding: 0.5em 1em 0.5em 0;
+    padding: 0.5em 2em 0.5em 0;
     vertical-align: top;
   }
   .md :where([data-md="table"] :is(th, td):last-child) {

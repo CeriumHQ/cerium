@@ -9,9 +9,10 @@ import {
   SquareArrowOutUpRight,
   type LucideIcon,
 } from "lucide-react";
-import { memo, useContext, useState, type CSSProperties, type ReactNode } from "react";
+import { Fragment, memo, useContext, useState, type CSSProperties, type ReactNode } from "react";
 
 import { revealPlace, shellBridge } from "../../backend/shell.ts";
+import { FileIcon } from "../../components/FileIcon.tsx";
 import {
   FileImageThumb,
   ImageThumb,
@@ -21,6 +22,8 @@ import {
 import { ContextMenuArea, MenuItem, MenuSeparator } from "../../components/ui/Menu.tsx";
 import { useArrivals, useChanged } from "../../lib/motion.ts";
 import { useEditor } from "../editor/useEditor.ts";
+import { LineText } from "../viewer/CodeView.tsx";
+import { useHighlightRange, useHighlightSource } from "../viewer/highlight.ts";
 import { CopyButton } from "./CopyButton.tsx";
 import { EditDiff, editCounts } from "./EditDiff.tsx";
 import { WorkspaceFolder } from "./FileChip.tsx";
@@ -33,6 +36,7 @@ import {
   exitCodeOf,
   hasToolMenu,
   outputText,
+  readView,
   sameTool,
   shownImages,
   summarizeTools,
@@ -40,6 +44,7 @@ import {
   toolInputView,
   toolMenuPlan,
   withoutExitLine,
+  type ReadView,
   type ToolBlock,
   type ToolImage,
 } from "./tools.ts";
@@ -119,6 +124,7 @@ export function ToolRun({
   tools,
   timings,
   live,
+  bare = false,
   activity,
   headerClass = "",
   headerStyle,
@@ -129,6 +135,8 @@ export function ToolRun({
   /** Each step's, its thoughts' as well as its calls'. */
   timings: ReadonlyArray<Timing>;
   live: boolean;
+  /** The only run of its work, whose header already counts it: its steps show with no line of its own. */
+  bare?: boolean;
   activity: AgentActivity;
   headerClass?: string;
   headerStyle?: CSSProperties | undefined;
@@ -142,7 +150,7 @@ export function ToolRun({
   };
   const interrupted = tools.filter((tool) => tool.status === "running" && activity !== "running").length;
   const images = tools.flatMap(shownImages);
-  const open = toggled ?? live;
+  const open = bare || (toggled ?? live);
   const { trigger, panel } = useWorkFocus(open);
   const previewed = images.length <= PREVIEWED ? images : images.slice(0, PREVIEWED - 1);
   const starts = timings.flatMap((step) => (step.startedAt === undefined ? [] : [step.startedAt]));
@@ -153,7 +161,7 @@ export function ToolRun({
     <Collapsible.Root open={open} onOpenChange={setToggled}>
       <Collapsible.Trigger
         ref={trigger}
-        className={`group flex max-w-full min-w-0 items-center gap-2 text-left text-meta text-fg-tertiary transition-colors hover:text-fg-secondary max-md:py-1 ${headerClass}`}
+        className={`group ${bare ? "hidden" : "flex"} max-w-full min-w-0 items-center gap-2 text-left text-meta text-fg-tertiary transition-colors hover:text-fg-secondary max-md:py-1 ${headerClass}`}
         style={headerStyle}
       >
         <Strip tools={tools} activity={activity} />
@@ -197,7 +205,7 @@ export function ToolRun({
         ref={panel}
         className="work-fold h-(--collapsible-panel-height) overflow-hidden data-ending-style:h-0 data-starting-style:h-0"
       >
-        <div data-trace className="flex flex-col pt-1.5">
+        <div data-trace className={`flex flex-col ${bare ? "" : "pt-1.5"}`}>
           {children}
         </div>
       </Collapsible.Panel>
@@ -432,6 +440,8 @@ function ToolBody({ tool }: { tool: ToolBlock }) {
   // A short command the row already shows whole needs no second copy.
   const { detail } = describeTool(tool);
   const saidAbove = isCommand && detail === input.text && input.text.length <= SHORT_COMMAND;
+  // A file that was read shows as the code it is, under its path.
+  const read = failed ? undefined : readView(tool);
   return (
     <div className="flex flex-col gap-2 pt-1 pr-1.5 pb-3 pl-2">
       {input?.kind === "diff" ? (
@@ -442,7 +452,7 @@ function ToolBody({ tool }: { tool: ToolBlock }) {
         saidAbove ? null : (
           <Pane label={input.label} text={input.text} />
         )
-      ) : input?.kind === "subject" ? (
+      ) : input?.kind === "subject" && input.text !== detail && read === undefined ? (
         <p className="font-mono text-meta leading-relaxed break-all text-fg-tertiary select-text">
           {input.text}
         </p>
@@ -454,12 +464,20 @@ function ToolBody({ tool }: { tool: ToolBlock }) {
           ))}
         </div>
       ) : null}
-      {said ? null : shown !== "" || exit !== undefined ? (
+      {said ? null : read !== undefined ? (
+        <Pane
+          label={input?.kind === "subject" ? input.text : read.path}
+          name="file"
+          text={read.text}
+          code={read}
+        />
+      ) : shown !== "" || exit !== undefined ? (
         <Pane
           label="Output"
           text={shown}
           failed={failed}
           badge={exit === undefined ? undefined : `Exit ${exit}`}
+          badgeFailed={exit !== undefined && exit !== 0}
         />
       ) : isCommand && tool.status === "done" && images.length === 0 ? (
         <p className="text-meta text-fg-tertiary">No output</p>
@@ -480,19 +498,28 @@ const MAX_CHARACTERS = 60_000;
 /**
  * A block of text from a tool call, with a copy button. A long one shows its first lines, or for a
  * failure its last, since that is where the error is, and says how many more there are; opened, it
- * scrolls.
+ * scrolls. A file's text is drawn as its language, each line beside its number.
  */
 function Pane({
   label,
+  name = label.toLowerCase(),
   text,
   failed = false,
   badge,
+  badgeFailed = false,
+  code,
 }: {
   label: string;
+  /** What its copy button copies, where the label isn't it: "file". */
+  name?: string;
   text: string;
   failed?: boolean;
   /** Said beside the label, such as a command's exit code. */
   badge?: string | undefined;
+  /** The badge says the call went wrong. */
+  badgeFailed?: boolean;
+  /** The text is this file's. */
+  code?: ReadView | undefined;
 }) {
   const [expanded, setExpanded] = useState(false);
   // A closing newline ends the last line rather than starting one more.
@@ -506,6 +533,14 @@ function Pane({
     folds && !expanded
       ? (failed ? lines.slice(-FOLDED_LINES) : lines.slice(0, FOLDED_LINES)).join("\n")
       : text,
+  );
+  // A file cut at the limit is no longer whole enough to read as code.
+  const file = clipped ? undefined : code;
+  const visible = folds && !expanded ? lines.slice(0, FOLDED_LINES) : lines;
+  const highlighted = useHighlightRange(
+    useHighlightSource(file === undefined ? undefined : text, file?.path ?? ""),
+    0,
+    visible.length,
   );
   const controls =
     folds || clipped ? (
@@ -528,14 +563,44 @@ function Pane({
   // A failure's earlier lines are above what it shows, so its controls sit in the header; the rest
   // of a long output is below, so its controls sit under it.
   return (
-    <Frame label={label} badge={badge} copy={text === "" ? undefined : text} aside={failed ? controls : null}>
+    <Frame
+      label={label}
+      name={name}
+      icon={file === undefined ? undefined : <FileIcon path={file.path} className="size-3.5 opacity-90" />}
+      badge={badge}
+      badgeFailed={badgeFailed}
+      copy={text === "" ? undefined : text}
+      aside={failed ? controls : null}
+    >
       {text === "" ? null : (
         <>
-          <pre
-            className={`scroll-thin overflow-auto px-3 pb-2 font-mono text-meta leading-relaxed break-words whitespace-pre-wrap text-fg-secondary select-text ${expanded ? "max-h-80" : ""}`}
-          >
-            {shown}
-          </pre>
+          {file === undefined ? (
+            <pre
+              className={`scroll-thin overflow-auto px-3 pb-2 font-mono text-meta leading-relaxed break-words whitespace-pre-wrap text-fg-secondary select-text ${expanded ? "max-h-80" : ""}`}
+            >
+              {shown}
+            </pre>
+          ) : (
+            <pre
+              className={`scroll-thin overflow-auto pb-2 font-mono text-meta leading-relaxed text-fg-primary select-text ${expanded ? "max-h-80" : ""}`}
+            >
+              <code className="grid grid-cols-[auto_minmax(0,1fr)]">
+                {visible.map((line, index) => (
+                  <Fragment key={index}>
+                    <span
+                      aria-hidden="true"
+                      className={`pl-3 text-right text-fg-disabled tabular-nums select-none ${file.numbers ? "pr-3" : ""}`}
+                    >
+                      {file.numbers?.[index]}
+                    </span>
+                    <span className="pr-3 break-words whitespace-pre-wrap">
+                      <LineText text={line} tokens={highlighted?.[index]} />
+                    </span>
+                  </Fragment>
+                ))}
+              </code>
+            </pre>
+          )}
           {!failed && controls ? (
             <div className="flex items-center gap-3 border-t border-line-subtle px-3 text-caption text-fg-tertiary">
               {controls}
@@ -553,13 +618,21 @@ function Pane({
  */
 function Frame({
   label,
+  name = label.toLowerCase(),
+  icon,
   badge,
+  badgeFailed = false,
   copy,
   aside = null,
   children,
 }: {
   label: string;
+  /** What the copy button copies, for its accessible name. */
+  name?: string;
+  /** Before the label: the icon of the file it holds. */
+  icon?: ReactNode;
   badge?: string | undefined;
+  badgeFailed?: boolean;
   copy?: string | undefined;
   /** Controls at the header's end, before the copy button. */
   aside?: ReactNode;
@@ -568,16 +641,23 @@ function Frame({
   return (
     <div className="group/pane overflow-hidden rounded-lg border border-line-subtle bg-surface-sunken">
       <div className="flex h-7 items-center gap-2 pr-1 pl-3 text-caption text-fg-tertiary">
-        <span>{label}</span>
+        {icon}
+        <span className="min-w-0 truncate">{label}</span>
         {badge ? (
-          <span className="rounded bg-surface-hover px-1.5 text-fg-secondary tabular-nums">{badge}</span>
+          <span
+            className={`shrink-0 rounded px-1.5 tabular-nums ${
+              badgeFailed ? "bg-error/10 text-error-text" : "bg-surface-hover text-fg-secondary"
+            }`}
+          >
+            {badge}
+          </span>
         ) : null}
-        <span className="ml-auto flex items-center gap-3">
+        <span className="ml-auto flex shrink-0 items-center gap-3">
           {aside}
           {copy === undefined ? null : (
             <CopyButton
               text={copy}
-              label={`Copy ${label.toLowerCase()}`}
+              label={`Copy ${name}`}
               className="opacity-0 group-focus-within/pane:opacity-100 group-hover/pane:opacity-100 pointer-coarse:opacity-100"
             />
           )}

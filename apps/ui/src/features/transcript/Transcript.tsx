@@ -639,18 +639,22 @@ const TranscriptItem = memo(
       live: boolean,
       quiet: boolean,
       headerDelay: string | undefined,
-    ) =>
-      section.steps.map((step, index) => {
+    ) => {
+      // A work's only run is all its header counts, so its steps show without a second line saying so.
+      const lone =
+        section.kind === "work" && section.steps.filter((step) => step.kind === "run").length === 1;
+      return section.steps.map((step, index) => {
         // A step that opens its section follows its header. Subsequent steps show as they arrive.
         const delay = openingIds.has(step.id) ? `calc(${headerDelay ?? "0ms"} + 80ms)` : undefined;
         return (
           <ItemEntrance key={step.id} item={step} arrived={arrived.has(step.id)} delay={delay}>
-            {render(step, live && index === section.steps.length - 1, quiet, delay)}
+            {render(step, live && index === section.steps.length - 1, quiet, delay, lone)}
           </ItemEntrance>
         );
       });
+    };
     /** `tail` is the step a running agent is on: the transcript's latest, or the last of live work. */
-    const render = (each: Item, tail: boolean, quiet = false, delay?: string): ReactNode => {
+    const render = (each: Item, tail: boolean, quiet = false, delay?: string, lone = false): ReactNode => {
       const takesWaitingLine = starting && each.id === item.id;
       const headerClass = arrived.has(each.id) ? (takesWaitingLine ? "turn-start-header" : "write-in") : "";
       const headerDelay = takesWaitingLine ? "var(--turn-start-fade)" : delay;
@@ -686,6 +690,7 @@ const TranscriptItem = memo(
               tools={each.steps.flatMap((step) => (step.kind === "tools" ? step.tools : []))}
               timings={runTimings(each.steps)}
               live={tail && activity === "running"}
+              bare={lone}
               activity={activity}
               headerClass={headerClass}
               headerStyle={writeDelay(headerDelay)}

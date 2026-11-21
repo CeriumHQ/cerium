@@ -6,6 +6,7 @@ import {
   exitCodeOf,
   hasToolMenu,
   outputText,
+  readView,
   sameTool,
   shownImages,
   summarizeTools,
@@ -370,5 +371,35 @@ describe("toolInputView", () => {
     });
     expect(toolInputView(toolCall("sleep", {}))).toBeUndefined();
     expect(toolInputView(toolCall("sleep", undefined))).toBeUndefined();
+  });
+});
+
+describe("readView", () => {
+  it("takes a read file's line numbers off its text, for a gutter", () => {
+    expect(
+      readView(
+        toolCall("Read", { file_path: "/w/a.ts" }, "    11\tconst a = 1;\n    12\t\n    13→return a;\n"),
+      ),
+    ).toEqual({
+      path: "/w/a.ts",
+      text: "const a = 1;\n\nreturn a;",
+      numbers: [11, 12, 13],
+    });
+  });
+
+  it("keeps text that isn't numbered throughout as it came", () => {
+    expect(readView(toolCall("read", { path: "a.ts" }, "const a = 1;\n  2\tb"))).toEqual({
+      path: "a.ts",
+      text: "const a = 1;\n  2\tb",
+    });
+  });
+
+  it("is only for a file that was read", () => {
+    expect(readView(toolCall("Read", { file_path: "a.ts" }, ""))).toBeUndefined();
+    expect(readView(toolCall("Read", { file_path: "a.ts" }, undefined))).toBeUndefined();
+    expect(readView(toolCall("Bash", { command: "cat a.ts" }, "1\ta"))).toBeUndefined();
+    expect(
+      readView({ ...toolCall("Read", { file_path: "a.ts" }, "File does not exist."), status: "error" }),
+    ).toBeUndefined();
   });
 });

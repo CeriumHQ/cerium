@@ -383,7 +383,7 @@ export function Table({ children, node: _node, ...props }: Part<"table">) {
       <CopyButton
         text={tableMarkdown(_node)}
         label="Copy table"
-        className="absolute -top-1 right-0 bg-surface-overlay opacity-0 backdrop-blur-xl group-focus-within/table:opacity-100 group-hover/table:opacity-100 pointer-coarse:opacity-100"
+        className="absolute -top-1 right-0 md:top-0.5 md:-right-7 bg-surface-overlay opacity-0 backdrop-blur-xl group-focus-within/table:opacity-100 group-hover/table:opacity-100 pointer-coarse:opacity-100"
       />
     </div>
   );

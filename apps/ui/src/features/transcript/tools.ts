@@ -467,6 +467,33 @@ export const exitCodeOf = (text: string): number | undefined => {
 /** The output without its leading exit-code line, which the output panel shows as a badge. */
 export const withoutExitLine = (text: string): string => text.trimStart().replace(EXIT_LINE, "");
 
+/** A line as harnesses number the files they read: `   12→text`, or with a tab. */
+const NUMBERED_LINE = /^ *(\d+)[\t→](.*)$/;
+
+/** A file an agent read, as the code it is. */
+export interface ReadView {
+  readonly path: string;
+  /** What it read, without the harness's line numbers. */
+  readonly text: string;
+  /** Each line's number in the file, where the harness numbered every line. */
+  readonly numbers?: ReadonlyArray<number>;
+}
+
+/** What a finished file read shows in place of plain output: the file's text, to draw as its language. */
+export const readView = (tool: ToolBlock): ReadView | undefined => {
+  if (toolKinds[tool.toolName] !== "read" || tool.status !== "done") return undefined;
+  const path = field(tool.input, "file_path") ?? field(tool.input, "path");
+  const output = tool.output === undefined ? "" : outputText(tool.output).replace(/\r?\n$/u, "");
+  if (path === undefined || output === "") return undefined;
+  const numbered = output.split("\n").map((line) => NUMBERED_LINE.exec(line));
+  if (numbered.some((line) => line === null)) return { path, text: output };
+  return {
+    path,
+    text: numbered.map((line) => line![2]).join("\n"),
+    numbers: numbered.map((line) => Number(line![1])),
+  };
+};
+
 /** What a tool row's right-click menu offers; each part is absent when the call has nothing for it. */
 export interface ToolMenuPlan {
   /** The one thing the call is about, and how its menu item reads: "Copy command", "Copy URL". */
