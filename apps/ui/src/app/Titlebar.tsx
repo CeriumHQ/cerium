@@ -31,6 +31,7 @@ import {
   MenuTrigger,
 } from "../components/ui/Menu.tsx";
 import { Tooltip } from "../components/ui/Tooltip.tsx";
+import { NightlyTag } from "../features/updates/NightlyTag.tsx";
 import { useShortcut } from "../lib/shortcuts.ts";
 import { WEB } from "../backend/target.ts";
 import type { AppMode } from "./mode.ts";
@@ -139,8 +140,12 @@ export function Titlebar({
           resizing ? "" : "transition-[width] duration-200 ease-out-soft"
         }`}
       >
-        <span style={{ paddingLeft: `max(0px, ${(RAIL + 6 - 22) / 2}px - var(--titlebar-inset))` }}>
+        <span
+          style={{ paddingLeft: `max(0px, ${(RAIL + 6 - 22) / 2}px - var(--titlebar-inset))` }}
+          className="flex shrink-0 items-center gap-1"
+        >
           <CeriumBrand nameClassName="max-lg:hidden" />
+          <NightlyTag />
         </span>
         {alone ? null : (
           <div
