@@ -8,6 +8,7 @@ import { type AfterPackContext, type Configuration } from "electron-builder";
 // Release assets are built and smoke-tested on the native runner for each supported target.
 const version = process.env["CERIUM_VERSION"];
 const nightly = version?.includes("-nightly.") === true;
+const checkOnly = process.env["CERIUM_CHECK_ONLY"] === "true";
 /**
  * A Developer ID certificate to sign the Mac app with (CSC_LINK, set by the release workflows when
  * the repository has one), which also has it notarized when APPLE_API_KEY and its ID and issuer are
@@ -100,6 +101,7 @@ export default {
   win: { target: "nsis", icon: "build/icon.ico" },
   // The guided installer, not the one-click one: only it shows the welcome and finish pages' artwork.
   nsis: {
+    ...(checkOnly ? { differentialPackage: false } : {}),
     artifactName: "Cerium-Setup-${version}-${arch}.${ext}",
     oneClick: false,
     allowToChangeInstallationDirectory: true,
@@ -140,7 +142,7 @@ export default {
         "Cerium listens while you dictate a message. The audio never leaves this Mac.",
     },
   },
-  dmg: { artifactName: "Cerium-${version}-${arch}.${ext}" },
+  dmg: { ...(checkOnly ? { writeUpdateInfo: false } : {}), artifactName: "Cerium-${version}-${arch}.${ext}" },
   afterPack: async (context: AfterPackContext) => {
     const fallback =
       context.electronPlatformName === "darwin"
