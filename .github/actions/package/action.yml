@@ -176,10 +176,23 @@ runs:
           *) exit 1 ;;
         esac
         if [ "$COMPRESSION" = maximum ]; then
+          channel=latest
+          if [[ "$VERSION" == *-nightly.* ]]; then channel=nightly; fi
           case "$RUNNER_OS" in
-            Windows) packages+=("$out/Cerium-Setup-$VERSION-x64.exe.blockmap") ;;
-            macOS) packages+=("$out/Cerium-$VERSION-arm64-mac.zip.blockmap") ;;
+            Windows)
+              packages+=("$out/Cerium-Setup-$VERSION-x64.exe.blockmap")
+              feed="$out/$channel.yml"
+              ;;
+            macOS)
+              packages+=("$out/Cerium-$VERSION-arm64-mac.zip.blockmap")
+              feed="$out/$channel-mac.yml"
+              ;;
+            Linux) feed="$out/$channel-linux.yml" ;;
           esac
+          if ! grep -Fxq "version: $VERSION" "$feed"; then
+            echo "::error::Expected update feed $feed for $VERSION."
+            exit 1
+          fi
         fi
         for file in "${packages[@]}"; do
           if [ ! -s "$file" ]; then echo "::error::Missing package output: $file"; exit 1; fi
