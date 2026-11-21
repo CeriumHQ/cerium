@@ -1,4 +1,4 @@
-// The merge group, main and manual runs use the entire configured suite. PRs can narrow two
+// Main-bound PRs, merge groups, main pushes and manual runs use the full suite. Stacked PRs can narrow two
 // boundaries with no runtime consumers outside them: individual test files and the relay Worker.
 // Shared sources, migrations, scripts, fixtures, configuration, lockfiles, renames and deletions
 // all run everything. A new boundary needs an audit of runtime reads as well as static imports.
@@ -22,25 +22,26 @@ export const selectedTests = (diff: string): string[] => {
   return [...filters].sort();
 };
 
+function canSelectTests() {
+  const base = process.env["GITHUB_BASE_REF"];
+  return process.env["GITHUB_EVENT_NAME"] === "pull_request" && !!base && base !== "main";
+}
+
 if (import.meta.main) {
   if (process.argv[2] === "plan") {
     const base = process.env["BASE"] ?? "";
     const head = process.env["HEAD"] ?? "";
-    const filters =
-      process.env["GITHUB_EVENT_NAME"] === "pull_request"
-        ? selectedTests(
-            execFileSync("git", ["diff", "--no-renames", "--name-status", "-z", `${base}...${head}`], {
-              encoding: "utf8",
-            }),
-          )
-        : [];
+    const filters = canSelectTests()
+      ? selectedTests(
+          execFileSync("git", ["diff", "--no-renames", "--name-status", "-z", `${base}...${head}`], {
+            encoding: "utf8",
+          }),
+        )
+      : [];
     console.log(filters.length ? `PR test filters: ${filters.join(", ")}` : "Running the full test suite.");
     appendFileSync(process.env["GITHUB_OUTPUT"]!, `tests=${JSON.stringify(filters)}\n`);
   } else {
-    const filters: string[] =
-      process.env["GITHUB_EVENT_NAME"] === "pull_request"
-        ? JSON.parse(process.env["TEST_FILTERS"] || "[]")
-        : [];
+    const filters: string[] = canSelectTests() ? JSON.parse(process.env["TEST_FILTERS"] || "[]") : [];
     const run = spawnSync("bun", ["run", "test", "--run", ...filters], { stdio: "inherit" });
     if (run.error) throw run.error;
     process.exitCode = run.status ?? 1;

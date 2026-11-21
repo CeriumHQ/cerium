@@ -3,385 +3,32 @@ name: CI
 on:
   push:
     branches: [main]
-  pull_request:
-  merge_group:
-    types: [checks_requested]
   workflow_dispatch:
 
 permissions:
   contents: read
 
-# A newer push to a pull request cancels its running checks. A push to main runs once per commit:
-# GitHub now and then delivers a push twice, and the second run replaces the first. Every commit
-# pushed to main is checked and can publish its nightly; the publish job takes them one at a time.
-concurrency:
-  group: ci-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('{0}-{1}', github.event_name, github.sha) }}
-  cancel-in-progress: true
-
 defaults:
   run:
     shell: bash
 
-# The jobs run side by side, the packages without waiting for linting, which the pre-push hook has
-# run already (scripts/pre-push.ts); publishing waits for every check and every package. A PR
-# that only changes documentation is linted. The queue and main run the whole suite.
 jobs:
-  # The commit messages, whether anything but documentation changed, and the nightly's version, with
-  # the draft release a push's nightly is gathered in.
-  plan:
-    name: Plan
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
+  # Supersede build work only. A deployment already publishing its relay and desktop
+  # release must finish as a unit even if another commit reaches main.
+  build:
+    name: Build and verify
     permissions:
       contents: write
-    outputs:
-      package: ${{ github.event_name != 'pull_request' || steps.changes.outputs.package == 'true' }}
-      everywhere: ${{ steps.changes.outputs.everywhere }}
-      tests: ${{ steps.tests.outputs.tests }}
-      installer: ${{ steps.changes.outputs.installer }}
-      publish: ${{ steps.plan.outputs.publish == 'true' && steps.changes.outputs.package == 'true' }}
-      version: ${{ steps.plan.outputs.version }}
-      release: ${{ steps.draft.outputs.tag }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          # The commit check and the release plan read the commits since the base and the release tags.
-          fetch-depth: 0
-          filter: blob:none
-          sparse-checkout-cone-mode: false
-          sparse-checkout: |
-            /scripts/*.ts
-          persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: 24
-      - name: Check the commit messages
-        run: node scripts/check-commits.ts "$BASE" "$HEAD"
-        env:
-          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
-          HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
-      # Commits that only change documentation, which no build reads, are linted but neither tested
-      # nor packaged.
-      # Only known GitHub documentation is exempt. The desktop app ships its notices and license.
-      - id: changes
-        name: Find what changed
-        run: |
-          package=true
-          installer=true
-          everywhere=true
-          if [ "$GITHUB_EVENT_NAME" != merge_group ] && [ "$GITHUB_EVENT_NAME" != workflow_dispatch ] && git cat-file -e "$BASE^{commit}" 2>/dev/null; then
-            changed=$(git diff --no-renames --name-only "$BASE...$HEAD")
-            app=$(grep -vE '^(README|SECURITY)\.md$|^\.github/(ci-test-failures\.md$|pull_request_template\.md$|media/|ISSUE_TEMPLATE/)' <<<"$changed" || true)
-            if [ -n "$changed" ] && [ -z "$app" ]; then
-              package=false
-              echo "Only documentation changed, so nothing is packaged or published."
-            fi
-            # Lockfile resolution, patches, repository build configuration, release tooling
-            # and the license files copied by electron-builder can affect every target.
-            packaging=$(grep -E '^apps/desktop/|^patches/|^scripts/|^(bun\.lock|bunfig\.toml|vite\.config\.ts|tsconfig[^/]*\.json|LICENSE|THIRD_PARTY_NOTICES\.md|CHANGELOG\.md)$|(^|/)package\.json$|^\.github/(actions|workflows)/' <<<"$changed" || true)
-            if [ "$GITHUB_EVENT_NAME" = pull_request ] && [ -z "$packaging" ]; then
-              everywhere=false
-              # Site and relay code is built and checked in the web job. Neither workspace is
-              # installed by the desktop packager. Keep both sides of moves in the comparison.
-              if git diff --quiet --no-renames "$BASE...$HEAD" -- . \
-                ':(exclude)apps/site/src/**' ':(exclude)apps/site/public/**' \
-                ':(exclude)apps/relay/src/**' ':(exclude)apps/relay/public/**' ':(exclude)apps/relay/test/**'; then
-                installer=false
-                echo "Only site or relay files changed. The queue will check every installer."
-              else
-                status=$?
-                [ "$status" = 1 ] || exit "$status"
-                echo "Only Windows x64 is packaged for this PR."
-              fi
-            fi
-          fi
-          {
-            echo "package=$package"
-            echo "everywhere=$everywhere"
-            echo "installer=$installer"
-          } >> "$GITHUB_OUTPUT"
-        env:
-          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
-          HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
-      - id: tests
-        name: Select PR tests
-        run: node scripts/ci-tests.ts plan
-        env:
-          BASE: ${{ github.event.pull_request.base.sha }}
-          HEAD: ${{ github.event.pull_request.head.sha }}
-      - id: plan
-        name: Plan the nightly
-        run: node scripts/release.ts nightly --build="$GITHUB_RUN_NUMBER"
-      # Each package uploads to the nightly's draft as soon as it is built, which nobody but the
-      # repository's writers sees until the publish job makes it public; publishing then took a minute
-      # and more to fetch every package and upload it again. A rerun starts its draft afresh.
-      - id: draft
-        name: Start the nightly's draft release
-        if: ${{ github.event_name == 'push' && steps.plan.outputs.publish == 'true' && steps.changes.outputs.package == 'true' }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          TAG: ${{ steps.plan.outputs.tag }}
-          TITLE: ${{ steps.plan.outputs.title }}
-          COMMIT: ${{ steps.plan.outputs.commit }}
-        run: |
-          while [ "$(gh release view "$TAG" --json isDraft --jq .isDraft 2> /dev/null)" = true ]; do
-            gh release delete "$TAG" --yes
-          done
-          gh release create "$TAG" --draft --prerelease --target "$COMMIT" --title "$TITLE" --notes ""
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-
-  # The platform-independent gates, once, on the fastest and cheapest runner. Each step after setup
-  # runs even when an earlier one fails, so one run reports every problem.
-  lint:
-    name: Lint
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - id: setup
-        uses: ./.github/actions/setup
-      - name: Format and lint
-        run: bun run check
-      # actionlint and zizmor; zizmor's online audits read the pinned actions with the job's token.
-      - name: Lint the workflows
-        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
-        run: bun run lint:workflows
-        env:
-          GH_TOKEN: ${{ github.token }}
-
-  typecheck:
-    name: Typecheck
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup
-      - run: bun run typecheck
-
-  test-linux:
-    name: Test (Linux)
-    needs: plan
-    if: ${{ needs.plan.outputs.package == 'true' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup
-      # Ubuntu's AppArmor keeps unprivileged processes out of user namespaces, which Edge's sandbox
-      # needs; the browser tests drive a real Edge.
-      - name: Let Edge sandbox itself
-        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-      - id: test
-        name: Test
-        run: node scripts/ci-tests.ts
-        env:
-          TEST_FILTERS: ${{ needs.plan.outputs.tests }}
-          CERIUM_BROWSER_LOGS: ${{ runner.temp }}/browser-logs
-      # Everything each browser printed, and a screenshot of a failing test's page.
-      - name: Keep the browser's logs
-        if: ${{ failure() && steps.test.outcome == 'failure' }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: browser-logs-Linux
-          path: ${{ runner.temp }}/browser-logs
-          if-no-files-found: ignore
-          retention-days: 7
-
-  test-windows:
-    name: Test (Windows)
-    needs: plan
-    if: ${{ needs.plan.outputs.package == 'true' }}
-    runs-on: windows-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup
-      - id: test
-        name: Test
-        run: node scripts/ci-tests.ts
-        env:
-          TEST_FILTERS: ${{ needs.plan.outputs.tests }}
-          # Use the fast checkout drive and the long path (C:'s temporary path contains RUNNER~1).
-          TEMP: ${{ runner.temp }}
-          TMP: ${{ runner.temp }}
-          CERIUM_BROWSER_LOGS: ${{ runner.temp }}/browser-logs
-      - name: Keep the browser's logs
-        if: ${{ failure() && steps.test.outcome == 'failure' }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: browser-logs-Windows
-          path: ${{ runner.temp }}/browser-logs
-          if-no-files-found: ignore
-          retention-days: 7
-
-  # macOS: its own shells, case-insensitive disk and processes, on the standard Apple silicon runner,
-  # wherever the Mac apps are packaged.
-  # It doesn't hold back the nightly yet: the packaged Mac app's smoke test does
-  # (.github/actions/package), until this has a record of passing.
-  test-macos:
-    name: Test (macOS)
-    needs: plan
-    if: ${{ needs.plan.outputs.package == 'true' && needs.plan.outputs.everywhere == 'true' }}
-    runs-on: macos-15
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup
-      - id: test
-        name: Test
-        run: node scripts/ci-tests.ts
-        env:
-          TEST_FILTERS: ${{ needs.plan.outputs.tests }}
-          CERIUM_BROWSER_LOGS: ${{ runner.temp }}/browser-logs
-      - name: Keep the browser's logs
-        if: ${{ failure() && steps.test.outcome == 'failure' }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: browser-logs-macOS
-          path: ${{ runner.temp }}/browser-logs
-          if-no-files-found: ignore
-          retention-days: 7
-
-  # This version's web UI and website, built once for the publish job to deploy and release.
-  web:
-    name: Build the web app
-    needs: plan
-    if: ${{ needs.plan.outputs.package == 'true' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup
-      - uses: ./.github/actions/web
-        with:
-          version: ${{ needs.plan.outputs.version }}
-
-  # The merge queue smoke-tests every shipped package on its native runner.
-  package-linux:
-    name: Package (Linux x64)
-    needs: plan
-    if: ${{ needs.plan.outputs.package == 'true' && needs.plan.outputs.everywhere == 'true' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup
-        with:
-          filter: "!@cerium/relay !@cerium/site"
-      - uses: ./.github/actions/package
-        with:
-          version: ${{ needs.plan.outputs.version }}
-          release: ${{ needs.plan.outputs.release }}
-          github-token: ${{ github.token }}
-          compression: ${{ needs.plan.outputs.release != '' && 'maximum' || 'fast' }}
-          # Only a push's nightly reports crashes; a pull request's packages only check the packaging.
-          sentry-dsn: ${{ github.event_name == 'push' && vars.SENTRY_DSN || '' }}
-
-  package-windows:
-    name: Package (Windows x64)
-    needs: plan
-    if: ${{ needs.plan.outputs.package == 'true' && needs.plan.outputs.installer == 'true' }}
-    runs-on: windows-latest
-    timeout-minutes: 30
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup
-        with:
-          filter: "!@cerium/relay !@cerium/site"
-      - uses: ./.github/actions/package
-        with:
-          version: ${{ needs.plan.outputs.version }}
-          release: ${{ needs.plan.outputs.release }}
-          github-token: ${{ github.token }}
-          compression: ${{ needs.plan.outputs.release != '' && 'maximum' || 'fast' }}
-          # Only a push's nightly reports crashes; a pull request's packages only check the packaging.
-          sentry-dsn: ${{ github.event_name == 'push' && vars.SENTRY_DSN || '' }}
-
-  package-macos:
-    name: Package (macOS Arm64)
-    needs: plan
-    if: ${{ needs.plan.outputs.package == 'true' && needs.plan.outputs.everywhere == 'true' }}
-    runs-on: macos-15
-    timeout-minutes: 30
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup
-        with:
-          filter: "!@cerium/relay !@cerium/site"
-      - uses: ./.github/actions/package
-        with:
-          version: ${{ needs.plan.outputs.version }}
-          release: ${{ needs.plan.outputs.release }}
-          github-token: ${{ github.token }}
-          compression: ${{ needs.plan.outputs.release != '' && 'maximum' || 'fast' }}
-          # Only a push's nightly reports crashes; a pull request's packages only check the packaging.
-          sentry-dsn: ${{ github.event_name == 'push' && vars.SENTRY_DSN || '' }}
-          mac-certificate: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' && secrets.MAC_CERTIFICATE || '' }}
-          mac-certificate-password: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' && secrets.MAC_CERTIFICATE_PASSWORD || '' }}
-          apple-api-key: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' && secrets.APPLE_API_KEY || '' }}
-          apple-api-key-id: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' && secrets.APPLE_API_KEY_ID || '' }}
-          apple-api-issuer: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' && secrets.APPLE_API_ISSUER || '' }}
-
-  # A single required status covers the variable package matrices. A skipped or cancelled
-  # dependency in the queue must block the merge, including when the plan itself failed.
-  queue-suite:
-    name: Full merge suite
-    if: ${{ always() && (github.event_name == 'merge_group' || github.event_name == 'pull_request') }}
-    needs:
-      [
-        plan,
-        lint,
-        typecheck,
-        test-linux,
-        test-windows,
-        test-macos,
-        web,
-        package-linux,
-        package-windows,
-        package-macos,
-      ]
-    runs-on: ubuntu-latest
-    timeout-minutes: 1
-    permissions: {}
-    steps:
-      - name: Require every suite to pass
-        env:
-          RESULTS: ${{ toJSON(needs) }}
-        run: |
-          jq -e --arg event "$GITHUB_EVENT_NAME" '
-            .plan.outputs as $plan |
-            to_entries | all(.[];
-              (if $event == "merge_group" or .key == "plan" or .key == "lint" or .key == "typecheck" then "success"
-               elif $plan.package != "true" then "skipped"
-               elif .key == "package-windows" and $plan.installer == "false" then "skipped"
-               elif $plan.everywhere != "true" and (.key == "test-macos" or .key == "package-linux" or .key == "package-macos") then "skipped"
-               else "success" end) == .value.result)
-          ' <<<"$RESULTS"
+    concurrency:
+      group: ${{ github.event_name == 'push' && 'ci-push-main' || format('ci-manual-{0}', github.run_id) }}
+      cancel-in-progress: true
+    uses: ./.github/workflows/ci-build.yml
+    secrets:
+      MAC_CERTIFICATE: ${{ secrets.MAC_CERTIFICATE }}
+      MAC_CERTIFICATE_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
+      APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+      APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+      APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
 
   # A push to main that changes the app publishes its nightly once everything passed: the relay
   # first, so it already reads what the new version sends, then the draft release the packages were
@@ -391,9 +38,8 @@ jobs:
   # finishes after a later push's publishes nothing (scripts/release.ts) and drops its draft.
   nightly-deploy:
     name: Nightly deployment
-    needs:
-      [plan, lint, typecheck, test-linux, test-windows, web, package-linux, package-windows, package-macos]
-    if: ${{ github.event_name == 'push' && needs.plan.outputs.publish == 'true' && needs.plan.outputs.package == 'true' }}
+    needs: build
+    if: ${{ github.event_name == 'push' && needs.build.outputs.publish == 'true' }}
     permissions:
       contents: write
     concurrency:
@@ -401,8 +47,8 @@ jobs:
       cancel-in-progress: false
     uses: ./.github/workflows/nightly-publish.yml
     with:
-      version: ${{ needs.plan.outputs.version }}
-      release: ${{ needs.plan.outputs.release }}
+      version: ${{ needs.build.outputs.version }}
+      release: ${{ needs.build.outputs.release }}
     secrets:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
