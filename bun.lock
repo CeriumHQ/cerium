@@ -394,6 +394,7 @@
     "electron",
   ],
   "patchedDependencies": {
+    "app-builder-lib@26.17.0": "patches/app-builder-lib@26.17.0.patch",
     "node-pty@1.2.0-beta.15": "patches/node-pty@1.2.0-beta.15.patch",
   },
   "overrides": {

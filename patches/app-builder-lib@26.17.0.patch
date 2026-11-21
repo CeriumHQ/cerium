@@ -1,0 +1,16 @@
+diff --git a/out/targets/nsis/NsisTarget.js b/out/targets/nsis/NsisTarget.js
+--- a/out/targets/nsis/NsisTarget.js
++++ b/out/targets/nsis/NsisTarget.js
+@@ -307,7 +307,11 @@
+                 rawScript = await (0, fs_extra_1.readFile)(path.join(nsisUtil_1.nsisTemplatesDir, "portable.nsi"), "utf8");
+             }
+             else {
+-                const result = await this.computeScriptAndSignUninstaller(definesUninstaller, commandsUninstaller, installerPath, sharedHeader, archs);
++                // Windows executes this intermediate to write the uninstaller. Give it a temporary
++                // image so the final makensis pass never overwrites a recently running executable.
++                const bootstrapPath = process.platform === "win32" ? await packager.getTempFile("uninstaller-builder.exe") : installerPath;
++                commandsUninstaller.OutFile = `"${bootstrapPath}"`;
++                const result = await this.computeScriptAndSignUninstaller(definesUninstaller, commandsUninstaller, bootstrapPath, sharedHeader, archs);
+                 rawScript = result.script;
+                 isCustomScript = result.isCustomScript;
+             }
