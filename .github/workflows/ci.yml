@@ -37,6 +37,7 @@ jobs:
     outputs:
       package: ${{ github.event_name != 'pull_request' || steps.changes.outputs.package == 'true' }}
       everywhere: ${{ steps.changes.outputs.everywhere }}
+      tests: ${{ steps.tests.outputs.tests }}
       windows: ${{ steps.changes.outputs.windows }}
       installer: ${{ steps.changes.outputs.installer }}
       publish: ${{ steps.plan.outputs.publish == 'true' && steps.changes.outputs.package == 'true' }}
@@ -115,6 +116,12 @@ jobs:
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
           HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+      - id: tests
+        name: Select PR tests
+        run: node scripts/ci-tests.ts plan
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
       - id: plan
         name: Plan the nightly
         run: node scripts/release.ts nightly --build="$GITHUB_RUN_NUMBER"
@@ -186,8 +193,9 @@ jobs:
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - id: test
         name: Test
-        run: bun run test --run
+        run: node scripts/ci-tests.ts
         env:
+          TEST_FILTERS: ${{ needs.plan.outputs.tests }}
           CERIUM_BROWSER_LOGS: ${{ runner.temp }}/browser-logs
       # Everything each browser printed, and a screenshot of a failing test's page.
       - name: Keep the browser's logs
@@ -212,8 +220,9 @@ jobs:
       - uses: ./.github/actions/setup
       - id: test
         name: Test
-        run: bun run test --run
+        run: node scripts/ci-tests.ts
         env:
+          TEST_FILTERS: ${{ needs.plan.outputs.tests }}
           # Use the fast checkout drive and the long path (C:'s temporary path contains RUNNER~1).
           TEMP: ${{ runner.temp }}
           TMP: ${{ runner.temp }}
@@ -244,8 +253,9 @@ jobs:
       - uses: ./.github/actions/setup
       - id: test
         name: Test
-        run: bun run test --run
+        run: node scripts/ci-tests.ts
         env:
+          TEST_FILTERS: ${{ needs.plan.outputs.tests }}
           CERIUM_BROWSER_LOGS: ${{ runner.temp }}/browser-logs
       - name: Keep the browser's logs
         if: ${{ failure() && steps.test.outcome == 'failure' }}
