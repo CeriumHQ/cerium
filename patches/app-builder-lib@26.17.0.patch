@@ -14,3 +14,16 @@ diff --git a/out/targets/nsis/NsisTarget.js b/out/targets/nsis/NsisTarget.js
                  rawScript = result.script;
                  isCustomScript = result.isCustomScript;
              }
+diff --git a/out/macPackager.js b/out/macPackager.js
+--- a/out/macPackager.js
++++ b/out/macPackager.js
+@@ -114,7 +114,8 @@
+                 }
+                 case "zip":
+                     // https://github.com/electron-userland/electron-builder/issues/2313
+-                    mapper(name, outDir => new ArchiveTarget_1.ArchiveTarget(name, outDir, this, true));
++                    // The ZIP is still built and checked on PRs. Only release builds use its update feed and blockmap.
++                    mapper(name, outDir => new ArchiveTarget_1.ArchiveTarget(name, outDir, this, process.env.CERIUM_CHECK_ONLY !== "true"));
+                     break;
+                 case "pkg":
+                     mapper(name, outDir => new pkg_1.PkgTarget(this, outDir));

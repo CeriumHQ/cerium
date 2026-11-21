@@ -127,9 +127,14 @@ runs:
         # electron-builder refuses half a notarization key.
         if [ -z "${APPLE_API_KEY:-}" ]; then unset APPLE_API_KEY_ID APPLE_API_ISSUER; fi
         bun run --cwd apps/desktop package
+        if [ "$CERIUM_CHECK_ONLY" = true ] && compgen -G 'apps/desktop/out/*.blockmap' > /dev/null; then
+          echo "::error::Check-only packaging generated a release blockmap."
+          exit 1
+        fi
       env:
         CERIUM_VERSION: ${{ inputs.version }}
         COMPRESSION: ${{ inputs.compression }}
+        CERIUM_CHECK_ONLY: ${{ inputs.compression == 'fast' && inputs.release == '' && inputs.upload-artifact != 'true' && env.CERIUM_STABLE_CANDIDATE != 'true' }}
         MAC_CERTIFICATE: ${{ inputs.mac-certificate }}
         MAC_CERTIFICATE_PASSWORD: ${{ inputs.mac-certificate-password }}
         APPLE_API_KEY_CONTENTS: ${{ inputs.apple-api-key }}
