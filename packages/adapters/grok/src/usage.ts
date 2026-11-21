@@ -2,7 +2,7 @@ import { openUsageTerminal, scratchFolder, type SubscriptionReport } from "@ceri
 import { Clock, Duration, Effect, Option } from "effect";
 
 import { signedOut } from "./catalog.ts";
-import { failure } from "./rpc.ts";
+import { failure } from "./manifest.ts";
 import { readGrokUsageScreen } from "./usageScreen.ts";
 
 // Grok Build's subscription usage limit, read from its TUI `/usage` panel in a headless PTY.
