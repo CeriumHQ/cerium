@@ -15,6 +15,7 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Changed
 
+- The workspace, message composer, and settings Hub now use smaller modules for navigation, message controls, MCP servers, and skills.
 - The orchestrator's 5,700-line service is split into focused modules (sessions, turns, limits, rewinding, threads, the agent team and more) around a shared context, and the backend's branch, pull request and snapshot services each move their git and GitHub parsing into modules of their own. Nothing changes in how Cerium behaves.
 - The effort router, the advisor and composer autocomplete are no longer experimental or beta. The effort router still runs only on your own OpenRouter key: saving a key that checks out now turns it on, the key's row links to OpenRouter's key page, and a router left on without a key says so. The advisor's model row says when no model is chosen or the chosen one is no longer offered. Composer autocomplete moves to Settings → Keyboard, so the web client can turn it off too.
 
