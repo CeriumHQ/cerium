@@ -5,31 +5,11 @@ import { Monitor, Moon, Sun, type LucideIcon } from "lucide-react";
 import { useRef, type CSSProperties } from "react";
 import { flushSync } from "react-dom";
 
-import { paletteAtom, paletteLabel, palettes, type Palette } from "../../settings/palettes.ts";
+import { paletteAtom, paletteEntry, palettes, type Palette } from "../../settings/palettes.ts";
 import { themeAtom, themes, type Theme } from "../../settings/preferences.ts";
 import { useShownTheme } from "../../settings/theme.ts";
 import { Eyebrow, Headline, Reveal } from "../parts.tsx";
 import type { StepProps } from "../Welcome.tsx";
-
-/** Each glass as the welcome tells it: what the trade calls it, and how it takes the light. */
-const GLASSES: Record<Palette, { readonly kind: string; readonly light: string }> = {
-  cerium: {
-    kind: "Clear",
-    light: "The clearest glass, polished with ceria. Colour is kept for what it means.",
-  },
-  amber: { kind: "Bottle glass", light: "Brown bottle glass with honey in the light." },
-  uranium: { kind: "Vaseline glass", light: "Olive in daylight, glowing chartreuse under a lamp." },
-  forest: {
-    kind: "Waldglas",
-    light: "Blown in the woods from beech ash: moss green, with amber in the code.",
-  },
-  seaglass: { kind: "Tide-frosted", light: "Frosted by the tide: aqua, with coral and sand in the code." },
-  cobalt: { kind: "Smalt blue", light: "Deep blue bottle glass, with gold in the code." },
-  amethyst: { kind: "Sun-purpled", light: "Desert glass the sun turned violet, with mint in the code." },
-  cranberry: { kind: "Gold ruby", light: "Plum glass and a rose accent, with gold in the code." },
-  // Settings offers it beside the glasses; the welcome only names it when it's already the choice.
-  desktop: { kind: "Your own", light: "Tinted by your wallpaper, in your system's accent colour." },
-};
 
 const MODES: Record<Theme, { readonly label: string; readonly icon: LucideIcon }> = {
   dark: { label: "Dark", icon: Moon },
@@ -58,6 +38,9 @@ const wipe = (update: () => void, from: { readonly x: number; readonly y: number
   );
   document.startViewTransition({ update: () => flushSync(update), types: ["glass"] });
 };
+
+/** Where the middle pane sits, which the panes fan out from while the pointer is away. */
+const middle = (palettes.length - 1) / 2;
 
 /** The second step: the glass Cerium is cut from, and light or dark. */
 export function Glass({ number, titleId }: StepProps) {
@@ -110,7 +93,8 @@ export function Glass({ number, titleId }: StepProps) {
             key={palette}
             className="min-h-[3lh] animate-[launch-fade_500ms_ease-out_both] text-reading leading-relaxed text-fg-secondary"
           >
-            <span className="text-fg-primary">{paletteLabel(palette)}.</span> {GLASSES[palette].light}
+            <span className="text-fg-primary">{paletteEntry(palette)?.label}.</span>{" "}
+            {paletteEntry(palette)?.description}
           </p>
           <RadioGroup
             value={theme}
@@ -154,19 +138,20 @@ export function Glass({ number, titleId }: StepProps) {
           aria-label="Theme"
           onPointerMove={tilt}
           onPointerLeave={untilt}
-          className="relative grid h-[clamp(168px,34vh,300px)] grid-cols-8 gap-[clamp(8px,1.1vw,18px)]"
+          style={{ gridTemplateColumns: `repeat(${palettes.length}, minmax(0, 1fr))` }}
+          className="relative grid h-[clamp(168px,34vh,300px)] gap-[clamp(6px,0.8vw,14px)]"
         >
           {palettes.map((option, index) => (
-            <Reveal key={option.id} order={4 + index * 0.6} className="min-w-0">
+            <Reveal key={option.id} order={4 + index * 0.45} className="min-w-0">
               <Radio.Root
                 value={option.id}
                 nativeButton
                 onPointerDown={remember}
-                render={<button type="button" aria-label={`${option.label}: ${GLASSES[option.id].kind}`} />}
-                style={{ "--px": (index - 3.5) / 3.5 } as CSSProperties}
-                className="group relative block size-full rounded-[clamp(14px,1.6vw,24px)] text-left outline-none"
+                render={<button type="button" aria-label={`${option.label}: ${option.kind}`} />}
+                style={{ "--px": (index - middle) / middle } as CSSProperties}
+                className="group relative block size-full rounded-[clamp(12px,1.3vw,22px)] text-left outline-none"
               >
-                <Pane palette={option.id} theme={shown} label={option.label} kind={GLASSES[option.id].kind} />
+                <Pane palette={option.id} theme={shown} label={option.label} kind={option.kind} />
               </Radio.Root>
             </Reveal>
           ))}
@@ -195,7 +180,7 @@ function Pane({
     <span
       data-palette={palette}
       data-theme={theme}
-      className="welcome-pane absolute inset-0 flex flex-col justify-end overflow-hidden rounded-[inherit] border border-line-strong p-[clamp(12px,1.3vw,20px)] text-fg-primary group-hover:-translate-y-1.5 group-focus-visible:ring-2 group-focus-visible:ring-focus-ring group-data-checked:-translate-y-3 group-data-checked:border-accent/70"
+      className="welcome-pane absolute inset-0 flex flex-col justify-end overflow-hidden rounded-[inherit] border border-line-strong p-[clamp(9px,0.8vw,14px)] text-fg-primary group-hover:-translate-y-1.5 group-focus-visible:ring-2 group-focus-visible:ring-focus-ring group-data-checked:-translate-y-3 group-data-checked:border-accent/70"
     >
       <span aria-hidden="true" className="welcome-pane-sheen pointer-events-none absolute inset-0" />
       <span
@@ -203,13 +188,13 @@ function Pane({
         className="welcome-pane-glow pointer-events-none absolute inset-x-0 bottom-0 h-2/3"
       />
       <span aria-hidden="true" className="welcome-pane-caustic pointer-events-none absolute" />
-      <span className="absolute top-[clamp(10px,1.1vw,16px)] right-[clamp(10px,1.1vw,16px)] grid size-4 place-items-center rounded-full border border-fg-primary/30 transition-colors group-data-checked:border-accent group-data-checked:bg-accent">
+      <span className="absolute top-[clamp(9px,0.8vw,14px)] right-[clamp(9px,0.8vw,14px)] grid size-4 place-items-center rounded-full border border-fg-primary/30 transition-colors group-data-checked:border-accent group-data-checked:bg-accent">
         <Radio.Indicator className="size-1.5 rounded-full bg-accent-fg" />
       </span>
-      <span className="relative truncate font-display text-[clamp(13px,1.15vw,20px)] font-light tracking-tight font-stretch-semi-expanded [font-size-adjust:none]">
+      <span className="relative truncate font-display text-[clamp(11px,0.85vw,17px)] font-light tracking-tight [font-size-adjust:none]">
         {label}
       </span>
-      <span className="relative mt-1 line-clamp-2 font-mono text-[10px] leading-snug tracking-[0.08em] text-fg-tertiary uppercase group-data-checked:text-fg-secondary">
+      <span className="relative mt-1 line-clamp-2 font-mono text-[9px] leading-snug tracking-[0.06em] text-fg-tertiary uppercase group-data-checked:text-fg-secondary">
         {kind}
       </span>
     </span>

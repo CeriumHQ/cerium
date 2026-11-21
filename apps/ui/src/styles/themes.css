@@ -1,301 +1,568 @@
 /*
- * The themes Cerium ships, each a kind of glass, as the window is (and as ceria is the compound glass
- * is polished with). Cerium itself is the clear default and lives in tokens.css; each one below tints
- * the neutral ramp, colours the glass itself (`--glass-c`) strongly enough to hold its own over any
- * wallpaper, then gives the accent, the code colours and any status hue its accent would be
- * mistaken for, once for dark and once for light. features/settings/palettes.ts lists them for Settings.
+ * The themes Cerium ships beside its default, each in dark and light. Cerium itself lives in
+ * tokens.css as the base every token falls back to; features/settings/palettes.ts lists them all for
+ * Settings, the welcome and the command palette.
  *
- * Accents take their own foreground: a pale accent carries dark text, a deep one light text.
+ * They're told apart by more than a hue. Each sets how deep its dark glass sits (`--lift`), how much
+ * colour the glass itself carries (`--glass-c`) and how much of the desktop it lets through
+ * (`--acrylic-alpha`), whether its text is neutral or tinted, whether its accent is pale (and takes
+ * dark text) or deep (and takes white), and the character of its code: muted, pastel or vivid. Any
+ * status hue its accent would be mistaken for turns away from it.
+ *
+ * Order: the neutrals (Ink, Paper, Dusk), then the tinted ones round the wheel, red to violet.
  */
 
-/* Amber: brown bottle glass with honey in the light. Warm parchment and honey, attention turned yellow. */
-[data-palette="amber"] {
-  --tint-h: 58;
+/* Cerium's dark glass sits a step deeper than the ramp's; the rest of it is the base in tokens.css. */
+[data-palette="cerium"][data-theme="dark"] {
+  --lift: -0.02;
 }
 
-[data-palette="amber"][data-theme="dark"] {
-  /* Rust this dark, so the dark glass turns towards honey. */
-  --tint-h: 68;
-  --tint-c: 0.024;
-  --glass-c: 0.065;
-
-  --accent: oklch(0.8 0.13 70);
-  --accent-strong: oklch(0.86 0.12 74);
-  --accent-fg: oklch(0.22 0.04 55);
-
-  --status-attention: oklch(0.87 0.15 98);
-
-  --syntax-keyword: oklch(0.76 0.12 38);
-  --syntax-string: oklch(0.8 0.1 122);
-  --syntax-constant: oklch(0.85 0.11 85);
-  --syntax-function: oklch(0.8 0.07 200);
-  --syntax-parameter: oklch(0.84 0.06 25);
+/* Ink: no tint at all. The deepest dark, the whitest light, strong lines and a monochrome accent. */
+[data-palette="ink"] {
+  --tint-h: 0;
+  --tint-c: 0;
+  --glass-c: 0;
 }
 
-[data-palette="amber"][data-theme="light"] {
-  /* Peach at this lightness, so the light glass turns towards parchment. */
-  --tint-h: 78;
-  --tint-c: 0.028;
-  --glass-c: 0.05;
+[data-palette="ink"][data-theme="dark"] {
+  --lift: -0.06;
+  --acrylic-alpha: 0.74;
 
-  --accent: oklch(0.55 0.14 50);
-  --accent-strong: oklch(0.47 0.13 47);
-  --accent-fg: oklch(0.98 0.01 75);
+  --line-subtle: oklch(1 0 0 / 0.09);
+  --line-strong: oklch(1 0 0 / 0.18);
 
-  --status-attention: oklch(0.7 0.15 95);
-  --status-attention-text: oklch(0.51 0.12 95);
+  --fg-primary: oklch(0.985 0 0);
+  --fg-secondary: oklch(0.8 0 0);
+  --fg-tertiary: oklch(0.67 0 0);
 
-  --syntax-keyword: oklch(0.5 0.15 35);
-  --syntax-string: oklch(0.48 0.12 128);
-  --syntax-constant: oklch(0.56 0.12 72);
-  --syntax-function: oklch(0.47 0.09 215);
-  --syntax-parameter: oklch(0.5 0.1 15);
+  --accent: oklch(0.97 0 0);
+  --accent-strong: oklch(1 0 0);
+  --accent-fg: oklch(0.14 0 0);
+  --accent-soft: oklch(1 0 0 / 0.1);
+  --accent-text: oklch(0.97 0 0);
+  --selection: oklch(1 0 0 / 0.22);
+  --focus-ring: oklch(1 0 0 / 0.6);
+
+  /* Black and white type, with a red pencil for what stands apart. */
+  --syntax-keyword: oklch(0.97 0 0);
+  --syntax-string: oklch(0.76 0.06 160);
+  --syntax-constant: oklch(0.76 0.13 25);
+  --syntax-function: oklch(0.86 0 0);
+  --syntax-parameter: oklch(0.72 0 0);
 }
 
-/* Uranium: vaseline glass, olive in daylight and glowing chartreuse under a lamp. */
-[data-palette="uranium"] {
-  --tint-h: 118;
-}
-
-[data-palette="uranium"][data-theme="dark"] {
-  --tint-c: 0.022;
-  --glass-c: 0.07;
-
-  --accent: oklch(0.89 0.19 123);
-  --accent-strong: oklch(0.94 0.2 123);
-  --accent-fg: oklch(0.22 0.05 125);
-
-  --status-success: oklch(0.78 0.12 172);
-
-  --syntax-keyword: oklch(0.87 0.16 120);
-  --syntax-string: oklch(0.8 0.09 170);
-  --syntax-constant: oklch(0.8 0.11 62);
-  --syntax-function: oklch(0.86 0.1 95);
-  --syntax-parameter: oklch(0.82 0.05 80);
-}
-
-[data-palette="uranium"][data-theme="light"] {
-  --tint-c: 0.026;
-  --glass-c: 0.05;
-
-  --accent: oklch(0.52 0.14 128);
-  --accent-strong: oklch(0.44 0.12 128);
-  --accent-fg: oklch(0.98 0.03 120);
-
-  --status-success: oklch(0.56 0.11 175);
-  --status-success-text: oklch(0.51 0.11 175);
-
-  --syntax-keyword: oklch(0.48 0.14 128);
-  --syntax-string: oklch(0.48 0.09 175);
-  --syntax-constant: oklch(0.54 0.13 55);
-  --syntax-function: oklch(0.5 0.11 100);
-  --syntax-parameter: oklch(0.5 0.07 80);
-}
-
-/* Forest: Waldglas, blown in the woods from beech ash. Moss-green glass and a leaf accent, with amber in the code. */
-[data-palette="forest"] {
-  --tint-h: 155;
-}
-
-[data-palette="forest"][data-theme="dark"] {
-  --tint-c: 0.024;
-  --glass-c: 0.065;
-
-  --accent: oklch(0.8 0.14 152);
-  --accent-strong: oklch(0.86 0.13 152);
-  --accent-fg: oklch(0.22 0.04 155);
-
-  --status-success: oklch(0.8 0.11 185);
-
-  --syntax-keyword: oklch(0.8 0.12 150);
-  --syntax-string: oklch(0.84 0.1 95);
-  --syntax-constant: oklch(0.8 0.1 55);
-  --syntax-function: oklch(0.8 0.08 215);
-  --syntax-parameter: oklch(0.84 0.05 30);
-}
-
-[data-palette="forest"][data-theme="light"] {
-  --tint-c: 0.024;
-  --glass-c: 0.045;
-
-  --accent: oklch(0.5 0.13 152);
-  --accent-strong: oklch(0.43 0.12 152);
-  --accent-fg: oklch(0.98 0.02 150);
-
-  --status-success: oklch(0.56 0.1 190);
-  --status-success-text: oklch(0.5 0.1 190);
-
-  --syntax-keyword: oklch(0.47 0.13 150);
-  --syntax-string: oklch(0.5 0.11 88);
-  --syntax-constant: oklch(0.54 0.13 50);
-  --syntax-function: oklch(0.48 0.1 228);
-  --syntax-parameter: oklch(0.5 0.08 25);
-}
-
-/* Sea glass: frosted by the tide. Paler, softer glass in aqua, with coral and sand in the code. */
-[data-palette="seaglass"] {
-  --tint-h: 192;
-}
-
-[data-palette="seaglass"][data-theme="dark"] {
-  --tint-c: 0.026;
-  --glass-c: 0.06;
-  --lift: 0.04;
-
-  --fg-primary: oklch(0.94 0.01 192);
-  --fg-tertiary: oklch(0.69 calc(var(--tint-c) * 0.8) var(--tint-h));
-
-  --accent: oklch(0.86 0.09 180);
-  --accent-strong: oklch(0.91 0.09 180);
-  --accent-fg: oklch(0.24 0.04 195);
-
-  --syntax-keyword: oklch(0.8 0.09 268);
-  --syntax-string: oklch(0.85 0.08 160);
-  --syntax-constant: oklch(0.83 0.09 38);
-  --syntax-function: oklch(0.87 0.08 195);
-  --syntax-parameter: oklch(0.86 0.05 80);
-}
-
-[data-palette="seaglass"][data-theme="light"] {
-  --tint-c: 0.022;
-  --glass-c: 0.04;
+[data-palette="ink"][data-theme="light"] {
   --lift: 0.02;
+  --acrylic-alpha: 0.84;
 
-  --accent: oklch(0.52 0.09 198);
-  --accent-strong: oklch(0.47 0.08 200);
-  --accent-fg: oklch(0.98 0.01 190);
+  --line-subtle: oklch(0 0 0 / 0.12);
+  --line-strong: oklch(0 0 0 / 0.2);
 
-  --syntax-keyword: oklch(0.5 0.13 270);
-  --syntax-string: oklch(0.49 0.1 160);
-  --syntax-constant: oklch(0.56 0.13 35);
-  --syntax-function: oklch(0.48 0.09 210);
-  --syntax-parameter: oklch(0.52 0.07 70);
+  --fg-primary: oklch(0.13 0 0);
+  --fg-secondary: oklch(0.34 0 0);
+  --fg-tertiary: oklch(0.48 0 0);
+
+  --accent: oklch(0.16 0 0);
+  --accent-strong: oklch(0.06 0 0);
+  --accent-fg: oklch(0.99 0 0);
+  --accent-soft: oklch(0 0 0 / 0.07);
+  --accent-text: oklch(0.16 0 0);
+  --selection: oklch(0 0 0 / 0.13);
+  --focus-ring: oklch(0 0 0 / 0.55);
+
+  --syntax-keyword: oklch(0.14 0 0);
+  --syntax-string: oklch(0.46 0.08 160);
+  --syntax-constant: oklch(0.52 0.18 25);
+  --syntax-function: oklch(0.3 0 0);
+  --syntax-parameter: oklch(0.42 0 0);
 }
 
-/* Cobalt: deep blue bottle glass, the most saturated of the set, with gold in the code. */
-[data-palette="cobalt"] {
-  --tint-h: 266;
+/* Paper: cream stock and espresso, written on in blue-black fountain-pen ink. The most opaque glass, and muted code. */
+[data-palette="paper"] {
+  --tint-h: 75;
 }
 
-[data-palette="cobalt"][data-theme="dark"] {
-  --tint-c: 0.05;
-  --glass-c: 0.09;
-  --lift: -0.01;
+[data-palette="paper"][data-theme="dark"] {
+  --tint-c: 0.012;
+  --glass-c: 0.018;
+  --lift: 0.02;
+  --acrylic-alpha: 0.76;
 
-  --accent: oklch(0.56 0.2 264);
-  --accent-strong: oklch(0.53 0.2 264);
-  --accent-fg: oklch(0.99 0.01 264);
-  --accent-soft: color-mix(in oklab, var(--accent) 22%, transparent);
-  --accent-text: oklch(0.8 0.11 264);
-  --selection: color-mix(in oklab, var(--accent) 45%, transparent);
-  --focus-ring: color-mix(in oklab, var(--accent) 85%, transparent);
+  --fg-primary: oklch(0.93 0.016 85);
+  --fg-secondary: oklch(0.77 0.018 80);
 
-  --status-running: oklch(0.8 0.11 218);
+  --accent: oklch(0.78 0.08 250);
+  --accent-strong: oklch(0.84 0.07 250);
+  --accent-fg: oklch(0.22 0.03 255);
+  --accent-text: var(--accent);
+  --accent-soft: color-mix(in oklab, var(--accent) 16%, transparent);
+  --selection: color-mix(in oklab, var(--accent) 30%, transparent);
 
-  --syntax-keyword: oklch(0.76 0.14 290);
-  --syntax-string: oklch(0.85 0.11 92);
-  --syntax-constant: oklch(0.78 0.12 28);
-  --syntax-function: oklch(0.83 0.09 225);
-  --syntax-parameter: oklch(0.85 0.06 305);
+  --status-running: oklch(0.76 0.09 200);
+
+  --syntax-keyword: oklch(0.74 0.09 32);
+  --syntax-string: oklch(0.77 0.08 125);
+  --syntax-constant: oklch(0.79 0.09 75);
+  --syntax-function: oklch(0.77 0.07 245);
+  --syntax-parameter: oklch(0.8 0.04 55);
 }
 
-[data-palette="cobalt"][data-theme="light"] {
-  --tint-c: 0.03;
-  --glass-c: 0.05;
+[data-palette="paper"][data-theme="light"] {
+  --tint-h: 85;
+  --tint-c: 0.024;
+  --glass-c: 0.032;
+  --lift: 0.01;
+  --acrylic-alpha: 0.86;
 
-  --accent: oklch(0.5 0.2 264);
-  --accent-strong: oklch(0.43 0.19 264);
-  --accent-fg: oklch(0.99 0.01 264);
-  --accent-soft: color-mix(in oklab, var(--accent) 12%, transparent);
-  --selection: color-mix(in oklab, var(--accent) 22%, transparent);
+  --fg-primary: oklch(0.22 0.02 60);
+  --fg-secondary: oklch(0.4 0.025 65);
 
-  --status-running: oklch(0.58 0.12 222);
-  --status-running-text: oklch(0.51 0.12 222);
+  --accent: oklch(0.4 0.12 258);
+  --accent-strong: oklch(0.34 0.11 258);
+  --accent-fg: oklch(0.98 0.012 85);
+  --accent-text: oklch(0.4 0.12 258);
 
-  --syntax-keyword: oklch(0.48 0.18 288);
-  --syntax-string: oklch(0.5 0.11 88);
-  --syntax-constant: oklch(0.54 0.15 30);
-  --syntax-function: oklch(0.47 0.14 240);
-  --syntax-parameter: oklch(0.5 0.1 305);
+  --status-running: oklch(0.56 0.1 205);
+  --status-running-text: oklch(0.49 0.1 205);
+
+  --syntax-keyword: oklch(0.47 0.13 32);
+  --syntax-string: oklch(0.47 0.1 125);
+  --syntax-constant: oklch(0.48 0.1 68);
+  --syntax-function: oklch(0.42 0.11 255);
+  --syntax-parameter: oklch(0.5 0.07 45);
 }
 
-/* Amethyst: desert glass the sun has turned violet through its manganese, with mint in the code. */
-[data-palette="amethyst"] {
-  --tint-h: 302;
+/* Dusk: the sky after sunset. Lifted, low-contrast blue-grey glass, a peach accent and pastel code. */
+[data-palette="dusk"] {
+  --tint-h: 255;
 }
 
-[data-palette="amethyst"][data-theme="dark"] {
-  --tint-c: 0.032;
-  --glass-c: 0.075;
+[data-palette="dusk"][data-theme="dark"] {
+  --tint-c: 0.024;
+  --glass-c: 0.04;
+  --lift: 0.075;
+  --acrylic-alpha: 0.72;
 
-  --accent: oklch(0.76 0.13 302);
-  --accent-strong: oklch(0.83 0.11 302);
-  --accent-fg: oklch(0.21 0.05 302);
+  --line-subtle: oklch(1 0 0 / 0.08);
+  --line-strong: oklch(1 0 0 / 0.15);
 
-  --status-merged: oklch(0.74 0.15 338);
+  --fg-primary: oklch(0.93 0.012 255);
+  --fg-secondary: oklch(0.8 0.02 255);
+  --fg-tertiary: oklch(0.7 0.024 255);
 
-  --syntax-keyword: oklch(0.78 0.13 305);
-  --syntax-string: oklch(0.84 0.09 160);
-  --syntax-constant: oklch(0.82 0.1 70);
-  --syntax-function: oklch(0.8 0.08 250);
-  --syntax-parameter: oklch(0.84 0.05 350);
+  --accent: oklch(0.83 0.09 52);
+  --accent-strong: oklch(0.88 0.08 55);
+  --accent-fg: oklch(0.27 0.04 40);
+  --accent-text: var(--accent);
+  --accent-soft: color-mix(in oklab, var(--accent) 16%, transparent);
+  --selection: color-mix(in oklab, var(--accent) 28%, transparent);
+
+  --status-attention: oklch(0.87 0.13 95);
+
+  /* Surfaces this light want a softer shadow. */
+  --shadow-raised:
+    inset 0 1px 0 oklch(1 0 0 / 0.1), inset 0 0 0 1px oklch(1 0 0 / 0.02), 0 1px 1px oklch(0 0 0 / 0.12),
+    0 12px 28px -14px oklch(0 0 0 / 0.4);
+
+  --syntax-keyword: oklch(0.82 0.09 300);
+  --syntax-string: oklch(0.86 0.08 165);
+  --syntax-constant: oklch(0.86 0.08 55);
+  --syntax-function: oklch(0.84 0.08 225);
+  --syntax-parameter: oklch(0.88 0.04 20);
 }
 
-[data-palette="amethyst"][data-theme="light"] {
-  --tint-c: 0.022;
-  --glass-c: 0.045;
+[data-palette="dusk"][data-theme="light"] {
+  --tint-h: 270;
+  --tint-c: 0.02;
+  --glass-c: 0.03;
+  --lift: 0.04;
+  --acrylic-alpha: 0.78;
 
-  --accent: oklch(0.5 0.17 302);
-  --accent-strong: oklch(0.43 0.16 302);
-  --accent-fg: oklch(0.98 0.01 302);
+  --accent: oklch(0.55 0.13 40);
+  --accent-strong: oklch(0.49 0.13 38);
+  --accent-fg: oklch(0.99 0.01 50);
+  --accent-text: oklch(0.52 0.13 40);
 
-  --status-merged: oklch(0.52 0.19 338);
+  --status-attention: oklch(0.72 0.15 92);
+  --status-attention-text: oklch(0.52 0.12 92);
 
-  --syntax-keyword: oklch(0.48 0.17 305);
-  --syntax-string: oklch(0.48 0.11 155);
-  --syntax-constant: oklch(0.54 0.13 55);
-  --syntax-function: oklch(0.48 0.12 255);
-  --syntax-parameter: oklch(0.5 0.08 350);
+  --syntax-keyword: oklch(0.5 0.13 300);
+  --syntax-string: oklch(0.47 0.09 165);
+  --syntax-constant: oklch(0.5 0.12 48);
+  --syntax-function: oklch(0.49 0.1 235);
+  --syntax-parameter: oklch(0.49 0.07 15);
 }
 
-/* Cranberry: gold-ruby glass. Plum glass and a rose accent, with the gold in the code. */
-[data-palette="cranberry"] {
+/* Blush: rose quartz. Soft, lifted mulberry glass and a powder-rose accent, pastel code. */
+[data-palette="blush"] {
   --tint-h: 352;
 }
 
-[data-palette="cranberry"][data-theme="dark"] {
-  --tint-c: 0.03;
-  --glass-c: 0.08;
+[data-palette="blush"][data-theme="dark"] {
+  --tint-c: 0.024;
+  --glass-c: 0.055;
+  --lift: 0.04;
+  --acrylic-alpha: 0.7;
 
-  --accent: oklch(0.77 0.13 356);
-  --accent-strong: oklch(0.83 0.11 356);
-  --accent-fg: oklch(0.21 0.05 355);
+  --fg-primary: oklch(0.94 0.016 350);
+  --fg-secondary: oklch(0.8 0.022 350);
+  --fg-tertiary: oklch(0.69 0.026 350);
 
-  --status-error: oklch(0.72 0.17 38);
+  --accent: oklch(0.82 0.1 358);
+  --accent-strong: oklch(0.87 0.09 358);
+  --accent-fg: oklch(0.25 0.05 355);
+  --accent-text: var(--accent);
+  --accent-soft: color-mix(in oklab, var(--accent) 16%, transparent);
+  --selection: color-mix(in oklab, var(--accent) 30%, transparent);
 
-  --syntax-keyword: oklch(0.78 0.13 348);
-  --syntax-string: oklch(0.85 0.1 88);
-  --syntax-constant: oklch(0.8 0.1 45);
-  --syntax-function: oklch(0.8 0.08 295);
-  --syntax-parameter: oklch(0.84 0.05 20);
+  --status-error: oklch(0.72 0.17 35);
+  --status-merged: oklch(0.74 0.13 300);
+
+  --syntax-keyword: oklch(0.81 0.1 330);
+  --syntax-string: oklch(0.86 0.08 150);
+  --syntax-constant: oklch(0.85 0.09 65);
+  --syntax-function: oklch(0.83 0.08 255);
+  --syntax-parameter: oklch(0.87 0.05 15);
 }
 
-[data-palette="cranberry"][data-theme="light"] {
-  --tint-c: 0.016;
-  --glass-c: 0.035;
+[data-palette="blush"][data-theme="light"] {
+  --tint-c: 0.022;
+  --glass-c: 0.034;
+  --lift: 0.01;
+  --acrylic-alpha: 0.76;
 
-  --accent: oklch(0.5 0.17 2);
-  --accent-strong: oklch(0.42 0.16 2);
-  --accent-fg: oklch(0.98 0.01 355);
+  --accent: oklch(0.55 0.17 2);
+  --accent-strong: oklch(0.48 0.16 2);
+  --accent-fg: oklch(0.99 0.01 355);
+  --accent-text: oklch(0.52 0.17 2);
 
   --status-error: oklch(0.57 0.18 38);
   --status-error-text: oklch(0.52 0.17 38);
 
-  --syntax-keyword: oklch(0.5 0.17 352);
-  --syntax-string: oklch(0.52 0.11 80);
-  --syntax-constant: oklch(0.55 0.13 42);
-  --syntax-function: oklch(0.5 0.12 295);
-  --syntax-parameter: oklch(0.5 0.08 15);
+  --syntax-keyword: oklch(0.5 0.16 335);
+  --syntax-string: oklch(0.48 0.1 155);
+  --syntax-constant: oklch(0.5 0.11 58);
+  --syntax-function: oklch(0.49 0.12 260);
+  --syntax-parameter: oklch(0.49 0.08 15);
+}
+
+/* Ember: a banked fire. Smoky brown-black glass, a flame-orange accent, and the code warm against one cool blue. */
+[data-palette="ember"] {
+  --tint-h: 45;
+}
+
+[data-palette="ember"][data-theme="dark"] {
+  --tint-c: 0.02;
+  --glass-c: 0.05;
+  --lift: -0.02;
+  --acrylic-alpha: 0.72;
+
+  --accent: oklch(0.74 0.16 52);
+  --accent-strong: oklch(0.8 0.15 56);
+  --accent-fg: oklch(0.2 0.05 40);
+  --accent-text: oklch(0.78 0.14 55);
+  --accent-soft: color-mix(in oklab, var(--accent) 18%, transparent);
+  --selection: color-mix(in oklab, var(--accent) 32%, transparent);
+
+  --status-attention: oklch(0.88 0.14 98);
+  --status-error: oklch(0.68 0.2 18);
+
+  --syntax-keyword: oklch(0.75 0.14 38);
+  --syntax-string: oklch(0.85 0.11 95);
+  --syntax-constant: oklch(0.8 0.13 65);
+  --syntax-function: oklch(0.8 0.08 215);
+  --syntax-parameter: oklch(0.83 0.06 20);
+}
+
+[data-palette="ember"][data-theme="light"] {
+  --tint-h: 55;
+  --tint-c: 0.024;
+  --glass-c: 0.038;
+  --acrylic-alpha: 0.76;
+
+  --accent: oklch(0.56 0.17 42);
+  --accent-strong: oklch(0.5 0.16 40);
+  --accent-fg: oklch(0.99 0.01 60);
+  --accent-text: oklch(0.52 0.16 42);
+
+  --status-attention: oklch(0.72 0.15 95);
+  --status-attention-text: oklch(0.51 0.12 95);
+  --status-error: oklch(0.54 0.21 18);
+  --status-error-text: oklch(0.5 0.2 18);
+
+  --syntax-keyword: oklch(0.5 0.16 35);
+  --syntax-string: oklch(0.49 0.11 115);
+  --syntax-constant: oklch(0.5 0.12 60);
+  --syntax-function: oklch(0.47 0.1 230);
+  --syntax-parameter: oklch(0.5 0.09 20);
+}
+
+/* Moss: a forest floor. Deep green glass, a fern accent, straw and rust in the code. */
+[data-palette="moss"] {
+  --tint-h: 145;
+}
+
+[data-palette="moss"][data-theme="dark"] {
+  --tint-c: 0.022;
+  --glass-c: 0.05;
+  --acrylic-alpha: 0.72;
+
+  --accent: oklch(0.8 0.14 138);
+  --accent-strong: oklch(0.86 0.13 136);
+  --accent-fg: oklch(0.22 0.05 145);
+  --accent-text: var(--accent);
+  --accent-soft: color-mix(in oklab, var(--accent) 16%, transparent);
+  --selection: color-mix(in oklab, var(--accent) 28%, transparent);
+
+  --status-success: oklch(0.8 0.11 180);
+
+  --syntax-keyword: oklch(0.8 0.12 138);
+  --syntax-string: oklch(0.85 0.1 95);
+  --syntax-constant: oklch(0.78 0.11 50);
+  --syntax-function: oklch(0.8 0.08 205);
+  --syntax-parameter: oklch(0.84 0.05 30);
+}
+
+[data-palette="moss"][data-theme="light"] {
+  --tint-c: 0.022;
+  --glass-c: 0.036;
+  --acrylic-alpha: 0.76;
+
+  --accent: oklch(0.5 0.13 145);
+  --accent-strong: oklch(0.44 0.12 145);
+  --accent-fg: oklch(0.99 0.015 140);
+  --accent-text: oklch(0.47 0.12 145);
+
+  --status-success: oklch(0.56 0.1 185);
+  --status-success-text: oklch(0.5 0.1 185);
+
+  --syntax-keyword: oklch(0.46 0.13 140);
+  --syntax-string: oklch(0.5 0.11 88);
+  --syntax-constant: oklch(0.5 0.13 48);
+  --syntax-function: oklch(0.48 0.1 225);
+  --syntax-parameter: oklch(0.5 0.08 25);
+}
+
+/*
+ * Phosphor: a green-screen terminal. Near-black glass, text itself glowing green, a phosphor accent,
+ * and code in the tube's few shades.
+ */
+[data-palette="phosphor"] {
+  --tint-h: 150;
+}
+
+[data-palette="phosphor"][data-theme="dark"] {
+  --tint-c: 0.04;
+  --glass-c: 0.035;
+  --lift: -0.05;
+  --acrylic-alpha: 0.8;
+
+  --line-subtle: oklch(0.85 0.1 150 / 0.09);
+  --line-strong: oklch(0.85 0.1 150 / 0.17);
+
+  --fg-primary: oklch(0.92 0.07 150);
+  --fg-secondary: oklch(0.79 0.07 150);
+  --fg-tertiary: oklch(0.66 0.06 150);
+  --fg-disabled: oklch(0.47 0.04 150);
+
+  --accent: oklch(0.87 0.2 148);
+  --accent-strong: oklch(0.92 0.19 146);
+  --accent-fg: oklch(0.18 0.05 150);
+  --accent-text: var(--accent);
+  --accent-soft: color-mix(in oklab, var(--accent) 14%, transparent);
+  --selection: color-mix(in oklab, var(--accent) 26%, transparent);
+
+  --status-success: oklch(0.82 0.11 195);
+
+  --pane-light: linear-gradient(
+    180deg,
+    oklch(0.9 0.2 150 / 0.03),
+    oklch(0.9 0.2 150 / 0.014) 6rem,
+    transparent 20rem
+  );
+
+  --syntax-keyword: oklch(0.9 0.19 145);
+  --syntax-string: oklch(0.85 0.14 112);
+  --syntax-constant: oklch(0.84 0.13 80);
+  --syntax-function: oklch(0.86 0.1 182);
+  --syntax-parameter: oklch(0.76 0.08 150);
+}
+
+[data-palette="phosphor"][data-theme="light"] {
+  --tint-c: 0.05;
+  --glass-c: 0.008;
+  --acrylic-alpha: 0.84;
+
+  --fg-primary: oklch(0.27 0.07 152);
+  --fg-secondary: oklch(0.4 0.08 152);
+  --fg-tertiary: oklch(0.5 0.07 152);
+
+  --accent: oklch(0.5 0.15 150);
+  --accent-strong: oklch(0.44 0.14 150);
+  --accent-fg: oklch(0.99 0.02 150);
+  --accent-text: oklch(0.46 0.14 150);
+
+  --status-success: oklch(0.56 0.1 195);
+  --status-success-text: oklch(0.49 0.1 195);
+
+  --syntax-keyword: oklch(0.44 0.15 148);
+  --syntax-string: oklch(0.5 0.12 115);
+  --syntax-constant: oklch(0.5 0.12 70);
+  --syntax-function: oklch(0.48 0.1 195);
+  --syntax-parameter: oklch(0.45 0.07 150);
+}
+
+/* Lagoon: shallow water over sand. Teal glass, its complement for an accent in coral, sand in the code. */
+[data-palette="lagoon"] {
+  --tint-h: 198;
+}
+
+[data-palette="lagoon"][data-theme="dark"] {
+  --tint-c: 0.026;
+  --glass-c: 0.065;
+  --lift: 0.01;
+  --acrylic-alpha: 0.72;
+
+  --accent: oklch(0.78 0.13 35);
+  --accent-strong: oklch(0.84 0.12 38);
+  --accent-fg: oklch(0.23 0.05 30);
+  --accent-text: var(--accent);
+  --accent-soft: color-mix(in oklab, var(--accent) 16%, transparent);
+  --selection: color-mix(in oklab, var(--accent) 28%, transparent);
+
+  --status-error: oklch(0.68 0.2 10);
+  --status-attention: oklch(0.86 0.14 92);
+
+  --syntax-keyword: oklch(0.79 0.12 28);
+  --syntax-string: oklch(0.87 0.08 92);
+  --syntax-constant: oklch(0.82 0.1 60);
+  --syntax-function: oklch(0.84 0.09 190);
+  --syntax-parameter: oklch(0.86 0.05 225);
+}
+
+[data-palette="lagoon"][data-theme="light"] {
+  --tint-c: 0.022;
+  --glass-c: 0.034;
+  --acrylic-alpha: 0.76;
+
+  --accent: oklch(0.56 0.15 33);
+  --accent-strong: oklch(0.5 0.15 31);
+  --accent-fg: oklch(0.99 0.01 40);
+  --accent-text: oklch(0.52 0.15 33);
+
+  --status-error: oklch(0.54 0.21 10);
+  --status-error-text: oklch(0.5 0.2 10);
+  --status-attention: oklch(0.72 0.15 92);
+  --status-attention-text: oklch(0.51 0.12 92);
+
+  --syntax-keyword: oklch(0.5 0.15 28);
+  --syntax-string: oklch(0.5 0.1 85);
+  --syntax-constant: oklch(0.5 0.12 55);
+  --syntax-function: oklch(0.47 0.1 205);
+  --syntax-parameter: oklch(0.48 0.07 230);
+}
+
+/* Midnight: deep, saturated navy glass with an electric cyan accent, gold and coral in the code. */
+[data-palette="midnight"] {
+  --tint-h: 262;
+}
+
+[data-palette="midnight"][data-theme="dark"] {
+  --tint-c: 0.04;
+  --glass-c: 0.09;
+  --lift: -0.015;
+  --acrylic-alpha: 0.74;
+
+  --accent: oklch(0.84 0.13 205);
+  --accent-strong: oklch(0.9 0.12 205);
+  --accent-fg: oklch(0.21 0.06 245);
+  --accent-text: var(--accent);
+  --accent-soft: color-mix(in oklab, var(--accent) 15%, transparent);
+  --selection: color-mix(in oklab, var(--accent) 28%, transparent);
+
+  --status-running: oklch(0.76 0.13 285);
+
+  --syntax-keyword: oklch(0.79 0.13 300);
+  --syntax-string: oklch(0.87 0.12 95);
+  --syntax-constant: oklch(0.79 0.13 30);
+  --syntax-function: oklch(0.85 0.11 205);
+  --syntax-parameter: oklch(0.85 0.06 260);
+}
+
+[data-palette="midnight"][data-theme="light"] {
+  --tint-h: 252;
+  --tint-c: 0.026;
+  --glass-c: 0.05;
+  --acrylic-alpha: 0.76;
+
+  --accent: oklch(0.5 0.14 238);
+  --accent-strong: oklch(0.44 0.13 240);
+  --accent-fg: oklch(0.99 0.01 230);
+  --accent-text: oklch(0.47 0.14 238);
+
+  --status-running: oklch(0.55 0.17 285);
+  --status-running-text: oklch(0.5 0.17 285);
+
+  --syntax-keyword: oklch(0.48 0.17 298);
+  --syntax-string: oklch(0.5 0.11 85);
+  --syntax-constant: oklch(0.5 0.15 30);
+  --syntax-function: oklch(0.46 0.12 225);
+  --syntax-parameter: oklch(0.48 0.09 265);
+}
+
+/*
+ * Neon: a sign in the rain. The most saturated of the set: deep violet glass, a hot-pink accent that
+ * carries white, and code (and the terminal) at full chroma.
+ */
+[data-palette="neon"] {
+  --tint-h: 295;
+}
+
+[data-palette="neon"][data-theme="dark"] {
+  --tint-c: 0.036;
+  --glass-c: 0.08;
+  --lift: -0.04;
+  --acrylic-alpha: 0.64;
+
+  --accent: oklch(0.57 0.24 350);
+  --accent-strong: oklch(0.62 0.24 350);
+  --accent-fg: oklch(0.99 0.01 350);
+  --accent-soft: color-mix(in oklab, var(--accent) 24%, transparent);
+  --accent-text: oklch(0.77 0.17 352);
+  --selection: color-mix(in oklab, var(--accent) 45%, transparent);
+  --focus-ring: color-mix(in oklab, var(--accent-text) 85%, transparent);
+
+  --status-error: oklch(0.7 0.19 30);
+  --status-merged: oklch(0.74 0.16 300);
+
+  --syntax-keyword: oklch(0.76 0.2 350);
+  --syntax-string: oklch(0.88 0.17 128);
+  --syntax-constant: oklch(0.88 0.16 90);
+  --syntax-function: oklch(0.84 0.13 205);
+  --syntax-parameter: oklch(0.8 0.13 300);
+
+  --glass-light: color-mix(in oklab, var(--accent) 11%, transparent);
+}
+
+[data-palette="neon"][data-theme="light"] {
+  --tint-h: 305;
+  --tint-c: 0.026;
+  --glass-c: 0.045;
+  --acrylic-alpha: 0.74;
+
+  --accent: oklch(0.56 0.24 350);
+  --accent-strong: oklch(0.5 0.23 350);
+  --accent-fg: oklch(0.99 0.01 350);
+  --accent-text: oklch(0.52 0.23 350);
+
+  --status-error: oklch(0.56 0.2 32);
+  --status-error-text: oklch(0.52 0.19 32);
+
+  --syntax-keyword: oklch(0.5 0.23 350);
+  --syntax-string: oklch(0.48 0.15 140);
+  --syntax-constant: oklch(0.5 0.13 62);
+  --syntax-function: oklch(0.47 0.14 228);
+  --syntax-parameter: oklch(0.5 0.17 300);
 }
 
 /*
@@ -313,10 +580,14 @@
 [data-palette="desktop"][data-theme="dark"] {
   --tint-c: min(var(--desktop-tint-c, 0) * 1.4, 0.024);
   --glass-c: min(var(--desktop-tint-c, 0) * 3.6, 0.065);
+  --acrylic-alpha: 0.68;
 
-  --accent: oklch(0.78 min(var(--desktop-accent-c, 0), 0.15) var(--desktop-accent-h, 0));
-  --accent-strong: oklch(0.85 min(var(--desktop-accent-c, 0), 0.13) var(--desktop-accent-h, 0));
+  --accent: oklch(0.8 min(var(--desktop-accent-c, 0), 0.14) var(--desktop-accent-h, 0));
+  --accent-strong: oklch(0.86 min(var(--desktop-accent-c, 0), 0.13) var(--desktop-accent-h, 0));
   --accent-fg: oklch(0.21 min(var(--desktop-accent-c, 0) * 0.3, 0.05) var(--desktop-accent-h, 0));
+  --accent-text: var(--accent);
+  --accent-soft: color-mix(in oklab, var(--accent) 16%, transparent);
+  --selection: color-mix(in oklab, var(--accent) 28%, transparent);
 
   --status-running: oklch(0.72 0.14 calc(245 + var(--desktop-running-turn, 0)));
   --status-attention: oklch(0.83 0.15 calc(78 + var(--desktop-attention-turn, 0)));
@@ -330,10 +601,12 @@
 [data-palette="desktop"][data-theme="light"] {
   --tint-c: min(var(--desktop-tint-c, 0) * 1.4, 0.026);
   --glass-c: min(var(--desktop-tint-c, 0) * 2.8, 0.05);
+  --acrylic-alpha: 0.74;
 
   --accent: oklch(0.52 min(var(--desktop-accent-c, 0), 0.17) var(--desktop-accent-h, 0));
   --accent-strong: oklch(0.45 min(var(--desktop-accent-c, 0), 0.16) var(--desktop-accent-h, 0));
   --accent-fg: oklch(0.98 min(var(--desktop-accent-c, 0) * 0.1, 0.01) var(--desktop-accent-h, 0));
+  --accent-text: oklch(0.49 min(var(--desktop-accent-c, 0), 0.17) var(--desktop-accent-h, 0));
 
   --status-running: oklch(0.56 0.17 calc(250 + var(--desktop-running-turn, 0)));
   --status-attention: oklch(0.68 0.16 calc(65 + var(--desktop-attention-turn, 0)));

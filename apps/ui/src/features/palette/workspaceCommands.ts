@@ -56,12 +56,12 @@ export function appearanceCommands({
       keywords: "light dark mode auto os",
       run: () => setTheme("system"),
     },
-    ...available.map(({ id, label }): PaletteCommand => ({
+    ...available.map(({ id, label, kind }): PaletteCommand => ({
       id: `theme:${id}`,
       group: "Settings",
       label: `Switch theme to ${label}`,
       icon: PaletteIcon,
-      keywords: "theme palette colour color",
+      keywords: `theme palette colour color ${kind.toLowerCase()}`,
       run: () => setPalette(id),
     })),
   ];

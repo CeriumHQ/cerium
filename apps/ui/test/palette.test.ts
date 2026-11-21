@@ -48,9 +48,9 @@ describe("workspace commands", () => {
     light.find(({ id }) => id === "system-appearance")?.run();
     expect(dark.some(({ id }) => id === "theme:desktop")).toBe(false);
     light.find(({ id }) => id === "theme:desktop")?.run();
-    dark.find(({ id }) => id === "theme:cobalt")?.run();
+    dark.find(({ id }) => id === "theme:midnight")?.run();
     expect(appearances).toEqual(["light", "dark", "system"]);
-    expect(themes).toEqual(["desktop", "cobalt"]);
+    expect(themes).toEqual(["desktop", "midnight"]);
   });
 });
 

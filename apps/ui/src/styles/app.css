@@ -58,18 +58,13 @@ body {
  * neutral desktop. On Windows and macOS the body stays transparent in every theme and the system
  * provides the real backdrop (`data-acrylic`): Acrylic on Windows, Vibrancy on macOS.
  */
-/* Real Acrylic and Vibrancy already tint and blur the desktop, so the window tint can be lighter. */
-html[data-acrylic][data-theme="dark"] {
-  --window-alpha: 0.45;
-}
-
-/* A coloured theme holds more of the glass, so its hue rather than the wallpaper's sets the window. */
-html[data-acrylic][data-theme="dark"]:not([data-palette="cerium"]) {
-  --window-alpha: 0.68;
-}
-
-html[data-acrylic][data-theme="light"]:not([data-palette="cerium"]) {
-  --window-alpha: 0.74;
+/*
+ * Real Acrylic and Vibrancy already tint and blur the desktop, so each theme says how much of its own
+ * glass to hold over them (`--acrylic-alpha`, tokens.css): a strongly tinted one holds more, so its hue
+ * rather than the wallpaper's sets the window.
+ */
+html[data-acrylic] {
+  --window-alpha: var(--acrylic-alpha);
 }
 
 html:not([data-acrylic]) body {

@@ -32,11 +32,10 @@ const modes: Record<Theme, { label: string; icon: LucideIcon }> = {
 export function AppearanceSettings() {
   const [palette, setPalette] = useAtom(paletteAtom);
   const shown = useShownTheme();
-  // The Desktop theme, once the shell has read the desktop's colours, beside the clear glass: nine
-  // themes in rows of three, or the eight glasses in rows of four where the shell can't.
+  // The Desktop theme, once the shell has read the desktop's colours, beside the default one.
   const desktop = useDesktopColors();
-  const [clear, ...tinted] = palettes;
-  const options = desktop === undefined ? palettes : [clear, desktopPalette, ...tinted];
+  const [first, ...rest] = palettes;
+  const options = desktop === undefined ? palettes : [first, desktopPalette, ...rest];
   return (
     <SettingsPage title="Appearance">
       <SettingsSection title="Theme" action={<ModePicker />}>
@@ -44,14 +43,14 @@ export function AppearanceSettings() {
           value={palette}
           onValueChange={(value) => setPalette(value as Palette)}
           aria-label="Theme"
-          className={`grid grid-cols-2 gap-x-3 gap-y-4 ${desktop === undefined ? "sm:grid-cols-4" : "sm:grid-cols-3"}`}
+          className="grid grid-cols-2 gap-x-3 gap-y-4 sm:grid-cols-3 lg:grid-cols-4"
         >
           {options.map((option) => (
             <Radio.Root
               key={option.id}
               value={option.id}
               nativeButton
-              render={<button type="button" aria-label={option.label} />}
+              render={<button type="button" aria-label={`${option.label}: ${option.kind}`} />}
               className="group flex flex-col gap-2.5 rounded-xl text-left outline-none"
             >
               <span className="relative block aspect-[16/10] overflow-hidden rounded-xl ring-1 ring-line-strong transition-[box-shadow] duration-150 group-hover:ring-fg-tertiary group-focus-visible:ring-2 group-focus-visible:ring-focus-ring group-data-checked:ring-2 group-data-checked:ring-accent">
@@ -61,11 +60,16 @@ export function AppearanceSettings() {
                   wallpaper={option.id === desktopPalette.id ? desktop?.thumbnail : undefined}
                 />
               </span>
-              <span className="flex items-center gap-2 px-0.5 text-body text-fg-secondary group-data-checked:font-medium group-data-checked:text-fg-primary">
-                <span className="grid size-3.5 place-items-center rounded-full border border-line-strong transition-colors group-data-checked:border-accent group-data-checked:bg-accent">
+              <span className="flex min-w-0 items-start gap-2 px-0.5">
+                <span className="mt-0.5 grid size-3.5 shrink-0 place-items-center rounded-full border border-line-strong transition-colors group-data-checked:border-accent group-data-checked:bg-accent">
                   <Radio.Indicator className="size-1.5 rounded-full bg-accent-fg" />
                 </span>
-                {option.label}
+                <span className="flex min-w-0 flex-col">
+                  <span className="text-body text-fg-secondary group-data-checked:font-medium group-data-checked:text-fg-primary">
+                    {option.label}
+                  </span>
+                  <span className="truncate text-caption text-fg-tertiary">{option.kind}</span>
+                </span>
               </span>
             </Radio.Root>
           ))}

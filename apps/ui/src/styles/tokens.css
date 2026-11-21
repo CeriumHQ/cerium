@@ -5,10 +5,13 @@
  * Two settings shape them, independently: the mode (`data-theme`: dark or light) and the theme
  * (`data-palette`, styles/themes.css). The mode blocks below lay out the ramp, from the window's
  * glass up to floating overlays, each a little more opaque. A theme tints that ramp with a hue of its
- * own (`--tint-h`, `--tint-c`, `--lift`) and recolours the accent, the code and any status hue its
- * accent would be mistaken for, once for each mode. The default theme, Cerium, is monochrome: colour
- * is reserved for meaning: status (running, attention, error, success), providers' own logos, and
- * data in agents' artifacts.
+ * own (`--tint-h`, `--tint-c`, `--glass-c`), sets how deep its dark glass sits (`--lift`) and how
+ * much of the desktop it lets through (`--acrylic-alpha`), and recolours the accent, the code and any
+ * status hue its accent would be mistaken for, once for each mode. The values below are the default
+ * theme's, Cerium: warm charcoal glass and an accent in ceria, the pale yellow oxide glass is polished
+ * with (a deep bronze of it in light mode, to carry white text). Beyond the accent,
+ * colour is reserved for meaning: status (running, attention, error, success), providers' own logos,
+ * and data in agents' artifacts.
  *
  * Each block is an attribute selector, never `html` alone, so a theme sample in Settings can set both
  * attributes on any element and draw itself in that theme.
@@ -16,15 +19,15 @@
 
 :root,
 [data-palette] {
-  /* The neutral ramp's hue and chroma, and how much lighter its dark surfaces sit; none by default. */
-  --tint-h: 0;
-  --tint-c: 0;
+  /* The neutral ramp's hue and chroma, and how much lighter its dark surfaces sit. */
+  --tint-h: 75;
+  --tint-c: 0.005;
   --lift: 0;
   /*
    * The glass's own chroma. Text keeps the ramp's faint tint, but the glass needs a real colour: over
    * Acrylic half of it is the desktop, and a faint tint drowns in whatever wallpaper sits behind it.
    */
-  --glass-c: var(--tint-c);
+  --glass-c: 0.008;
 }
 
 :root,
@@ -39,6 +42,8 @@
   /* The window's glass, before it lets the backdrop through. */
   --window: oklch(calc(0.17 + var(--lift)) var(--glass-c) var(--tint-h));
   --window-alpha: 0.62;
+  /* How much of the glass the window holds over the system's own (app.css): a stronger tint holds more. */
+  --acrylic-alpha: 0.5;
   --surface-window: oklch(
     from var(--window) l c h / calc(var(--window-alpha) + (1 - var(--window-alpha)) * var(--window-solid, 0))
   );
@@ -67,21 +72,27 @@
   --fg-tertiary: oklch(0.66 calc(var(--tint-c) * 0.8) var(--tint-h));
   --fg-disabled: oklch(0.46 calc(var(--tint-c) * 0.8) var(--tint-h));
 
-  /* Cerium's accent is the strongest contrast available: near-white on dark. Themes colour it. */
-  --accent: oklch(0.95 0 0);
-  --accent-strong: oklch(1 0 0);
-  --accent-fg: oklch(0.17 0 0);
-  --accent-soft: color-mix(in oklab, var(--accent) 11%, transparent);
+  /*
+   * The accent fills primary buttons, the selected radio and the slider, and `--accent-text` is it as
+   * text and lines. Cerium's dark one is pale and carries dark text; a theme with a deep accent gives
+   * it white text instead, and a lighter `--accent-text` of its own. Hover (`--accent-strong`)
+   * lightens it in dark mode and deepens it in light.
+   */
+  --accent: oklch(0.89 0.07 88);
+  --accent-strong: oklch(0.93 0.06 88);
+  --accent-fg: oklch(0.22 0.03 80);
+  --accent-soft: color-mix(in oklab, var(--accent) 14%, transparent);
   --accent-text: var(--accent);
 
-  --selection: color-mix(in oklab, var(--accent) 24%, transparent);
-  --focus-ring: color-mix(in oklab, var(--accent) 58%, transparent);
+  --selection: color-mix(in oklab, var(--accent) 26%, transparent);
+  --focus-ring: color-mix(in oklab, var(--accent-text) 70%, transparent);
   /* Dims the window behind a modal dialog. */
   --scrim: oklch(0 0 0 / 0.45);
 
   /* Status fills and text share colours in dark mode; light text needs deeper hues. */
-  --status-running: oklch(0.72 0.14 245);
-  --status-attention: oklch(0.83 0.15 78);
+  --status-running: oklch(0.74 0.13 245);
+  /* Turned towards orange, away from the champagne accent. */
+  --status-attention: oklch(0.82 0.15 65);
   --status-error: oklch(0.7 0.19 25);
   --status-success: oklch(0.78 0.15 152);
   --status-running-text: var(--status-running);
@@ -92,8 +103,8 @@
   --status-merged: oklch(0.72 0.15 305);
 
   /*
-   * The spectrum a prism splits white into, red to blue: the five tinted glasses beside the clear one,
-   * as Cerium's website draws them. Light for brand moments only (web/WebGate.tsx), never for chrome.
+   * The spectrum a prism splits white into, red to blue, as Cerium's website draws it. Light for brand
+   * moments only (web/WebGate.tsx), never for chrome or a theme.
    */
   --spectrum-1: oklch(0.74 0.15 356);
   --spectrum-2: oklch(0.81 0.14 68);
@@ -102,11 +113,11 @@
   --spectrum-5: oklch(0.68 0.19 264);
 
   /* Code in the file viewer: quiet hues over the neutral ramp, comments and punctuation in greys. */
-  --syntax-keyword: oklch(0.79 0.1 305);
-  --syntax-string: oklch(0.79 0.09 150);
-  --syntax-constant: oklch(0.81 0.09 70);
-  --syntax-function: oklch(0.8 0.08 225);
-  --syntax-parameter: oklch(0.84 0.05 25);
+  --syntax-keyword: oklch(0.78 0.12 300);
+  --syntax-string: oklch(0.82 0.1 158);
+  --syntax-constant: oklch(0.8 0.11 50);
+  --syntax-function: oklch(0.8 0.1 238);
+  --syntax-parameter: oklch(0.84 0.06 18);
 
   /*
    * Categorical colours for data in agents' artifacts, never for chrome. Validated as a set for
@@ -157,6 +168,7 @@
   --backdrop: oklch(calc(0.88 - var(--lift)) var(--glass-c) var(--tint-h));
   --window: oklch(0.96 var(--glass-c) var(--tint-h));
   --window-alpha: 0.62;
+  --acrylic-alpha: 0.66;
   --surface-window: oklch(
     from var(--window) l c h / calc(var(--window-alpha) + (1 - var(--window-alpha)) * var(--window-solid, 0))
   );
@@ -179,23 +191,23 @@
   --fg-tertiary: oklch(0.51 calc(var(--tint-c) * 1.2) var(--tint-h));
   --fg-disabled: oklch(0.68 var(--tint-c) var(--tint-h));
 
-  --accent: oklch(0.2 0 0);
-  --accent-strong: oklch(0.1 0 0);
-  --accent-fg: oklch(0.98 0 0);
-  --accent-soft: color-mix(in oklab, var(--accent) 9%, transparent);
-  --accent-text: var(--accent);
+  --accent: oklch(0.5 0.1 68);
+  --accent-strong: oklch(0.44 0.09 66);
+  --accent-fg: oklch(0.99 0.01 85);
+  --accent-soft: color-mix(in oklab, var(--accent) 12%, transparent);
+  --accent-text: oklch(0.47 0.09 66);
 
-  --selection: color-mix(in oklab, var(--accent) 16%, transparent);
-  --focus-ring: color-mix(in oklab, var(--accent) 55%, transparent);
+  --selection: color-mix(in oklab, var(--accent) 22%, transparent);
+  --focus-ring: color-mix(in oklab, var(--accent) 60%, transparent);
   --scrim: oklch(0 0 0 / 0.2);
 
   --status-running: oklch(0.56 0.17 250);
-  --status-attention: oklch(0.68 0.16 65);
+  --status-attention: oklch(0.68 0.16 58);
   --status-error: oklch(0.56 0.21 25);
   --status-success: oklch(0.58 0.15 152);
-  --status-running-text: oklch(0.53 0.17 250);
-  --status-attention-text: oklch(0.54 0.14 62);
-  --status-success-text: oklch(0.52 0.14 152);
+  --status-running-text: oklch(0.5 0.17 250);
+  --status-attention-text: oklch(0.51 0.13 62);
+  --status-success-text: oklch(0.49 0.13 152);
   --status-error-text: oklch(0.52 0.2 25);
   --status-merged: oklch(0.52 0.19 305);
 
@@ -205,11 +217,11 @@
   --spectrum-4: oklch(0.68 0.12 186);
   --spectrum-5: oklch(0.56 0.21 264);
 
-  --syntax-keyword: oklch(0.5 0.15 305);
-  --syntax-string: oklch(0.48 0.12 150);
-  --syntax-constant: oklch(0.52 0.12 55);
-  --syntax-function: oklch(0.5 0.11 235);
-  --syntax-parameter: oklch(0.5 0.1 25);
+  --syntax-keyword: oklch(0.5 0.17 300);
+  --syntax-string: oklch(0.49 0.12 155);
+  --syntax-constant: oklch(0.5 0.13 55);
+  --syntax-function: oklch(0.49 0.13 245);
+  --syntax-parameter: oklch(0.5 0.1 20);
 
   --series-1: #2a78d6;
   --series-2: #eb6834;
