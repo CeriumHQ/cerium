@@ -36,6 +36,8 @@ import type { SkillsConfigWriteParams } from "./protocol/v2/SkillsConfigWritePar
 import type { SkillsConfigWriteResponse } from "./protocol/v2/SkillsConfigWriteResponse.ts";
 import type { SkillsListParams } from "./protocol/v2/SkillsListParams.ts";
 import type { SkillsListResponse } from "./protocol/v2/SkillsListResponse.ts";
+import type { ThreadBackgroundTerminalsTerminateParams } from "./protocol/v2/ThreadBackgroundTerminalsTerminateParams.ts";
+import type { ThreadBackgroundTerminalsTerminateResponse } from "./protocol/v2/ThreadBackgroundTerminalsTerminateResponse.ts";
 import type { TurnInterruptParams } from "./protocol/v2/TurnInterruptParams.ts";
 import type { TurnInterruptResponse } from "./protocol/v2/TurnInterruptResponse.ts";
 import type { TurnStartParams } from "./protocol/v2/TurnStartParams.ts";
@@ -61,6 +63,11 @@ interface Methods {
   "thread/list": readonly [ThreadListParams, ThreadListResponse];
   "thread/compact/start": readonly [ThreadCompactStartParams, ThreadCompactStartResponse];
   "thread/turns/list": readonly [ThreadTurnsListParams, ThreadTurnsListResponse];
+  /** Experimental: the adapter opts into the experimental API at `initialize`. */
+  "thread/backgroundTerminals/terminate": readonly [
+    ThreadBackgroundTerminalsTerminateParams,
+    ThreadBackgroundTerminalsTerminateResponse,
+  ];
   "turn/start": readonly [TurnStartParams, TurnStartResponse];
   "turn/interrupt": readonly [TurnInterruptParams, TurnInterruptResponse];
 }

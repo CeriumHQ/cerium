@@ -11,6 +11,7 @@ import type { OpenCodeEvent } from "@opencode/client";
 import { Cause, Deferred, Duration, Effect, Exit, Queue, Stream } from "effect";
 import { basename, resolve } from "node:path";
 
+import { watchBackgroundJobs } from "./background.ts";
 import { call, openHost, type OpenCodeClient } from "./host.ts";
 import { readCatalog, toModelRef, windowOf, type CatalogRow } from "./models.ts";
 import { grantsFor, replyFor, sessionRules, toMcpServer, toolNamer, type Rule } from "./policy.ts";
@@ -86,6 +87,7 @@ export const startOpenCodeSession = Effect.fn("OpenCodeAdapter.startSession")(fu
   const emit = (record: OpenCodeRecord) => Queue.offerAllUnsafe(events, translator.translate(record));
 
   let sessionId: string | undefined;
+  let background: Effect.Success<ReturnType<typeof watchBackgroundJobs>> | undefined;
   /** Resolves when the turn in flight has ended. */
   let turnEnded: Deferred.Deferred<void> | undefined;
   let closing = false;
@@ -96,8 +98,11 @@ export const startOpenCodeSession = Effect.fn("OpenCodeAdapter.startSession")(fu
   const onEvent = (event: OpenCodeEvent) =>
     Effect.gen(function* () {
       if (event.type === "server.connected") return yield* Deferred.succeed(connected, undefined);
+      const type: string = event.type;
+      if (type === "experimental.job.updated" || type.startsWith("shell.")) background?.changed();
       if (sessionId === undefined || sessionOf(event) !== sessionId) return;
       emit({ type: "event", event });
+      if (event.type === "session.tool.success" || TURN_ENDS.has(event.type)) background?.changed();
       if (TURN_ENDS.has(event.type) && turnEnded !== undefined) yield* Deferred.succeed(turnEnded, undefined);
     });
   const lost = (message: string) => (cause: unknown) => {
@@ -204,6 +209,10 @@ export const startOpenCodeSession = Effect.fn("OpenCodeAdapter.startSession")(fu
     }),
   );
   emit({ type: "opened", sessionId: id, model, effort });
+  const jobs = yield* watchBackgroundJobs(host, id, cwd, (tasks) => {
+    Queue.offerUnsafe(events, { payload: { _tag: "BackgroundTasksChanged", tasks } });
+  });
+  background = jobs;
 
   const skillIds = (skills: TurnExtras["skills"]) =>
     skills === undefined || skills.length === 0
@@ -329,6 +338,7 @@ export const startOpenCodeSession = Effect.fn("OpenCodeAdapter.startSession")(fu
 
   return {
     events: Stream.fromQueue(events),
+    stopBackgroundTask: jobs.stop,
     send: (text, extras) =>
       Effect.sync(() => pending++).pipe(
         Effect.andThen(Queue.offer(input, { text, ...(extras ? { extras } : {}) })),

@@ -1,5 +1,5 @@
 import type { CompletionUsage } from "@cerium/harness";
-import type { EventPayload } from "@cerium/protocol";
+import type { BackgroundTask, EventPayload, TodoItem } from "@cerium/protocol";
 
 import { LOGIN_COMMAND } from "./manifest.ts";
 import { mcpToolName } from "./policy.ts";
@@ -111,9 +111,96 @@ export const translateEvent = (
             },
           ];
     }
+    case "session.compaction_complete": {
+      if (data["success"] !== true) {
+        const reason = string(data["error"]) ?? string(data["failureReason"]);
+        return [
+          {
+            _tag: "AgentError",
+            kind: "unknown",
+            message: `GitHub Copilot couldn't compact the conversation${reason ? `: ${reason}` : ""}`,
+            retryable: false,
+          },
+        ];
+      }
+      const before = count(data["preCompactionTokens"]);
+      const after = count(data["postCompactionTokens"]);
+      const summary = string(data["summaryContent"])?.trim();
+      return [
+        {
+          _tag: "ContextCompacted",
+          trigger: data["trigger"] === "manual" ? "manual" : "auto",
+          ...(before === undefined ? {} : { tokensBefore: before }),
+          ...(after === undefined ? {} : { tokensAfter: after }),
+          ...(summary ? { summary } : {}),
+        },
+      ];
+    }
     case "session.error":
       return [translateError(data)];
     default:
       return [];
   }
+};
+
+/**
+ * A row of the session's SQL `todos` table (`session.plan.readSqlTodos`) as a todo. Copilot's agent
+ * writes `pending`, `in_progress`, `done` and `blocked`; a blocked item waits like a pending one.
+ */
+export const translateTodo = (row: unknown): ReadonlyArray<TodoItem> => {
+  const todo = record(row);
+  const text = string(todo?.["title"]) ?? string(todo?.["description"]);
+  if (!todo || !text) return [];
+  const id = string(todo["id"]);
+  const status = string(todo["status"])?.toLowerCase();
+  return [
+    {
+      ...(id ? { id } : {}),
+      text,
+      status:
+        status === "done" || status === "completed"
+          ? "completed"
+          : status === "in_progress" || status === "inprogress"
+            ? "inProgress"
+            : status === "cancelled" || status === "canceled"
+              ? "cancelled"
+              : "pending",
+    },
+  ];
+};
+
+const time = (value: unknown) => {
+  const ms = typeof value === "string" ? Date.parse(value) : Number.NaN;
+  return Number.isNaN(ms) ? undefined : ms;
+};
+
+/**
+ * A task of `session.tasks.list` that runs on in the background: a detached or backgrounded shell, a
+ * backgrounded agent, or a task a client registered. Finished ones and ones the turn still waits on
+ * are left out.
+ */
+export const translateTask = (value: unknown): ReadonlyArray<BackgroundTask> => {
+  const task = record(value);
+  const id = string(task?.["id"]);
+  const status = task?.["status"];
+  if (!task || !id || (status !== "running" && status !== "idle")) return [];
+  const type = task["type"];
+  // Client tasks always run in the background; the rest say how they run.
+  if ((type === "shell" || type === "agent") && task["executionMode"] !== "background") return [];
+  const command = type === "shell" ? string(task["command"]) : undefined;
+  const description = string(task["description"]) ?? string(task["displayName"]) ?? command ?? id;
+  const callId = string(task["toolCallId"]);
+  const startedAt = time(task["startedAt"]);
+  return [
+    {
+      id,
+      kind: type === "shell" ? "command" : type === "agent" ? "agent" : "other",
+      description,
+      ...(command && command !== description ? { command } : {}),
+      ...(callId ? { callId } : {}),
+      ...(startedAt === undefined ? {} : { startedAt }),
+      // `session.tasks.cancel` stops shells and agents; a client's task only while its owner listens.
+      stoppable: type === "shell" || type === "agent" || task["canCancel"] === true,
+    },
+  ];
 };

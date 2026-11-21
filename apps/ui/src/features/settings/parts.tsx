@@ -183,15 +183,6 @@ export function SettingsNote({
   );
 }
 
-/** A small tag beside a heading, such as "Experimental". */
-export function SettingsTag({ children }: { children: ReactNode }) {
-  return (
-    <span className="rounded-full border border-line-subtle px-1.5 text-caption font-normal text-fg-tertiary">
-      {children}
-    </span>
-  );
-}
-
 /** A setting's on/off switch, named by the element `labelledBy` points at. */
 export function SettingsSwitch({
   checked,

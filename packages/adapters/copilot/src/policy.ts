@@ -6,7 +6,8 @@ import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { failure, record, string, type CopilotHost } from "./rpc.ts";
 
 const nativeAgentTools = ["task", "read_agent", "write_agent", "list_agents", "send_inbox", "context_board"];
-const readTools = ["builtin:view", "builtin:glob", "builtin:grep"];
+/** The tools that only read: a read-only session's, and a side question's. */
+export const readTools = ["builtin:view", "builtin:glob", "builtin:grep"];
 
 export const mcpToolName = (server: string, tool: string) => `mcp__${server}__${tool}`;
 
