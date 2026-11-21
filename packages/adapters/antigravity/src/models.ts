@@ -1,7 +1,7 @@
-import type { ModelInfo, ReasoningEffort } from "@cerium/protocol";
+import { EFFORTS, record } from "@cerium/acp";
+import type { ModelInfo } from "@cerium/protocol";
 import { Effect, Schema } from "effect";
 
-import { record } from "./acp.ts";
 import { PROVIDER, failure } from "./manifest.ts";
 
 const Config = Schema.Struct({
@@ -51,8 +51,6 @@ export const readConfig = (result: unknown) =>
     Effect.flatMap(({ configOptions }) => readOptions(configOptions)),
     Effect.mapError(() => failure("Antigravity returned invalid session configuration")),
   );
-
-const EFFORTS: ReadonlyArray<ReasoningEffort> = ["minimal", "low", "medium", "high", "xhigh", "max"];
 
 /** ACP's model picker groups the legacy model ids by family. The legacy ids enumerate each family's variants. */
 export const toModelInfos = ({ configOptions, models }: SessionDetails): ReadonlyArray<ModelInfo> => {

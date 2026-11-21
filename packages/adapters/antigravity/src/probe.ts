@@ -1,24 +1,32 @@
 import {
-  HarnessUnavailable,
-  compareVersions,
-  findOnPath,
-  parseVersion,
-  scratchFolder,
-} from "@cerium/harness";
+  connect,
+  findExecutable,
+  needsLogin,
+  probeWorkspace,
+  readCliVersion,
+  loginRequired as acpLoginRequired,
+} from "@cerium/acp";
+import { compareVersions } from "@cerium/harness";
 import type { HarnessStatus, ModelInfo } from "@cerium/protocol";
-import { Effect, FileSystem } from "effect";
-import { ChildProcess, ChildProcessSpawner } from "effect/process";
+import { Effect } from "effect";
 
-import { callFailure, connect, needsLogin } from "./acp.ts";
-import { INSTALL_HINT, LOGIN_COMMAND, MINIMUM_VERSION, PROVIDER, SIGNED_OUT, failure } from "./manifest.ts";
+import {
+  INSTALL_HINT,
+  LOGIN_COMMAND,
+  MINIMUM_VERSION,
+  PROVIDER,
+  antigravityHarness,
+  failure,
+} from "./manifest.ts";
 import { readSessionDetails, toModelInfos } from "./models.ts";
 
-export const findAntigravityExecutable = findOnPath("agy").pipe(
-  Effect.map((paths) => paths.find((path) => process.platform !== "win32" || /\.exe$/i.test(path))),
-);
+export const findAntigravityExecutable = findExecutable("agy");
 
-export const loginRequired = () =>
-  new HarnessUnavailable({ provider: PROVIDER, reason: "loggedOut", message: SIGNED_OUT });
+export const loginRequired = () => acpLoginRequired(antigravityHarness);
+
+/** `agy acp` over stdio, with `flags` after it. */
+export const connectAntigravity = (executable: string, cwd: string, flags: ReadonlyArray<string> = []) =>
+  connect(antigravityHarness, { executable, args: ["acp", "--stdio", ...flags], cwd });
 
 interface Discovery {
   readonly status: HarnessStatus;
@@ -36,19 +44,7 @@ export const discoverAntigravity = Effect.fn("Antigravity.discover")(function* (
     } satisfies Discovery;
   }
 
-  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-  const output = yield* spawner
-    .string(ChildProcess.make(executablePath, ["--version"], { stderr: "ignore" }))
-    .pipe(
-      Effect.mapError((cause) => failure("Could not run `agy --version`", cause)),
-      Effect.timeoutOrElse({
-        duration: "10 seconds",
-        orElse: () => Effect.fail(failure("Antigravity did not report its CLI version")),
-      }),
-    );
-  const version = parseVersion(output);
-  if (version === undefined) return yield* failure("Could not read the Antigravity CLI version");
-
+  const version = yield* readCliVersion(antigravityHarness, executablePath, "agy");
   const installed = { _tag: "HarnessInstalled", provider: PROVIDER, executablePath, version } as const;
   const loggedOut = { _tag: "LoggedOut", loginCommand: LOGIN_COMMAND } as const;
   if (compareVersions(version, MINIMUM_VERSION) < 0) {
@@ -69,16 +65,12 @@ export const discoverAntigravity = Effect.fn("Antigravity.discover")(function* (
 
   // `initialize` offers authentication methods regardless of login state. A session with no prompt
   // distinguishes saved login from -32000 and returns the account's model catalog in one request.
-  const fs = yield* FileSystem.FileSystem;
-  const directory = yield* scratchFolder(PROVIDER);
-  const cwd = yield* fs
-    .makeTempDirectoryScoped({ directory, prefix: "cerium-antigravity-" })
-    .pipe(Effect.mapError((cause) => failure("Could not prepare Antigravity's probe workspace", cause)));
-  const acp = yield* connect(executablePath, cwd, ["--include-default-customizations=false"]);
+  const cwd = yield* probeWorkspace(antigravityHarness);
+  const acp = yield* connectAntigravity(executablePath, cwd, ["--include-default-customizations=false"]);
   const result = yield* acp.query("session/new", { cwd, mcpServers: [] }).pipe(
     Effect.map((value) => ({ signedIn: true as const, value })),
     Effect.catchIf(needsLogin, () => Effect.succeed({ signedIn: false as const })),
-    Effect.mapError(callFailure("session/new")),
+    Effect.mapError(acp.refused("session/new")),
   );
   if (!result.signedIn) {
     return { status: { ...installed, auth: loggedOut }, models: [] } satisfies Discovery;
@@ -87,9 +79,7 @@ export const discoverAntigravity = Effect.fn("Antigravity.discover")(function* (
   const details = yield* readSessionDetails(result.value).pipe(
     Effect.mapError(() => failure("Antigravity returned an invalid model catalog")),
   );
-  yield* acp
-    .query("session/close", { sessionId: details.sessionId })
-    .pipe(Effect.mapError(callFailure("session/close")));
+  yield* acp.call("session/close", { sessionId: details.sessionId });
   const models = toModelInfos(details);
   if (models.length === 0) return yield* failure("Antigravity returned no models");
 
