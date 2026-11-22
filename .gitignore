@@ -34,5 +34,6 @@ scratch/
 .claude/
 AGENTS.md
 CLAUDE.md
+.github/copilot-instructions.md
 skills-lock.json
 **/scripts/_*
