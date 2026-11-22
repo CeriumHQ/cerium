@@ -105,7 +105,7 @@ export function useComposerActions({
         {/* The ring turns with the disc, so the one control that ends the turn stands out. */}
         <span
           ref={stopDisc}
-          className={`pointer-events-none relative grid size-full place-items-center rounded-full bg-accent text-accent-fg shadow-button transition-[opacity,scale,filter] before:absolute ${turned ? "swap-in" : ""} before:-inset-1 before:animate-spin before:rounded-full before:border-[1.5px] before:border-transparent before:border-t-fg-secondary group-hover:opacity-90 group-active:scale-95 motion-reduce:transition-none motion-reduce:before:animate-none`}
+          className={`pointer-events-none relative grid size-full place-items-center rounded-full bg-accent text-accent-fg shadow-button transition-[opacity,scale,filter] before:absolute ${turned ? "swap-in" : ""} before:-inset-[3px] before:animate-spin before:rounded-full before:border-[1.5px] before:border-transparent before:border-t-fg-secondary group-hover:opacity-90 group-active:scale-95 motion-reduce:transition-none motion-reduce:before:animate-none`}
         >
           <Square size={11} fill="currentColor" strokeWidth={0} />
         </span>
@@ -161,9 +161,13 @@ export function useComposerActions({
   );
   // While a turn runs, a message written meanwhile waits for it to end, so send stays beside stop. The
   // model chip leads the right-hand group with access after it, what the message goes to and how it
-  // may act; dictation sits by send, both being how the message is written and sent.
+  // may act; dictation sits by send, both being how the message is written and sent. On the one line
+  // the row keeps off the box's rounded end, so stop's ring clears its edge.
   return (
-    <div ref={actionsRow} className="relative isolate flex min-w-0 shrink-0 items-center gap-1">
+    <div
+      ref={actionsRow}
+      className={`relative isolate flex min-w-0 shrink-0 items-center gap-1 ${inline ? "me-1" : ""}`}
+    >
       <div ref={leadingActions} className="flex min-w-0 items-center gap-1 empty:hidden">
         {children}
       </div>

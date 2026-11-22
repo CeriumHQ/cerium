@@ -473,7 +473,7 @@ export function PromptEditor({
         onBlur={() => onTrigger(undefined)}
         className={`${ghost ? "col-start-1 row-start-1" : ""} block w-full overflow-y-auto text-reading leading-[1.6] break-words whitespace-pre-wrap text-fg-primary outline-none max-md:text-[16px] ${
           inline
-            ? "max-h-32 min-h-10 px-1 py-2 md:max-h-60"
+            ? "max-h-32 min-h-(--line-row) px-1 py-(--line-pad) md:max-h-60"
             : "max-h-60 min-h-12 px-4 pt-3 pb-1 max-md:max-h-40"
         }`}
       />
@@ -489,7 +489,7 @@ export function PromptEditor({
         <span
           data-followup=""
           className={`pointer-events-none col-start-1 row-start-1 flex min-w-0 items-baseline gap-2 text-reading leading-[1.6] text-fg-tertiary select-none max-md:text-[16px] ${
-            inline ? "px-1 py-2" : "px-4 pt-3 pb-1"
+            inline ? "px-1 py-(--line-pad)" : "px-4 pt-3 pb-1"
           }`}
         >
           <span id={suggestionId} className="min-w-0 break-words">
@@ -514,7 +514,7 @@ export function PromptEditor({
           aria-hidden
           data-editor-placeholder=""
           className={`pointer-events-none absolute text-reading leading-[1.6] text-fg-tertiary select-none max-md:text-[16px] ${
-            inline ? "inset-x-1 top-2 truncate" : "top-3 left-4"
+            inline ? "inset-x-1 top-(--line-pad) truncate" : "top-3 left-4"
           } ${cover ? "opacity-0 transition-opacity duration-150 group-hover/editor:opacity-100 group-focus-within/editor:opacity-100" : ""}`}
         >
           {placeholder}

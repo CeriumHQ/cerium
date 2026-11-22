@@ -629,6 +629,11 @@ export function Composer({
       />
     ) : null;
 
+  // The one line is as tall as its buttons with their margins, and its text sits centred on them:
+  // the buttons grow on a touch or narrow screen, and the text with them, so the editor follows.
+  const lineRow = oneLine
+    ? "[--line-row:2.5rem] [--line-pad:calc((var(--line-row)-1lh)/2)]"
+    : "[--line-row:2.5rem] [--line-pad:calc((var(--line-row)-1lh)/2)] pointer-coarse:[--line-row:3rem] max-md:[--line-row:3rem]";
   return (
     <div
       ref={box}
@@ -698,7 +703,7 @@ export function Composer({
           ref={glass}
           className={`pointer-events-auto relative border bg-surface-film shadow-film backdrop-blur-2xl transition-colors ${
             dragging ? "border-accent" : "border-line-strong"
-          } ${inline ? "flex flex-wrap content-start items-end rounded-[24px] p-1" : "rounded-[18px]"} ${
+          } ${inline ? `flex flex-wrap content-start items-end rounded-[24px] p-1 ${lineRow}` : "rounded-[18px]"} ${
             morphing
               ? "[&_:is(.reveal,.pop)]:transition-none! [&_:is(.reveal,.pop)[data-phase=leaving]]:hidden"
               : ""
