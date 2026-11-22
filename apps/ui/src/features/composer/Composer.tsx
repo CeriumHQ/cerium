@@ -323,12 +323,27 @@ export function Composer({
   });
   const resumes = thread?.ended !== undefined;
   const oneLine = useKeyboardOpen();
+  // Speech becomes text at the caret, transcribed on this computer (features/dictation). The web
+  // client is a phone's, whose keyboard has a microphone of its own.
+  const dictation = useDictation((spoken) => editor.current?.insertText(spoken));
+  const dictates = !WEB && !oneLine && navigator.mediaDevices !== undefined;
+  const listening = dictation.state.phase === "recording" || dictation.state.phase === "starting";
+  // A line the user could send next, in the empty box after the lead finishes a turn in view.
+  const followup = useFollowup({
+    followup: target.kind === "thread" ? target.followup : undefined,
+    empty: blankBox && !listening,
+    running,
+  });
+  const suggestion = followup.text;
   // A message that wraps on the one line opens the box, so it isn't squeezed into the space left
-  // beside the controls; it stays open, though the wider line may fit it again, until it's cleared.
-  const [grownFor, setGrownFor] = useState<string>();
+  // beside the controls. Keep it open until the draft is cleared or the preview goes away.
+  const [grownFor, setGrownFor] = useState<{ draftKey: string; suggestion: string | undefined }>();
   const blank = text.trim() === "";
-  if (grownFor !== undefined && blank) setGrownFor(undefined);
-  const grown = grownFor === draftKey;
+  const grown =
+    grownFor?.draftKey === draftKey &&
+    grownFor.suggestion === suggestion &&
+    (!blank || suggestion !== undefined);
+  if (grownFor !== undefined && !grown) setGrownFor(undefined);
   // An open thread's box is one line: attach, the message, then the lead's model and send, until the
   // message outgrows it. A new thread's rests on that line too until the user writes, then unfolds a
   // row for the choices that start it. A touch screen keeps the row out, as the keyboard covers the
@@ -336,17 +351,20 @@ export function Composer({
   const compact = thread !== undefined && !oneLine && !grown;
   useLayoutEffect(() => {
     const element = input.current;
-    if (!compact || element === null) return;
+    if (!compact || element === null || (blank && suggestion === undefined)) return;
     const check = () => {
       const style = getComputedStyle(element);
       const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
-      if (element.scrollHeight - padding > parseFloat(style.lineHeight) * 1.5) setGrownFor(draftKey);
+      // The preview and editor share a grid cell, so either can grow the editor's height.
+      if (element.scrollHeight - padding > parseFloat(style.lineHeight) * 1.5) {
+        setGrownFor({ draftKey, suggestion });
+      }
     };
     check();
     const observer = new ResizeObserver(check);
     observer.observe(element);
     return () => observer.disconnect();
-  }, [compact, draftKey, input]);
+  }, [blank, compact, draftKey, input, suggestion]);
   const rests =
     isNew &&
     !oneLine &&
@@ -365,18 +383,6 @@ export function Composer({
   });
   const unfolded = useChanged(inline);
 
-  // Speech becomes text at the caret, transcribed on this computer (features/dictation). The web
-  // client is a phone's, whose keyboard has a microphone of its own.
-  const dictation = useDictation((spoken) => editor.current?.insertText(spoken));
-  const dictates = !WEB && !oneLine && navigator.mediaDevices !== undefined;
-  const listening = dictation.state.phase === "recording" || dictation.state.phase === "starting";
-  // A line the user could send next, in the empty box after the lead finishes a turn in view.
-  const followup = useFollowup({
-    followup: target.kind === "thread" ? target.followup : undefined,
-    empty: blankBox && !listening,
-    running,
-  });
-  const suggestion = followup.text;
   const acceptSuggestion = () => {
     if (suggestion === undefined) return;
     followup.dismiss();
