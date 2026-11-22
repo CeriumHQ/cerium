@@ -39,6 +39,7 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: write
+      pull-requests: read
     outputs:
       package: ${{ github.event_name != 'pull_request' || steps.changes.outputs.package == 'true' }}
       everywhere: ${{ steps.changes.outputs.everywhere }}
@@ -61,10 +62,19 @@ jobs:
         with:
           node-version: 24
       - name: Check the commit messages
-        run: node scripts/check-commits.ts "$BASE" "$HEAD"
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = pull_request ] && [ "$PR_AUTHOR_TYPE" != Bot ]; then
+            PR_TITLE=$(gh pr view "$PR_NUMBER" --json title --jq .title)
+            export PR_TITLE
+          fi
+          node scripts/check-commits.ts "$BASE" "$HEAD"
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
           HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_AUTHOR_TYPE: ${{ github.event.pull_request.user.type }}
       # Commits that only change documentation, which no build reads, are linted but neither tested
       # nor packaged.
       # Only known GitHub documentation is exempt. The desktop app ships its notices and license.

@@ -19,6 +19,7 @@ jobs:
     name: Build and verify
     permissions:
       contents: write
+      pull-requests: read
     concurrency:
       group: ${{ github.event_name == 'push' && 'ci-push-main' || format('ci-manual-{0}', github.run_id) }}
       cancel-in-progress: true
