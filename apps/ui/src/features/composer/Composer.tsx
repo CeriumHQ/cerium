@@ -18,6 +18,7 @@ import { machineAtom } from "../../backend/machine.ts";
 import { Reveal } from "../../components/Reveal.tsx";
 import { IconButton } from "../../components/ui/IconButton.tsx";
 import { useChanged, useMorph } from "../../lib/motion.ts";
+import { useCompact } from "../../app/compact.ts";
 import { useKeyboardOpen } from "../../web/viewport.ts";
 import { usesCommandKey } from "../../lib/keys.ts";
 import { bindingFor, isCapturingBinding, matchesBinding, shortcutBindingsAtom } from "../../lib/shortcuts.ts";
@@ -202,6 +203,7 @@ export function Composer({
   const sendKey = useAtomValue(sendKeyAtom);
   const bindings = useAtomValue(shortcutBindingsAtom);
   const touch = useCoarsePointer();
+  const narrow = useCompact();
   const [modelsOpen, setModelsOpen] = useState(false);
   const start = useStartChoices({
     target,
@@ -750,6 +752,10 @@ export function Composer({
             ) : null}
           </Reveal>
           {inline ? attachButton : null}
+          {/* On a phone, where the thread will run heads the box on a row of its own: beside the
+              paperclip and the model it was squeezed to a few letters and pushed the paperclip onto a
+              row alone. The row under the message is then only how it's written and sent. */}
+          {!inline && narrow && newPlace ? <div className="flex min-w-0 px-2 pt-2">{newPlace}</div> : null}
           <PromptEditor
             inline={inline}
             ref={input}
@@ -793,7 +799,7 @@ export function Composer({
               <div className="flex min-h-8 min-w-0 flex-1 flex-wrap content-center items-center gap-0.5">
                 {attachButton}
                 {targetChip}
-                {newPlace}
+                {narrow ? null : newPlace}
               </div>
               {actions}
             </div>
