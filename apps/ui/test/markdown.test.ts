@@ -16,7 +16,13 @@ import {
   splitBlocks,
   streamingFence,
 } from "../src/features/transcript/markdownBlocks.ts";
-import { rehypeAlerts, rehypeInk, remarkDollarGuard } from "../src/features/transcript/markdownPlugins.ts";
+import {
+  localImagePath,
+  rehypeAlerts,
+  rehypeInk,
+  rehypeLocalImages,
+  remarkDollarGuard,
+} from "../src/features/transcript/markdownPlugins.ts";
 
 const html = (markdown: string, ...plugins: Array<() => (tree: never) => void>) =>
   String(
@@ -166,6 +172,37 @@ describe("rehypeAlerts", () => {
 
   it("leaves a plain quote as it is", () => {
     expect(html("> Just a quote.", rehypeAlerts)).toBe("<blockquote>\n<p>Just a quote.</p>\n</blockquote>");
+  });
+});
+
+describe("localImagePath", () => {
+  it("names a file for an absolute path or a file URL", () => {
+    expect(localImagePath("/tmp/composer-before.png")).toBe("/tmp/composer-before.png");
+    expect(localImagePath("C:\\shots\\a.png")).toBe("C:\\shots\\a.png");
+    expect(localImagePath("file:///tmp/a%20b.png")).toBe("/tmp/a b.png");
+    expect(localImagePath("file://localhost/tmp/a.png")).toBe("/tmp/a.png");
+    expect(localImagePath("file:///C:/shots/a.png")).toBe("C:/shots/a.png");
+  });
+
+  it("leaves web, protocol-relative and relative addresses alone", () => {
+    expect(localImagePath("https://example.com/a.png")).toBeUndefined();
+    expect(localImagePath("//cdn.example.com/a.png")).toBeUndefined();
+    expect(localImagePath("shots/a.png")).toBeUndefined();
+    expect(localImagePath("data:image/png;base64,AAAA")).toBeUndefined();
+  });
+});
+
+describe("rehypeLocalImages", () => {
+  it("moves a path on disk from src to data-local-path", () => {
+    expect(html("![Before](/tmp/composer-before.png)", rehypeLocalImages)).toBe(
+      '<p><img alt="Before" data-local-path="/tmp/composer-before.png"></p>',
+    );
+  });
+
+  it("keeps a web image's src", () => {
+    expect(html("![Logo](https://example.com/logo.png)", rehypeLocalImages)).toBe(
+      '<p><img src="https://example.com/logo.png" alt="Logo"></p>',
+    );
   });
 });
 

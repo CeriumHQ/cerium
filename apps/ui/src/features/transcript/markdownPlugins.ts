@@ -122,6 +122,47 @@ const choosePicture = (picture: HtmlNode) => {
   if (src !== undefined && image) image.properties = { ...image.properties, src };
 };
 
+/** The property an image the agent named by its path on disk carries that path in (`data-local-path`). */
+export const LOCAL_PATH = "dataLocalPath";
+
+/**
+ * The file an image's address names on the backend's machine: an absolute path (`/tmp/a.png`,
+ * `C:\a.png`) or a `file://` URL. Undefined for a web address, a protocol-relative `//host/…`, or a
+ * relative one.
+ */
+export const localImagePath = (address: string): string | undefined => {
+  if (/^file:/i.test(address)) {
+    let path = address.replace(/^file:(?:\/\/(?:localhost)?)?/i, "");
+    try {
+      path = decodeURIComponent(path);
+    } catch {
+      // Left as written.
+    }
+    path = path.replace(/^\/(?=[a-z]:[\\/])/i, "");
+    return /^(?:[a-z]:[\\/]|\/(?!\/))/i.test(path) ? path : undefined;
+  }
+  return /^(?:[a-z]:[\\/]|\/(?![\\/]))/i.test(address) ? address : undefined;
+};
+
+/**
+ * Each image whose address is a file on disk, with that path moved to `LOCAL_PATH`, for the image
+ * component to read through the backend. Left as an address, a path would be fetched from wherever
+ * the window was served (on a phone over remote access, the relay), and a `file:` or drive address
+ * would be dropped by the sanitizer. Runs before it, and after `rehypeRaw`, so `<img>` tags count too.
+ */
+export const rehypeLocalImages = () => (tree: HtmlNode) => {
+  const visit = (node: HtmlNode) => {
+    const src = node.tagName === "img" ? node.properties?.["src"] : undefined;
+    const path = typeof src === "string" ? localImagePath(src) : undefined;
+    if (path !== undefined) {
+      const { src: _src, ...rest } = node.properties ?? {};
+      node.properties = { ...rest, [LOCAL_PATH]: path };
+    }
+    node.children?.forEach(visit);
+  };
+  visit(tree);
+};
+
 /** Which attribute of an element holds the address `resolve` rewrites. */
 const ADDRESSES: Readonly<Record<string, string>> = { img: "src", a: "href" };
 

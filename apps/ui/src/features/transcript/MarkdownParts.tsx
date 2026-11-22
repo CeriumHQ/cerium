@@ -1,3 +1,4 @@
+import { useAtomValue } from "@effect/atom-react";
 import { ARTIFACT_LANGUAGE } from "@cerium/artifacts";
 import {
   Check,
@@ -8,9 +9,14 @@ import {
   OctagonAlert,
   type LucideIcon,
 } from "lucide-react";
+import { AsyncResult } from "effect/reactivity";
 import { createContext, useContext, useState, type ComponentProps, type ReactNode } from "react";
 
+import { imageAtom } from "../../backend/files.ts";
+import { baseName } from "../../components/fileIcons/index.ts";
+
 import { FileIcon } from "../../components/FileIcon.tsx";
+import { MissingImage } from "../../components/ImageThumb.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { LineText } from "../viewer/CodeView.tsx";
 import { useHighlightRange, useHighlightSource } from "../viewer/highlight.ts";
@@ -429,10 +435,37 @@ export function Quote({ children, node }: Part<"blockquote">) {
   );
 }
 
-/** An image the agent put in its reply, at its own size up to the column's. */
-export function Image({ src, alt, title, node: _node }: Part<"img">) {
+/**
+ * An image the agent put in its reply, at its own size up to the column's. One it named by its path
+ * on disk (`rehypeLocalImages`) is read through the backend, so it shows wherever the window is,
+ * a phone over remote access too.
+ */
+export function Image({
+  src,
+  alt,
+  title,
+  node: _node,
+  "data-local-path": localPath,
+}: Part<"img"> & { "data-local-path"?: string }) {
+  if (typeof localPath === "string" && localPath !== "") {
+    return <LocalImage path={localPath} alt={alt ?? ""} title={title} />;
+  }
   if (typeof src !== "string" || src === "") return alt ? <span>{alt}</span> : null;
   return <img src={src} alt={alt ?? ""} title={title} loading="lazy" draggable={false} data-md="image" />;
+}
+
+/** An image file on the backend's machine, once read; a labelled placeholder if it can't be. */
+function LocalImage({ path, alt, title }: { path: string; alt: string; title: string | undefined }) {
+  const result = useAtomValue(imageAtom(path));
+  if (AsyncResult.isSuccess(result)) {
+    return <img src={result.value} alt={alt} title={title} draggable={false} data-md="image" />;
+  }
+  if (AsyncResult.isFailure(result)) {
+    return <MissingImage title={path}>{alt || baseName(path)} can't be shown</MissingImage>;
+  }
+  return (
+    <span title={path} data-md="image" className="inline-block h-32 w-48 animate-pulse bg-surface-hover" />
+  );
 }
 
 /** The elements of agent markdown, by tag. */

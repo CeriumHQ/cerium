@@ -21,6 +21,8 @@ import {
   rehypeAlerts,
   rehypeFolderAddresses,
   rehypeInk,
+  rehypeLocalImages,
+  LOCAL_PATH,
   remarkDollarGuard,
   remarkTypedBreaks,
 } from "./markdownPlugins.ts";
@@ -46,9 +48,15 @@ const schema: Schema = {
   attributes: {
     ...defaultSchema.attributes,
     code: [["className", /^language-./, "math-inline", "math-display"]],
+    img: [...(defaultSchema.attributes?.["img"] ?? []), LOCAL_PATH],
   },
 };
-const sanitize: PluggableList = [rehypeRaw, [rehypeSanitize, schema]];
+/** A file's Markdown resolves its own images' addresses; anywhere else, one on disk is read by path. */
+const sanitize = (folder: boolean): PluggableList => [
+  rehypeRaw,
+  ...(folder ? [] : [rehypeLocalImages]),
+  [rehypeSanitize, schema],
+];
 
 const agentRemark: PluggableList = [remarkGfm, remarkMath, remarkDollarGuard];
 const userRemark: PluggableList = [remarkGfm, remarkTypedBreaks];
@@ -100,7 +108,7 @@ const Block = memo(function Block({
     setSeen({ source, from: source.startsWith(seen.source) ? seen.source.length : 0 });
   }
   const rehypePlugins: PluggableList = [
-    ...sanitize,
+    ...sanitize(folder !== undefined),
     rehypeAlerts,
     ...(folder ? [rehypeFolderAddresses(folder.resolve)] : []),
     ...(ink ? [rehypeInk(seen.from)] : []),
