@@ -548,6 +548,9 @@ function CompactFrame({
       : pane;
   const threadShown = !settings.open && page === undefined && pane === "main";
   const inspecting = side !== undefined && threadShown;
+  const inspector = useRef<HTMLDivElement>(null);
+  const inspectorPhase = usePresence(inspecting, inspector);
+  const shownSide = useRetained(side, inspecting);
   // The terminal is a pane over the thread, and the agents or files a pane over that.
   const terminalOpen = terminal?.open === true && threadShown;
   const inspectDepth = 2 + (terminalOpen ? 1 : 0);
@@ -716,12 +719,15 @@ function CompactFrame({
           ],
         ]}
       />
-      {inspecting ? (
+      {inspectorPhase !== "gone" ? (
         <div
+          ref={inspector}
+          data-phase={inspectorPhase}
+          inert={!inspecting}
           data-floats=""
-          className={`${notchSides} absolute inset-0 z-30 flex flex-col bg-surface-panel pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] backdrop-blur-2xl`}
+          className={`${notchSides} absolute inset-0 z-30 flex flex-col bg-surface-panel pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] backdrop-blur-2xl transition-[translate,opacity] duration-200 ease-out-soft data-[phase=entering]:starting:translate-x-4 data-[phase=entering]:starting:opacity-0 data-[phase=leaving]:translate-x-4 data-[phase=leaving]:opacity-0 motion-reduce:transition-none`}
         >
-          {side?.content}
+          {shownSide?.content}
         </div>
       ) : null}
     </div>

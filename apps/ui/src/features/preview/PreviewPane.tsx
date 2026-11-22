@@ -53,6 +53,14 @@ const tucked = (element: HTMLElement) =>
   element.closest("[inert]") !== null ||
   !element.checkVisibility({ visibilityProperty: true, opacityProperty: true });
 
+function placement(element: HTMLElement, rect: DOMRect, away: boolean) {
+  if (away || rect.width < 2 || rect.height < 2) return "away";
+  // Native views cannot fade or clip with the dock. Paint a still inside it while it moves.
+  if (element.closest("[data-preview-moving]")) return "moving";
+  if (tucked(element)) return "away";
+  return covered(rect) ? "covered" : "shown";
+}
+
 /**
  * Lays the thread's page over `area` while it shows and nothing covers it, following it as the
  * panes move; a still of the page stands in while something does. Watches its place a moment after
@@ -69,39 +77,44 @@ function useLaidOver(
     const element = area.current;
     if (element === null) return;
     let placed: PreviewBounds | undefined;
-    let hidden = true;
+    let position: ReturnType<typeof placement> = "away";
+    let revision = 0;
     let frame = 0;
     let until = 0;
     let release = 0;
+    const unplace = () => {
+      if (placed === undefined) return;
+      bridge.place(threadId, null);
+      placed = undefined;
+    };
     const check = () => {
       frame = 0;
       const rect = element.getBoundingClientRect();
-      const gone = away || rect.width < 2 || rect.height < 2 || tucked(element);
-      if (gone || covered(rect)) {
-        if (!hidden) {
-          hidden = true;
-          placed = undefined;
-          window.clearTimeout(release);
-          // Out of sight, the page goes at once. Under a popup, the still is taken before the page
-          // goes, so the pane never flashes empty.
-          if (gone) bridge.place(threadId, null);
-          else
-            void bridge.still(threadId).then((image) => {
-              // The page came back before its still arrived: the still has nothing left to stand in for.
-              if (!hidden) return;
-              setStill(image);
-              bridge.place(threadId, null);
-            });
+      const next = placement(element, rect, away);
+      if (next !== position) {
+        position = next;
+        revision++;
+        window.clearTimeout(release);
+        if (next === "covered" || next === "moving") {
+          const captured = revision;
+          const finish = (image?: string) => {
+            if (revision !== captured) return;
+            if (image) setStill(image);
+            if (next === "covered") unplace();
+          };
+          void bridge.still(threadId).then(finish, () => finish());
         }
-      } else {
+        // A popup waits for its still. A leaving dock must give up the native view immediately.
+        if (next === "moving" || next === "away") unplace();
+        if (next === "shown") {
+          release = window.setTimeout(() => setStill(undefined), STILL_KEPT_MS);
+        }
+      }
+      if (next === "shown") {
         const box = { x: rect.left, y: rect.top, width: rect.width, height: rect.height };
-        if (hidden || !sameBox(placed, box)) {
-          hidden = false;
+        if (!sameBox(placed, box)) {
           placed = box;
           bridge.place(threadId, box);
-          // Once the page is drawn over the pane its still, a whole screenshot, is let go.
-          window.clearTimeout(release);
-          release = window.setTimeout(() => setStill(undefined), STILL_KEPT_MS);
         }
       }
       if (performance.now() < until) frame = requestAnimationFrame(check);
@@ -118,7 +131,7 @@ function useLaidOver(
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: ["style", "data-open", "inert"],
+      attributeFilter: ["style", "data-open", "inert", "data-preview-moving"],
     });
     window.addEventListener("resize", watch);
     document.addEventListener("transitionrun", watch, true);
@@ -134,7 +147,8 @@ function useLaidOver(
       document.removeEventListener("transitionrun", watch, true);
       document.removeEventListener("scroll", watch, true);
       clearInterval(slow);
-      bridge.place(threadId, null);
+      revision++;
+      unplace();
     };
   }, [bridge, threadId, area, away]);
   return still;

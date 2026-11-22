@@ -75,7 +75,6 @@ import type { TurnFileTab } from "../features/viewer/model.ts";
 import { CrashGuard } from "../features/crash/CrashGuard.tsx";
 import { PaneCrash } from "../features/crash/CrashViews.tsx";
 import { DEFAULT_LIMIT_POLICY } from "../features/settings/limitPolicy.ts";
-import { PreviewDock } from "../features/preview/PreviewDock.tsx";
 import { SetupGuessNotice } from "../features/terminal/SetupGuessNotice.tsx";
 import { ActivityLine } from "../features/composer/ActivityLine.tsx";
 import { liveActivity } from "../features/composer/activity.ts";
@@ -289,8 +288,6 @@ export interface ThreadPaneProps {
   readonly drawer?: ReactNode;
   /** The project's setup while it runs in one of the thread's terminals, which `onShow` opens. */
   readonly setup?: SetupRun;
-  /** The thread's browser, docked beside it. */
-  readonly preview?: ReactNode;
   /** The pane has focus: opening a thread in it puts the cursor in its message box. */
   readonly focused: boolean;
   /**
@@ -345,7 +342,6 @@ export function ThreadPane({
   onOpenConnection,
   drawer,
   setup,
-  preview,
   focused,
   onHandles,
   paneKey,
@@ -550,301 +546,295 @@ export function ThreadPane({
   };
 
   return (
-    // The browser docks beside the conversation and its terminal drawer, which docks under the
-    // conversation and keeps its message box floating above it.
-    <PreviewDock preview={preview}>
-      <div data-drawer-column="" className="relative flex h-full flex-col">
-        <div className="relative flex min-h-0 flex-1 flex-col">
-          {notices}
-          {viewed ? (
-            <ThreadTasks threadId={viewed.thread.id} finished={finished} onOpenTask={onOpenTask} />
-          ) : null}
-          {child ? (
-            <header className="flex shrink-0 items-center gap-3 border-b border-line-subtle px-4 py-2 text-meta">
-              <Button
-                onClick={onLeaveAgent}
-                className="rounded-md px-2 py-1 text-fg-secondary hover:bg-surface-hover hover:text-fg-primary"
-              >
-                Back to lead
-              </Button>
-              <span className="min-w-0 truncate font-medium text-fg-primary">{child.role}</span>
-              <span className="ml-auto text-fg-tertiary">Read-only transcript</span>
-            </header>
-          ) : null}
-          <div className="relative min-h-0 flex-1">
-            {child && viewed ? (
-              <CrashGuard fallback={PaneCrash}>
-                <LeadTranscript
-                  key={child.id}
-                  events={eventsAtom}
-                  lead={child.id}
-                  sameModel={(a, b) =>
-                    a === b || modelLabel(models, child.provider, a) === modelLabel(models, child.provider, b)
-                  }
-                  folder={viewed.thread.cwd}
-                  threadId={viewed.thread.id}
-                  onAddTask={addMessageTask}
-                  searchCloudKey={cloud ? `${cloud.machine}:${cloud.overview.thread.id}` : undefined}
-                  focused={focused}
-                  promptSteps={prompts}
-                  agent={{ provider: child.provider }}
-                  modelName={(model, provider) => modelLabel(models, provider, model)}
-                  activity={child.state === "running" || child.state === "queued" ? "running" : "ended"}
-                  childState={() => "idle"}
-                  childAgent={(id) => agents.find((agent) => agent.id === id)}
-                  agentActions={actions.agentActions.onShow ? { onShow: actions.agentActions.onShow } : {}}
-                />
-              </CrashGuard>
-            ) : null}
-            {/* No box of its own: a box taking the pane's height would push a new thread's question out of view. */}
-            <div className={child ? "hidden" : "contents"}>
-              <KeptViews shown={viewed && lead && !child ? viewed.thread.id : undefined} limit={KEPT_THREADS}>
-                {viewed && lead ? (
-                  // A conversation that can't be drawn leaves the thread's message box to write in.
-                  <CrashGuard fallback={PaneCrash}>
-                    <LeadTranscript
-                      events={eventsAtom}
-                      lead={lead.id}
-                      sameModel={sameModel}
-                      folder={viewed.thread.cwd}
-                      threadId={viewed.thread.id}
-                      onAddTask={addMessageTask}
-                      searchCloudKey={cloud ? `${cloud.machine}:${cloud.overview.thread.id}` : undefined}
-                      focused={focused}
-                      promptSteps={prompts}
-                      agent={{ provider: lead.provider }}
-                      modelName={(model, provider) => modelLabel(models, provider, model)}
-                      {...(cloud ? {} : { messageBox: box })}
-                      onOpenSideQuestion={onAskSide ? (quote) => box.openSide({ quote }) : undefined}
-                      activity={leadActivity}
-                      bottomInset={composerHeight}
-                      childState={(childId) => {
-                        const child = agents.find((agent) => agent.id === childId);
-                        return child?.awaitingApproval
-                          ? "needsYou"
-                          : child?.state === "running" || child?.state === "queued"
-                            ? "running"
-                            : child?.state === "failed"
-                              ? "failed"
-                              : "idle";
-                      }}
-                      childAgent={(childId) => agents.find((agent) => agent.id === childId)}
-                      // A thread read from the cloud copy offers no agent actions: they take its machine.
-                      agentActions={away ? {} : actions.agentActions}
-                      // Approvals and answers never wait on this device: each needs the machine now.
-                      onAnswerPermission={(requestId, decision, scope) =>
-                        away
-                          ? Promise.resolve(false)
-                          : attempt(actions.respond(lead.id, requestId, decision, scope))
-                      }
-                      onAnswerQuestion={(requestId, response) =>
-                        away ? Promise.resolve(false) : actions.answerQuestion(lead.id, requestId, response)
-                      }
-                      // A thread read from the cloud copy can't go back: that takes its machine.
-                      {...(cloud || !actions.edit
-                        ? {}
-                        : {
-                            onEditMessage: (messageId: string, message: OutgoingMessage) => {
-                              actions.keep(viewed.thread.id);
-                              return attempt(
-                                actions.edit?.(lead.id, messageId, message) ?? Promise.resolve(),
-                              );
-                            },
-                          })}
-                      {...(cloud || !restore
-                        ? {}
-                        : {
-                            onPreviewRestore: (messageId: string) => restore.preview(lead.id, messageId),
-                            onRestoreMessage: (messageId: string) => {
-                              actions.keep(viewed.thread.id);
-                              return attempt(restore.restore(lead.id, messageId));
-                            },
-                          })}
-                      {...(cloud || !fork
-                        ? {}
-                        : {
-                            onFork: {
-                              folder: viewed.thread.worktree?.root ?? viewed.thread.cwd,
-                              worktrees,
-                              provider: lead.provider,
-                              model: lead.model,
-                              available,
-                              preview: (turn) => fork.preview(viewed.thread.id, turn),
-                              fork: (request) => fork.fork(viewed.thread.id, request),
-                            },
-                          })}
-                      {...(cloud || !turnFiles || viewed.thread.cwd === undefined
-                        ? {}
-                        : {
-                            turnFiles: {
-                              perFile: turnFiles.perFile && bar == null,
-                              open: (file: TurnFileOpen) =>
-                                turnFiles.open({ root: viewed.thread.cwd ?? "", ...file }),
-                              revert: (turnId, direction, paths) =>
-                                attempt(turnFiles.revert(lead.id, turnId, direction, paths)),
-                            },
-                          })}
-                    />
-                  </CrashGuard>
-                ) : null}
-              </KeptViews>
-            </div>
-            {viewed && lead ? null : loading ? null : (
-              <EmptyThread
-                mode={mode}
-                {...(actions.onSetUp ? { onSetUp: actions.onSetUp } : {})}
-                onSeat={setSeat}
+    <div data-drawer-column="" className="relative flex h-full flex-col">
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        {notices}
+        {viewed ? (
+          <ThreadTasks threadId={viewed.thread.id} finished={finished} onOpenTask={onOpenTask} />
+        ) : null}
+        {child ? (
+          <header className="flex shrink-0 items-center gap-3 border-b border-line-subtle px-4 py-2 text-meta">
+            <Button
+              onClick={onLeaveAgent}
+              className="rounded-md px-2 py-1 text-fg-secondary hover:bg-surface-hover hover:text-fg-primary"
+            >
+              Back to lead
+            </Button>
+            <span className="min-w-0 truncate font-medium text-fg-primary">{child.role}</span>
+            <span className="ml-auto text-fg-tertiary">Read-only transcript</span>
+          </header>
+        ) : null}
+        <div className="relative min-h-0 flex-1">
+          {child && viewed ? (
+            <CrashGuard fallback={PaneCrash}>
+              <LeadTranscript
+                key={child.id}
+                events={eventsAtom}
+                lead={child.id}
+                sameModel={(a, b) =>
+                  a === b || modelLabel(models, child.provider, a) === modelLabel(models, child.provider, b)
+                }
+                folder={viewed.thread.cwd}
+                threadId={viewed.thread.id}
+                onAddTask={addMessageTask}
+                searchCloudKey={cloud ? `${cloud.machine}:${cloud.overview.thread.id}` : undefined}
+                focused={focused}
+                promptSteps={prompts}
+                agent={{ provider: child.provider }}
+                modelName={(model, provider) => modelLabel(models, provider, model)}
+                activity={child.state === "running" || child.state === "queued" ? "running" : "ended"}
+                childState={() => "idle"}
+                childAgent={(id) => agents.find((agent) => agent.id === id)}
+                agentActions={actions.agentActions.onShow ? { onShow: actions.agentActions.onShow } : {}}
               />
-            )}
-          </div>
-
-          {child
-            ? null
-            : (bar ?? (
-                // While the thread's machine can't be reached, the box keeps taking messages, which
-                // wait on this device until it can.
-                <Composer
-                  draftKey={viewed && lead ? viewed.thread.id : draftKey}
-                  connecting={cloud !== undefined && outboxState === undefined}
-                  outbox={
-                    outboxState === undefined
-                      ? undefined
-                      : {
-                          state: outboxState,
-                          machine: machineName,
-                          onOpenConnection: onOpenConnection ?? retryNow,
-                        }
-                  }
-                  inputRef={input}
-                  messageBox={boxRef}
-                  commands={composer}
-                  promptHistory={promptHistory}
-                  seat={seat}
-                  // Panes opening side by side leave the cursor where the user put it: only the focused one takes it.
-                  takesFocus={focused}
-                  target={
-                    viewed && lead
-                      ? {
-                          kind: "thread",
-                          provider: lead.provider,
-                          model: leadModel,
-                          modelId: lead.model,
-                          effort: lead.effort,
-                          autoEffort: lead.autoEffort,
-                          speed: lead.speed,
-                          folder: viewed.thread.cwd,
-                          worktree: viewed.thread.worktree,
-                          ...(leadEnded ? { ended: leadEnded } : {}),
-                          // A thread whose machine is away can't be switched: it takes its machine.
-                          ...(away
-                            ? {}
-                            : { onSwitch: (choice) => attempt(actions.switchLead(lead.id, choice)) }),
-                          context: agents.find((agent) => agent.id === lead.id)?.context,
-                          ...(away ? {} : { onCompact: () => void attempt(actions.compact(lead.id)) }),
-                          ...(away || actions.setOnLimit === undefined
-                            ? {}
-                            : {
-                                onLimit: {
-                                  value: viewed.thread.onLimit ?? limitDefault,
-                                  inherited: viewed.thread.onLimit === undefined,
-                                  onPick: (policy) =>
-                                    void attempt(
-                                      actions.setOnLimit?.(viewed.thread.id, policy) ?? Promise.resolve(),
-                                    ),
-                                },
-                              }),
-                          ...(followup ? { followup } : {}),
-                          ...(onAskSide ? { onAskSide } : {}),
-                          ...(away || handOff === undefined
-                            ? {}
-                            : {
-                                handoff: {
-                                  available,
-                                  agents: agents.filter(
-                                    (agent) =>
-                                      agent.parentId === lead.id &&
-                                      agent.role !== ADVISOR_ROLE &&
-                                      (agent.state === "running" ||
-                                        agent.state === "queued" ||
-                                        agent.state === "idle"),
-                                  ).length,
-                                  onHandOff: (choice) => attempt(handOff(lead.id, choice)),
-                                },
-                              }),
-                        }
-                      : {
-                          kind: "new",
-                          mode,
-                          folder: newFolder,
-                          onChooseFolder: actions.chooseFolder,
-                          available,
-                          worktrees,
-                          workspaceControls: actions.sourceControlEnabled,
-                        }
-                  }
-                  running={leadRunning && !away}
-                  activity={
-                    leadRunning && lead ? (
-                      <LeadActivity events={eventsAtom} lead={lead.id} sameModel={sameModel} />
-                    ) : undefined
-                  }
-                  queue={queue}
-                  onSteer={onSteer}
-                  background={viewed && lead ? background : undefined}
-                  computer={
-                    viewed && cloud === undefined ? <ComputerTray threadId={viewed.thread.id} /> : undefined
-                  }
-                  above={
-                    <>
-                      {aboveComposer}
-                      {/* Approvals and questions wait on the machine, never on this device. */}
-                      <div inert={away} className={away ? "opacity-50" : "contents"}>
-                        <ApprovalTray
-                          agents={agents}
-                          onAnswer={actions.answerApproval}
-                          onAnswerSpawn={actions.answerSpawn}
-                          onAnswerQuestion={actions.answerQuestion}
-                          onFocusComposer={() => input.current?.focus({ preventScroll: true })}
-                        />
-                      </div>
-                      {viewed && !away && actions.confirmsSetup ? (
-                        <SetupGuessNotice thread={viewed.thread} attempt={actions.attempt} />
-                      ) : null}
-                    </>
-                  }
-                  onHeight={setComposerHeight}
-                  onSend={(message, setups, taskId) => {
-                    // Writing to a thread keeps its tab: it's no longer only a preview.
-                    if (viewed) actions.keep(viewed.thread.id);
-                    // Its machine away, or messages already waiting here, it waits behind them.
-                    if (viewed && lead && (cloud || shouldQueue(connection) || kept.length > 0)) {
-                      queueMessage(
-                        registry,
-                        { machine: outboxTarget, threadId: viewed.thread.id },
-                        message,
-                        segmentsOf(message.text, message.mentions),
-                      );
-                      return Promise.resolve(true);
+            </CrashGuard>
+          ) : null}
+          {/* No box of its own: a box taking the pane's height would push a new thread's question out of view. */}
+          <div className={child ? "hidden" : "contents"}>
+            <KeptViews shown={viewed && lead && !child ? viewed.thread.id : undefined} limit={KEPT_THREADS}>
+              {viewed && lead ? (
+                // A conversation that can't be drawn leaves the thread's message box to write in.
+                <CrashGuard fallback={PaneCrash}>
+                  <LeadTranscript
+                    events={eventsAtom}
+                    lead={lead.id}
+                    sameModel={sameModel}
+                    folder={viewed.thread.cwd}
+                    threadId={viewed.thread.id}
+                    onAddTask={addMessageTask}
+                    searchCloudKey={cloud ? `${cloud.machine}:${cloud.overview.thread.id}` : undefined}
+                    focused={focused}
+                    promptSteps={prompts}
+                    agent={{ provider: lead.provider }}
+                    modelName={(model, provider) => modelLabel(models, provider, model)}
+                    {...(cloud ? {} : { messageBox: box })}
+                    onOpenSideQuestion={onAskSide ? (quote) => box.openSide({ quote }) : undefined}
+                    activity={leadActivity}
+                    bottomInset={composerHeight}
+                    childState={(childId) => {
+                      const child = agents.find((agent) => agent.id === childId);
+                      return child?.awaitingApproval
+                        ? "needsYou"
+                        : child?.state === "running" || child?.state === "queued"
+                          ? "running"
+                          : child?.state === "failed"
+                            ? "failed"
+                            : "idle";
+                    }}
+                    childAgent={(childId) => agents.find((agent) => agent.id === childId)}
+                    // A thread read from the cloud copy offers no agent actions: they take its machine.
+                    agentActions={away ? {} : actions.agentActions}
+                    // Approvals and answers never wait on this device: each needs the machine now.
+                    onAnswerPermission={(requestId, decision, scope) =>
+                      away
+                        ? Promise.resolve(false)
+                        : attempt(actions.respond(lead.id, requestId, decision, scope))
                     }
-                    return attempt(
-                      selected && lead
-                        ? actions.send(lead.id, message)
-                        : actions.start(draftKey, message, setups, newFolder, taskId),
-                    );
-                  }}
-                  onStop={() => {
-                    if (lead) void attempt(actions.interrupt(lead.id));
-                  }}
-                  slashCommands={slashCommands}
-                />
-              ))}
+                    onAnswerQuestion={(requestId, response) =>
+                      away ? Promise.resolve(false) : actions.answerQuestion(lead.id, requestId, response)
+                    }
+                    // A thread read from the cloud copy can't go back: that takes its machine.
+                    {...(cloud || !actions.edit
+                      ? {}
+                      : {
+                          onEditMessage: (messageId: string, message: OutgoingMessage) => {
+                            actions.keep(viewed.thread.id);
+                            return attempt(actions.edit?.(lead.id, messageId, message) ?? Promise.resolve());
+                          },
+                        })}
+                    {...(cloud || !restore
+                      ? {}
+                      : {
+                          onPreviewRestore: (messageId: string) => restore.preview(lead.id, messageId),
+                          onRestoreMessage: (messageId: string) => {
+                            actions.keep(viewed.thread.id);
+                            return attempt(restore.restore(lead.id, messageId));
+                          },
+                        })}
+                    {...(cloud || !fork
+                      ? {}
+                      : {
+                          onFork: {
+                            folder: viewed.thread.worktree?.root ?? viewed.thread.cwd,
+                            worktrees,
+                            provider: lead.provider,
+                            model: lead.model,
+                            available,
+                            preview: (turn) => fork.preview(viewed.thread.id, turn),
+                            fork: (request) => fork.fork(viewed.thread.id, request),
+                          },
+                        })}
+                    {...(cloud || !turnFiles || viewed.thread.cwd === undefined
+                      ? {}
+                      : {
+                          turnFiles: {
+                            perFile: turnFiles.perFile && bar == null,
+                            open: (file: TurnFileOpen) =>
+                              turnFiles.open({ root: viewed.thread.cwd ?? "", ...file }),
+                            revert: (turnId, direction, paths) =>
+                              attempt(turnFiles.revert(lead.id, turnId, direction, paths)),
+                          },
+                        })}
+                  />
+                </CrashGuard>
+              ) : null}
+            </KeptViews>
+          </div>
+          {viewed && lead ? null : loading ? null : (
+            <EmptyThread
+              mode={mode}
+              {...(actions.onSetUp ? { onSetUp: actions.onSetUp } : {})}
+              onSeat={setSeat}
+            />
+          )}
         </div>
-        {/* Rises from the pane's foot as it opens, and drops back into it. */}
-        <Reveal shift={0} className="shrink-0">
-          {drawer}
-        </Reveal>
+
+        {child
+          ? null
+          : (bar ?? (
+              // While the thread's machine can't be reached, the box keeps taking messages, which
+              // wait on this device until it can.
+              <Composer
+                draftKey={viewed && lead ? viewed.thread.id : draftKey}
+                connecting={cloud !== undefined && outboxState === undefined}
+                outbox={
+                  outboxState === undefined
+                    ? undefined
+                    : {
+                        state: outboxState,
+                        machine: machineName,
+                        onOpenConnection: onOpenConnection ?? retryNow,
+                      }
+                }
+                inputRef={input}
+                messageBox={boxRef}
+                commands={composer}
+                promptHistory={promptHistory}
+                seat={seat}
+                // Panes opening side by side leave the cursor where the user put it: only the focused one takes it.
+                takesFocus={focused}
+                target={
+                  viewed && lead
+                    ? {
+                        kind: "thread",
+                        provider: lead.provider,
+                        model: leadModel,
+                        modelId: lead.model,
+                        effort: lead.effort,
+                        autoEffort: lead.autoEffort,
+                        speed: lead.speed,
+                        folder: viewed.thread.cwd,
+                        worktree: viewed.thread.worktree,
+                        ...(leadEnded ? { ended: leadEnded } : {}),
+                        // A thread whose machine is away can't be switched: it takes its machine.
+                        ...(away
+                          ? {}
+                          : { onSwitch: (choice) => attempt(actions.switchLead(lead.id, choice)) }),
+                        context: agents.find((agent) => agent.id === lead.id)?.context,
+                        ...(away ? {} : { onCompact: () => void attempt(actions.compact(lead.id)) }),
+                        ...(away || actions.setOnLimit === undefined
+                          ? {}
+                          : {
+                              onLimit: {
+                                value: viewed.thread.onLimit ?? limitDefault,
+                                inherited: viewed.thread.onLimit === undefined,
+                                onPick: (policy) =>
+                                  void attempt(
+                                    actions.setOnLimit?.(viewed.thread.id, policy) ?? Promise.resolve(),
+                                  ),
+                              },
+                            }),
+                        ...(followup ? { followup } : {}),
+                        ...(onAskSide ? { onAskSide } : {}),
+                        ...(away || handOff === undefined
+                          ? {}
+                          : {
+                              handoff: {
+                                available,
+                                agents: agents.filter(
+                                  (agent) =>
+                                    agent.parentId === lead.id &&
+                                    agent.role !== ADVISOR_ROLE &&
+                                    (agent.state === "running" ||
+                                      agent.state === "queued" ||
+                                      agent.state === "idle"),
+                                ).length,
+                                onHandOff: (choice) => attempt(handOff(lead.id, choice)),
+                              },
+                            }),
+                      }
+                    : {
+                        kind: "new",
+                        mode,
+                        folder: newFolder,
+                        onChooseFolder: actions.chooseFolder,
+                        available,
+                        worktrees,
+                        workspaceControls: actions.sourceControlEnabled,
+                      }
+                }
+                running={leadRunning && !away}
+                activity={
+                  leadRunning && lead ? (
+                    <LeadActivity events={eventsAtom} lead={lead.id} sameModel={sameModel} />
+                  ) : undefined
+                }
+                queue={queue}
+                onSteer={onSteer}
+                background={viewed && lead ? background : undefined}
+                computer={
+                  viewed && cloud === undefined ? <ComputerTray threadId={viewed.thread.id} /> : undefined
+                }
+                above={
+                  <>
+                    {aboveComposer}
+                    {/* Approvals and questions wait on the machine, never on this device. */}
+                    <div inert={away} className={away ? "opacity-50" : "contents"}>
+                      <ApprovalTray
+                        agents={agents}
+                        onAnswer={actions.answerApproval}
+                        onAnswerSpawn={actions.answerSpawn}
+                        onAnswerQuestion={actions.answerQuestion}
+                        onFocusComposer={() => input.current?.focus({ preventScroll: true })}
+                      />
+                    </div>
+                    {viewed && !away && actions.confirmsSetup ? (
+                      <SetupGuessNotice thread={viewed.thread} attempt={actions.attempt} />
+                    ) : null}
+                  </>
+                }
+                onHeight={setComposerHeight}
+                onSend={(message, setups, taskId) => {
+                  // Writing to a thread keeps its tab: it's no longer only a preview.
+                  if (viewed) actions.keep(viewed.thread.id);
+                  // Its machine away, or messages already waiting here, it waits behind them.
+                  if (viewed && lead && (cloud || shouldQueue(connection) || kept.length > 0)) {
+                    queueMessage(
+                      registry,
+                      { machine: outboxTarget, threadId: viewed.thread.id },
+                      message,
+                      segmentsOf(message.text, message.mentions),
+                    );
+                    return Promise.resolve(true);
+                  }
+                  return attempt(
+                    selected && lead
+                      ? actions.send(lead.id, message)
+                      : actions.start(draftKey, message, setups, newFolder, taskId),
+                  );
+                }}
+                onStop={() => {
+                  if (lead) void attempt(actions.interrupt(lead.id));
+                }}
+                slashCommands={slashCommands}
+              />
+            ))}
       </div>
-    </PreviewDock>
+      {/* Rises from the pane's foot as it opens, and drops back into it. */}
+      <Reveal shift={0} className="shrink-0">
+        {drawer}
+      </Reveal>
+    </div>
   );
 }
 

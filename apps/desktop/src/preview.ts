@@ -27,22 +27,17 @@ import { releasablePreviews } from "./previewRetention.ts";
 
 // The Preview pane's browser: one page per thread, in a view of its own over the window, which the
 // user watches and the thread's agents drive. The UI says where its pane is (or that it's away), and
-// the shell lays the view there. A page the user can't see moves, while agents drive it, to a window
-// of its own far off screen, which never takes focus and stays off the taskbar: a view outside its
-// window's bounds draws nothing, and the agents' screenshots need it drawn. Once they stop it goes
-// back to Cerium's window, hidden. Pages live
-// in a session of their own: they share no storage with Cerium's window, get no preload, may open
-// http and https only, and are granted no permission. The shell receives the agents' calls over
-// its own connection to the backend.
+// the shell lays the view there. A hidden host keeps background pages drawing at their pane size
+// while agents drive them. Once idle, the views return to Cerium's window, hidden. Pages live in a
+// session of their own: they share no storage with Cerium's window, get no preload, may open http
+// and https only, and are granted no permission. The shell receives the agents' calls over its own
+// connection to the backend.
 
 /** The pages' own session: none of Cerium's storage, kept across launches like a browser's. */
 const PARTITION = "persist:cerium-preview";
 
-/** How long a page agents drove stays drawing off screen after their last call. */
+/** How long a page agents drove stays drawing in the hidden window after their last call. */
 const PARKED_MS = 30_000;
-
-/** Where the parking window sits: beyond any display's edge. */
-const PARKING_AT = { x: -32_000, y: -32_000 };
 
 /** The size a page takes before its pane ever showed it. */
 const FIRST_SIZE = { width: 1280, height: 800 };
@@ -70,7 +65,7 @@ interface Preview {
   readonly view: WebContentsView;
   /** Where the pane shows it, in window pixels, or none while it's away. */
   shown: Rectangle | undefined;
-  /** The window the view is in now: Cerium's, or the parking window off screen. */
+  /** The window the view is in now: Cerium's, or the hidden parking window. */
   parent: BaseWindow | undefined;
   size: { width: number; height: number };
   parkedUntil: number;
@@ -211,11 +206,10 @@ export const previews = (window: () => BrowserWindow | undefined) => {
 
   let parking: BaseWindow | undefined;
 
-  /** The window off screen where pages agents drive out of the user's sight keep drawing. */
+  /** The hidden host gives the unthrottled view a drawable area for input and screenshots. */
   const parkingWindow = (): BaseWindow => {
     if (parking === undefined || parking.isDestroyed()) {
       parking = new BaseWindow({
-        ...PARKING_AT,
         ...FIRST_SIZE,
         show: false,
         frame: false,
@@ -252,15 +246,10 @@ export const previews = (window: () => BrowserWindow | undefined) => {
       moveTo(preview, parked);
       const { width, height } = parked.getContentBounds();
       if (width < preview.size.width || height < preview.size.height) {
-        parked.setContentBounds({
-          ...PARKING_AT,
-          width: Math.max(width, preview.size.width),
-          height: Math.max(height, preview.size.height),
-        });
+        parked.setContentSize(Math.max(width, preview.size.width), Math.max(height, preview.size.height));
       }
       view.setBounds({ x: 0, y: 0, ...preview.size });
       view.setVisible(true);
-      if (!parked.isVisible()) parked.showInactive();
     } else {
       view.setVisible(false);
       moveTo(preview, owner);

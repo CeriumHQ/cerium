@@ -10,6 +10,7 @@ import { GitHubTabView } from "../features/github/GitHubTab.tsx";
 import { githubOfKey, type GitHubTab } from "../features/github/model.ts";
 import { IssueViewer } from "../features/issues/IssueViewer.tsx";
 import { CloudThreadBar, LoadingThreadBar, NoComputerBar } from "../features/threads/CloudThread.tsx";
+import { PreviewDock } from "../features/preview/PreviewDock.tsx";
 import { ThreadMark } from "../features/threads/StatusIndicator.tsx";
 import { type PaneLeaf } from "../features/split/model.ts";
 import { type PaneChrome, type PaneLabel } from "../features/split/SplitView.tsx";
@@ -109,12 +110,10 @@ export function workspacePaneViews({
     };
   };
   /** A pane showing the thread, or the thread not started yet, `key`. */
-  const threadPane = (key: string, focused: boolean) => {
-    const resolved = resolve(key);
+  const threadPane = (key: string, focused: boolean, resolved: ReturnType<typeof resolve>) => {
     const lead = resolved.shown ? leadOf(resolved.shown.agents) !== undefined : false;
     // A thread's own window keeps them with its thread, whichever pane has the focus.
     const opened = key === (solo?.id ?? current);
-    const previewPane = preview.paneFor(resolved);
     return (
       <ThreadPane
         inspectedAgent={inspectedAgent}
@@ -133,7 +132,6 @@ export function workspacePaneViews({
         // The window's notices and its terminal go with the open thread.
         {...(opened ? { notices, drawer: terminal.drawer, aboveComposer, onOpenConnection } : {})}
         {...(opened && setupRun !== undefined ? { setup: setupRun } : {})}
-        {...(previewPane === undefined ? {} : { preview: previewPane })}
         focused={focused}
         paneKey={key}
         onHandles={onPaneHandles}
@@ -146,12 +144,22 @@ export function workspacePaneViews({
    * What a pane shows, which takes only its own pane down if it throws while drawing. The guard isn't
    * keyed by the tab, so a thread pane stays mounted, with the threads it keeps drawn, as tabs switch.
    */
-  const paneContent = (key: string, focused: boolean, chrome?: PaneChrome) => (
-    <CrashGuard resetKey={key} fallback={PaneCrash}>
-      {paneView(key, focused, chrome)}
-    </CrashGuard>
-  );
-  const paneView = (key: string, focused: boolean, chrome?: PaneChrome) => {
+  const paneContent = (key: string, focused: boolean, chrome?: PaneChrome) => {
+    const resolved = resolve(key);
+    return (
+      <CrashGuard resetKey={key} fallback={PaneCrash}>
+        <PreviewDock preview={preview.paneFor(resolved)}>
+          {paneView(key, focused, resolved, chrome)}
+        </PreviewDock>
+      </CrashGuard>
+    );
+  };
+  const paneView = (
+    key: string,
+    focused: boolean,
+    resolved: ReturnType<typeof resolve>,
+    chrome?: PaneChrome,
+  ) => {
     const github = githubOfKey(key);
     if (github !== undefined) {
       return (
@@ -211,7 +219,7 @@ export function workspacePaneViews({
       );
     }
     const file = fileOfKey(key);
-    if (file === undefined) return threadPane(key, focused);
+    if (file === undefined) return threadPane(key, focused, resolved);
     return (
       <FileViewer
         key={key}

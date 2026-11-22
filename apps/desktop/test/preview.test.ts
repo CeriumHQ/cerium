@@ -8,6 +8,8 @@ const fake = vi.hoisted(() => ({
   listeners: new Map<string, Handler>(),
   run: (): Promise<{ text: string }> => Promise.resolve({ text: "done" }),
   closed: [] as string[],
+  parkingWindows: [] as Array<{ show: boolean }>,
+  showInactive: vi.fn<() => void>(),
 }));
 
 vi.mock("electron", () => {
@@ -75,6 +77,9 @@ vi.mock("electron", () => {
     }
   }
   class BaseWindow {
+    constructor(options: { show: boolean }) {
+      fake.parkingWindows.push(options);
+    }
     contentView = { addChildView() {}, removeChildView() {} };
     isDestroyed() {
       return false;
@@ -82,11 +87,11 @@ vi.mock("electron", () => {
     getContentBounds() {
       return { width: 1280, height: 800 };
     }
-    setContentBounds() {}
+    setContentSize() {}
     isVisible() {
-      return true;
+      return false;
     }
-    showInactive() {}
+    showInactive = fake.showInactive;
     destroy() {}
   }
   return {
@@ -119,6 +124,8 @@ import { previews } from "../src/preview.ts";
 const setup = () => {
   vi.useFakeTimers();
   fake.closed = [];
+  fake.parkingWindows = [];
+  fake.showInactive.mockClear();
   fake.run = () => Promise.resolve({ text: "done" });
   const contents = { send() {}, getZoomFactor: () => 1 };
   const owner = {
@@ -141,6 +148,21 @@ afterEach(() => {
 });
 
 describe("preview page lifetime", () => {
+  it("keeps the parking window hidden when switching away from an agent's preview", async () => {
+    const { pages, fire, call, states } = setup();
+    const id = "thr_preview";
+    const bounds = { x: 420, y: 70, width: 640, height: 480 };
+    await call("navigate", id, "http://localhost/preview");
+    fire("place", id, bounds);
+    expect(await pages.answer(id, { _tag: "Read", text: true })).toMatchObject({ _tag: "Done" });
+    fire("place", id, null);
+    expect(fake.parkingWindows).toEqual([expect.objectContaining({ show: false })]);
+    expect(fake.showInactive).not.toHaveBeenCalled();
+    fire("place", id, bounds);
+    expect(states()[0]?.url).toBe("http://localhost/preview");
+    pages.closeAll();
+  });
+
   it("closes excess hidden pages while keeping the running agent's oldest page", async () => {
     const { pages, call, states } = setup();
     for (let i = 0; i < 8; i++) await call("navigate", `thr_${i}`, `http://localhost/page/${i}`);
