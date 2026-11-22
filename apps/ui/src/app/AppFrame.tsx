@@ -13,11 +13,14 @@ import {
 import { onMac } from "../backend/shell.ts";
 import { CeriumBrand } from "../components/CeriumBrand.tsx";
 import { ViewStack } from "../components/ViewStack.tsx";
+import { WaitingCapsule } from "../features/threads/WaitingCapsule.tsx";
 import { settled, usePresence, useRetained } from "../lib/motion.ts";
 import { useKeyboardOpen } from "../web/viewport.ts";
 import { useBackNavigation } from "./backNavigation.ts";
-import { CompactBar } from "./CompactBar.tsx";
+import { CompactBar, connectionLine } from "./CompactBar.tsx";
 import { useCompact } from "./compact.ts";
+import { LIVE, useConnectionStatus, type ConnectionStatus } from "./connectionStatus.ts";
+import { runBusy, ThreadSheet, type CompactWorkspace } from "./ThreadSheet.tsx";
 import type { AppMode } from "./mode.ts";
 import { GUTTER, panelLayout, RAIL, SIDE_PANELS, SIDEBAR, type SidePanelId } from "./panelLayout.ts";
 import { ResizeHandle, usePanelWidth, usePanelWidths } from "./ResizeHandle.tsx";
@@ -105,6 +108,36 @@ interface AppFrameProps {
   readonly tabs?: ReactNode;
   /** Closes the dialog open over the window, while one is: a phone's Back closes it first. */
   readonly closeDialog?: () => void;
+  /** The compact thread bar's context line while the line is live, such as `CompactWorkspaceSubtitle`; the project by default. */
+  readonly compactSubtitle?: ReactNode;
+  /** Names what `compactSubtitle` shows, so a change crossfades in place. */
+  readonly compactSubtitleKey?: string;
+  /** How the line to the open thread's computer stands, raw: the frame applies the display timing. */
+  readonly connectionStatus?: ConnectionStatus;
+  /** Tries the line again now, from the Thread sheet's Connection card. */
+  readonly onRetryConnection?: () => unknown;
+  /** Picks another of the account's computers, offered while `hasOtherMachines`. */
+  readonly onSwitchMachine?: () => void;
+  readonly hasOtherMachines?: boolean;
+  /** Threads waiting on the user, for the thread list's capsule. */
+  readonly waitingCount?: number;
+  /** Threads other than the open one waiting on the user, for the thread bar's capsule. */
+  readonly otherWaitingCount?: number;
+  /** Opens the next thread waiting on the user. */
+  readonly onJumpWaiting?: () => void;
+  /** Opens the triage sheet of every waiting thread. */
+  readonly onOpenTriage?: () => void;
+  /** The open thread's workspace, for the Thread sheet's Workspace row and page. */
+  readonly compactWorkspace?: CompactWorkspace;
+  /** Whether the Thread sheet is open, when the caller holds it; the frame holds it otherwise. */
+  readonly threadSheetOpen?: boolean;
+  readonly onThreadSheetOpenChange?: (open: boolean) => void;
+  /**
+   * Levels the caller has open over the compact window besides the Thread sheet, such as the triage
+   * sheet: a phone's Back calls `onCloseOverlay` for each before stepping back a pane.
+   */
+  readonly extraBackDepth?: number;
+  readonly onCloseOverlay?: () => void;
   readonly children: ReactNode;
 }
 
@@ -455,6 +488,7 @@ function CompactFrame({
   onTogglePanel,
   onCloseSide,
   terminal,
+  run,
   preview,
   settings,
   page,
@@ -462,10 +496,47 @@ function CompactFrame({
   closeDialog,
   pane,
   onBack,
+  compactSubtitle,
+  compactSubtitleKey,
+  connectionStatus,
+  onRetryConnection,
+  onSwitchMachine,
+  hasOtherMachines = false,
+  waitingCount = 0,
+  otherWaitingCount = 0,
+  onJumpWaiting,
+  onOpenTriage,
+  compactWorkspace,
+  threadSheetOpen,
+  onThreadSheetOpenChange,
+  extraBackDepth = 0,
+  onCloseOverlay,
   children,
 }: AppFrameProps) {
   const listLabel = mode === "work" ? "Inbox" : "Chats";
   const keyboardOpen = useKeyboardOpen();
+  const shownStatus = useConnectionStatus(connectionStatus ?? LIVE);
+  const [ownSheetOpen, setOwnSheetOpen] = useState(false);
+  const sheetOpen = threadSheetOpen ?? ownSheetOpen;
+  const setSheetOpen = (open: boolean) => {
+    if (threadSheetOpen === undefined) setOwnSheetOpen(open);
+    onThreadSheetOpenChange?.(open);
+  };
+  const openSheet = () => setSheetOpen(true);
+  const threadTitle = thread?.title ?? (mode === "work" ? "New thread" : "New chat");
+  // The thread bar's context line, which a degraded line takes over until it's back.
+  const line = connectionLine(shownStatus, compactSubtitle ?? thread?.project);
+  const live = line.subtitleKey === "live";
+  const subtitle =
+    live && !line.subtitle
+      ? {}
+      : connectionStatus === undefined && compactSubtitleKey === undefined
+        ? { subtitle: line.subtitle }
+        : {
+            subtitle: line.subtitle,
+            subtitleKey:
+              live && compactSubtitleKey !== undefined ? `live:${compactSubtitleKey}` : line.subtitleKey,
+          };
   const view = settings.open
     ? settings.pane === "nav"
       ? "settings"
@@ -480,8 +551,11 @@ function CompactFrame({
   // The terminal is a pane over the thread, and the agents or files a pane over that.
   const terminalOpen = terminal?.open === true && threadShown;
   const inspectDepth = 2 + (terminalOpen ? 1 : 0);
-  // How many panes down the window is, a dialog over it counting as one more: the phone's own Back
-  // button takes it up one.
+  // The Thread sheet belongs to the thread pane: leaving it leaves the sheet behind, closed.
+  const sheetShown = sheetOpen && threadShown;
+  const overlays = onCloseOverlay ? extraBackDepth : 0;
+  // How many panes down the window is, a dialog or sheet over it counting as one more: the phone's own
+  // Back button takes it up one.
   useBackNavigation(
     (settings.open
       ? settings.pane === "nav"
@@ -497,9 +571,14 @@ function CompactFrame({
             : terminalOpen
               ? 2
               : 1
-          : 0) + (closeDialog ? 1 : 0),
+          : 0) +
+      (closeDialog ? 1 : 0) +
+      (sheetShown ? 1 : 0) +
+      overlays,
     () => {
       if (closeDialog) closeDialog();
+      else if (sheetShown) setSheetOpen(false);
+      else if (overlays > 0) onCloseOverlay?.();
       else if (settings.open) {
         if (settings.pane === "page") settings.onBackToNav();
         else settings.onClose();
@@ -523,7 +602,19 @@ function CompactFrame({
                     <CeriumBrand />
                   </div>
                 }
-                trailing={machinePicker}
+                trailing={
+                  <>
+                    {onJumpWaiting ? (
+                      <WaitingCapsule
+                        count={waitingCount}
+                        onJump={onJumpWaiting}
+                        {...(onOpenTriage ? { onOpenSheet: onOpenTriage } : {})}
+                        className="mr-1"
+                      />
+                    ) : null}
+                    {machinePicker}
+                  </>
+                }
               />
               <div className={`${notchSides} min-h-0 flex-1`}>{sidebar}</div>
               <div className={`${notchSides} pb-[max(env(safe-area-inset-bottom),6px)]`}>
@@ -537,23 +628,52 @@ function CompactFrame({
               <CompactBar
                 back={{ label: listLabel, onBack }}
                 folded={keyboardOpen}
-                title={thread?.title ?? (mode === "work" ? "New thread" : "New chat")}
-                {...(thread?.project ? { subtitle: thread.project } : {})}
-                {...(Object.keys(panels).length > 0 || terminal
-                  ? {
-                      trailing: (
-                        <CompactPanelMenu
-                          agents={agents}
-                          panels={panels}
-                          onTogglePanel={onTogglePanel}
-                          terminal={terminal}
-                          preview={preview}
-                        />
-                      ),
-                    }
-                  : {})}
+                title={threadTitle}
+                {...subtitle}
+                {...(thread ? { onTitleClick: openSheet } : {})}
+                trailing={
+                  <>
+                    {onJumpWaiting ? (
+                      <WaitingCapsule
+                        count={otherWaitingCount}
+                        onJump={onJumpWaiting}
+                        {...(onOpenTriage ? { onOpenSheet: onOpenTriage } : {})}
+                        className="mr-1"
+                      />
+                    ) : null}
+                    {thread || Object.keys(panels).length > 0 || terminal ? (
+                      <CompactPanelMenu
+                        agents={agents}
+                        panels={panels}
+                        onTogglePanel={onTogglePanel}
+                        terminal={terminal}
+                        preview={preview}
+                        running={runBusy(run)}
+                        {...(thread ? { onOpenSheet: openSheet } : {})}
+                      />
+                    ) : null}
+                  </>
+                }
               />
               <main className={`${notchSides} relative min-h-0 flex-1 overflow-hidden`}>{children}</main>
+              {thread ? (
+                <ThreadSheet
+                  open={sheetShown}
+                  onOpenChange={setSheetOpen}
+                  title={threadTitle}
+                  connectionStatus={shownStatus}
+                  onRetry={onRetryConnection}
+                  onSwitchMachine={onSwitchMachine}
+                  hasOtherMachines={hasOtherMachines}
+                  workspace={compactWorkspace}
+                  run={run}
+                  agents={agents}
+                  panels={panels}
+                  onTogglePanel={onTogglePanel}
+                  terminal={terminal}
+                  preview={preview}
+                />
+              ) : null}
             </div>,
           ],
           [

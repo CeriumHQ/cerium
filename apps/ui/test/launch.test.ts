@@ -1,6 +1,12 @@
 import { describe, expect, it } from "@effect/vitest";
 
-import { launchProgress, launchStatus, type LaunchState } from "../src/app/launch.ts";
+import {
+  launchProgress,
+  launchStatus,
+  launchTimings,
+  skipsLaunchScreen,
+  type LaunchState,
+} from "../src/app/launch.ts";
 
 const starting: LaunchState = { backend: false, account: false, machine: undefined, ready: false };
 
@@ -48,5 +54,20 @@ describe("launchStatus", () => {
     expect(launchStatus({ ...starting, backend: true, account: true }, { web: false })).toBe(
       "Opening your threads",
     );
+  });
+});
+
+describe("the launch screen's pace", () => {
+  it("gets out of the web client's way sooner than a desktop's", () => {
+    const web = launchTimings(true);
+    const desktop = launchTimings(false);
+    expect(web.settleMs + web.fullMs).toBeLessThan(desktop.settleMs + desktop.fullMs);
+    expect(web.giveUpMs).toBeLessThan(desktop.giveUpMs);
+  });
+
+  it("is skipped by a web client with threads kept from last time", () => {
+    expect(skipsLaunchScreen({ web: true, cached: true })).toBe(true);
+    expect(skipsLaunchScreen({ web: true, cached: false })).toBe(false);
+    expect(skipsLaunchScreen({ web: false, cached: true })).toBe(false);
   });
 });

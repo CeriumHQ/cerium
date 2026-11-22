@@ -5,7 +5,11 @@ import { DialogButton, DialogField, DialogInput, FormDialog } from "../../compon
 import { MenuItem, MenuSeparator } from "../../components/ui/Menu.tsx";
 import { customLaterTime, laterInHour, laterNextWeek, laterToday, laterTomorrow } from "./model.ts";
 
-const presets = [
+/** Later's presets, shared by the menu and the phone's sheet so both read and land the same. */
+export const laterPresets: ReadonlyArray<{
+  readonly label: string;
+  readonly until: (now: number) => number;
+}> = [
   { label: "In an hour", until: laterInHour },
   { label: "Later today", until: laterToday },
   { label: "Tomorrow", until: laterTomorrow },
@@ -27,12 +31,16 @@ const dateTime = new Intl.DateTimeFormat(undefined, {
 });
 
 /** When a preset brings a thread back, as briefly as reads plainly: the time today, the weekday this week, else the date. */
-const when = (target: number, now: number): string => {
+export const laterWhen = (target: number, now: number): string => {
   const today = new Date(now).setHours(0, 0, 0, 0);
   if (target < today + DAY) return clock.format(target);
   if (target < today + 6 * DAY) return weekdayClock.format(target);
   return dateTime.format(target);
 };
+
+/** The time a preset shown at `target` lands on when picked: re-reckoned if that moment has passed. */
+export const pickedLater = (until: (now: number) => number, target: number, pickedAt: number): number =>
+  target > pickedAt ? target : until(pickedAt);
 
 /** Later's choices: each preset with the time it lands on at the right, then a time of one's own. */
 export function LaterMenuItems({
@@ -45,23 +53,17 @@ export function LaterMenuItems({
   const [now] = useState(Date.now);
   return (
     <>
-      {presets.map(({ label, until }) => {
+      {laterPresets.map(({ label, until }) => {
         const target = until(now);
         return (
-          <MenuItem
-            key={label}
-            onClick={() => {
-              const pickedAt = Date.now();
-              onPick(target > pickedAt ? target : until(pickedAt));
-            }}
-          >
+          <MenuItem key={label} onClick={() => onPick(pickedLater(until, target, Date.now()))}>
             <span className="min-w-0 flex-1">{label}</span>
             <time
               dateTime={new Date(target).toISOString()}
               title={dateTime.format(target)}
               className="shrink-0 pl-6 text-caption text-fg-tertiary tabular-nums max-md:text-[13px]"
             >
-              {when(target, now)}
+              {laterWhen(target, now)}
             </time>
           </MenuItem>
         );

@@ -82,6 +82,58 @@ describe("liveness", () => {
     }
     expect(delays).toEqual([0, 250, 500, 1000, 2000, 4000, 5000, 5000]);
   });
+
+  it("starts the backoff over when asked to try again now", () => {
+    const { live } = setup();
+    for (let failed = 0; failed < 6; failed++) live.nextRetry();
+    live.retryNow();
+    expect([live.nextRetry(), live.nextRetry()]).toEqual([0, 250]);
+  });
+
+  it("connects again to a machine counted unreachable when asked to try again now", () => {
+    const { live, state } = setup();
+    live.lost();
+    vi.advanceTimersByTime(UNREACHABLE_AFTER_MS);
+    expect(state()).toBe("unreachable");
+    live.retryNow();
+    expect(state()).toBe("connecting");
+    vi.advanceTimersByTime(UNREACHABLE_AFTER_MS);
+    expect(state()).toBe("unreachable");
+  });
+
+  it("leaves a live connection as it is when asked to try again now", () => {
+    const { live, state, epoch } = setup();
+    live.connected();
+    const before = epoch();
+    live.retryNow();
+    expect(state()).toBe("connected");
+    expect(epoch()).toBe(before);
+  });
+});
+
+// Effect's scheduler runs on real timers.
+describe("liveness.backoff", () => {
+  it.effect("opens at once without a failure before it", () =>
+    Effect.gen(function* () {
+      const { live } = setup();
+      assert.strictEqual(live.deferRetry(), 0);
+      yield* live.backoff;
+    }),
+  );
+
+  it.effect("waits out the backoff, unless asked to try again now", () =>
+    Effect.gen(function* () {
+      const { live } = setup();
+      live.deferRetry();
+      live.deferRetry();
+      live.deferRetry();
+      const waiting = yield* Effect.forkChild(live.backoff);
+      yield* Effect.yieldNow;
+      assert.isUndefined(waiting.pollUnsafe());
+      live.retryNow();
+      yield* Fiber.join(waiting);
+    }),
+  );
 });
 
 // Effect's scheduler runs on real timers.

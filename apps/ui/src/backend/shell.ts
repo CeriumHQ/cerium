@@ -132,6 +132,16 @@ export interface ShellBridge {
    */
   readonly startAtLogin?: () => Promise<StartAtLogin>;
   readonly setStartAtLogin?: (enabled: boolean) => Promise<StartAtLogin>;
+  /** When a signed-in computer is kept from sleeping, so the user's other devices can reach it. */
+  readonly keepAwake?: () => Promise<KeepAwake>;
+  readonly setKeepAwake?: (mode: KeepAwake) => Promise<KeepAwake>;
+  /** Calls back whenever Keep awake changes, from the tray too; returns how to stop. */
+  readonly onKeepAwakeChange?: (listener: (mode: KeepAwake) => void) => () => void;
+  /**
+   * Calls back with whether the user is at Cerium (a window of it focused, and the computer not idle
+   * or locked), then on every change; returns how to stop.
+   */
+  readonly onAttendedChange?: (listener: (attended: boolean) => void) => () => void;
   /** The update channel the user follows and what it offers (apps/desktop/src/updater.ts). */
   readonly updates?: () => Promise<Updates>;
   readonly checkForUpdates?: () => Promise<Updates>;
@@ -252,6 +262,12 @@ export interface StartAtLogin {
   /** macOS holds the login item back until the user allows Cerium in System Settings' Login Items. */
   readonly needsApproval?: boolean;
 }
+
+/**
+ * Mirrors the shell's own type in apps/desktop/src/background.ts: while agents work, also whenever
+ * plugged in, or always.
+ */
+export type KeepAwake = "working" | "ac" | "always";
 
 /** Mirrors the shell's own type in apps/desktop/src/crashReports.ts. */
 export interface CrashReportsState {

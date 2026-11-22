@@ -231,12 +231,18 @@ export function CompactPanelMenu({
   onTogglePanel,
   terminal,
   preview,
+  running = false,
+  onOpenSheet,
 }: {
   agents: ReadonlyArray<ProviderId>;
   panels: Partial<Record<SidePanelId, boolean>>;
   onTogglePanel: (panel: SidePanelId) => void;
   terminal?: { readonly open: boolean; readonly onToggle: () => void } | undefined;
   preview?: PreviewToggleProps | undefined;
+  /** The thread's run or one of its actions is going: the button's dot says so before a live preview. */
+  running?: boolean | undefined;
+  /** The compact window's Thread sheet, which the button opens in place of the menu. */
+  onOpenSheet?: (() => void) | undefined;
 }) {
   const previewKeys = useShortcut("toggle-preview");
   const artifactsKeys = useShortcut("toggle-artifacts");
@@ -249,23 +255,31 @@ export function CompactPanelMenu({
   const offered = items.filter((item) => panels[item.id] !== undefined);
   const anyOpen =
     (terminal?.open ?? false) || (preview?.open ?? false) || offered.some((item) => panels[item.id] === true);
+  const dot = running ? "bg-running" : preview?.live && !anyOpen ? "bg-accent" : undefined;
+  const trigger = (
+    <Button
+      aria-label="Panels"
+      {...(onOpenSheet ? { onClick: onOpenSheet, "aria-haspopup": "dialog" as const } : {})}
+      className={`relative mr-1 grid size-7 shrink-0 place-items-center rounded-md transition-colors [app-region:no-drag] active:bg-surface-active data-popup-open:bg-surface-active data-popup-open:text-fg-primary pointer-coarse:size-10 max-md:size-10 ${
+        anyOpen ? "text-fg-primary" : "text-fg-secondary hover:bg-surface-hover hover:text-fg-primary"
+      }`}
+    >
+      <Ellipsis size={18} strokeWidth={1.75} />
+      {dot ? (
+        <span
+          aria-hidden
+          className={`absolute top-1 right-1 size-1.5 rounded-full ${dot} transition-[scale] duration-200 ease-pop starting:scale-60 motion-reduce:transition-none`}
+        />
+      ) : null}
+    </Button>
+  );
   return (
     <>
-      {terminal || preview || offered.length > 0 ? (
+      {onOpenSheet ? (
+        trigger
+      ) : terminal || preview || offered.length > 0 ? (
         <MenuRoot>
-          <MenuTrigger>
-            <Button
-              aria-label="Panels"
-              className={`relative mr-1 grid size-7 shrink-0 place-items-center rounded-md transition-colors [app-region:no-drag] active:bg-surface-active data-popup-open:bg-surface-active data-popup-open:text-fg-primary pointer-coarse:size-10 max-md:size-10 ${
-                anyOpen ? "text-fg-primary" : "text-fg-secondary hover:bg-surface-hover hover:text-fg-primary"
-              }`}
-            >
-              <Ellipsis size={18} strokeWidth={1.75} />
-              {preview?.live && !anyOpen ? (
-                <span aria-hidden className="absolute top-1 right-1 size-1.5 rounded-full bg-accent" />
-              ) : null}
-            </Button>
-          </MenuTrigger>
+          <MenuTrigger>{trigger}</MenuTrigger>
           <MenuPopup>
             {preview ? (
               <MenuCheckboxItem

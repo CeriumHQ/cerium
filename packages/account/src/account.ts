@@ -157,9 +157,9 @@ const SILENT_FOR = "40 seconds";
  * How long a check waits for the relay's answer. A suspended page or a sleeping machine often finds
  * its socket still open but dead, which only an unanswered ping tells. The relay answers pings at
  * its edge within a fraction of a second, and every moment waited here is a phone coming back to
- * the app that can't show anything new yet.
+ * the app that can't show anything new yet; a line that was fine only reconnects, which costs less.
  */
-const CHECK_WITHIN = "1500 millis";
+const CHECK_WITHIN = "1 second";
 /** A timer running this late means the device slept or its page was suspended. */
 const ASLEEP_AFTER_MS = 15_000;
 const TICK = "5 seconds";

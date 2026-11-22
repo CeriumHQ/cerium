@@ -13,6 +13,22 @@ export const useLaunched = (ready: boolean) => {
   }, [ready, setLaunched]);
 };
 
+/**
+ * How the launch screen paces itself: how long the mark takes to settle before the window may take
+ * over, how long the full line holds, and when the window shows whatever it has. A desktop starts its
+ * backend behind the screen; the web client only waits for its page, which knows the account at once,
+ * so its screen gets out of the way.
+ */
+export const launchTimings = (web: boolean) =>
+  web ? { settleMs: 350, fullMs: 120, giveUpMs: 5_000 } : { settleMs: 700, fullMs: 280, giveUpMs: 12_000 };
+
+/**
+ * Whether the window opens without the launch screen: the web client with the threads it kept last
+ * time (web/cache.ts) paints them at once, while it connects behind them.
+ */
+export const skipsLaunchScreen = (state: { readonly web: boolean; readonly cached: boolean }) =>
+  state.web && state.cached;
+
 /** How far the window is in starting, as the launch screen tells it. */
 export interface LaunchState {
   /** This device's own side answers: a desktop's backend, or the web client's page. */

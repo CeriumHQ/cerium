@@ -1,8 +1,9 @@
 import type { AccountState, ThreadRef } from "@cerium/protocol";
 import { useAtomSet } from "@effect/atom-react";
-import { useEffect, useEffectEvent, useSyncExternalStore } from "react";
+import { useEffect, useEffectEvent, useState, useSyncExternalStore } from "react";
 
 import { reportPresence } from "../../backend/atoms.ts";
+import { shellBridge } from "../../backend/shell.ts";
 import { Notice } from "../../app/Notice.tsx";
 
 const onVisibility = (change: () => void) => {
@@ -11,12 +12,25 @@ const onVisibility = (change: () => void) => {
 };
 
 /**
- * Tells the account what this window shows: whether it's on screen,
+ * Whether the user is at the desktop app: one of its windows focused, and the computer neither idle
+ * nor locked. A window left open on a desk would otherwise keep their phone quiet. Always in a browser,
+ * where being on screen says enough.
+ */
+function useAttended() {
+  const [attended, setAttended] = useState(true);
+  useEffect(() => shellBridge()?.onAttendedChange?.(setAttended), []);
+  return attended;
+}
+
+/**
+ * Tells the account what this window shows: whether it's on screen and the user is at it,
  * and the thread open in it, so nobody is notified about what they're looking at.
  */
 export function useAccountPresence(account: AccountState, viewing: ThreadRef | undefined) {
   const report = useAtomSet(reportPresence, { mode: "promise" });
-  const visible = useSyncExternalStore(onVisibility, () => document.visibilityState === "visible");
+  const onScreen = useSyncExternalStore(onVisibility, () => document.visibilityState === "visible");
+  const attended = useAttended();
+  const visible = onScreen && attended;
   const signedIn = account._tag === "SignedIn";
   const machine = viewing?.machine;
   const threadId = viewing?.threadId;

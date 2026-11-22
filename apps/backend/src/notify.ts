@@ -196,6 +196,10 @@ const startNotifier = (
             return Effect.sync(() => endTurn(agentId, { stopReason: payload.stopReason }));
           case "PermissionRequested":
             return note(threadId, { asked: notificationLine(payload.summary) ?? payload.toolName });
+          case "QuestionAsked":
+            return note(threadId, {
+              asked: notificationLine(payload.questions[0].question) ?? "Waiting for your answer",
+            });
           case "SpawnApprovalRequested":
             return note(threadId, {
               asked: notificationLine(`Start a ${payload.role} agent on ${payload.model}`) ?? payload.role,

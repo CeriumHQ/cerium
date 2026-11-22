@@ -26,8 +26,17 @@ export const unreachableReason: Record<"offline" | "forbidden" | "lost" | "silen
   silent: "That computer didn't answer.",
 };
 
-/** How long opening a tunnel waits for this device's relay connection, and then for the machine. */
-const OPEN_WITHIN = "8 seconds";
+/**
+ * How long opening a tunnel waits for this device's relay connection, which may be reconnecting after
+ * a phone comes back to the app.
+ */
+export const RELAY_WITHIN = "8 seconds";
+/**
+ * How long it then waits for the machine's answer. The machine answers over its own relay connection
+ * within a moment; one that stays silent for longer has a dead line the relay hasn't noticed yet, and
+ * trying again sooner finds the machine once it's back.
+ */
+export const HELLO_WITHIN = "5 seconds";
 
 export interface TunnelOptions {
   /**
@@ -124,7 +133,7 @@ export const openTunnel = (
       Stream.filter((state) => state._tag === "SignedIn" && state.connection === "online"),
       Stream.runHead,
       Effect.timeoutOrElse({
-        duration: OPEN_WITHIN,
+        duration: RELAY_WITHIN,
         orElse: () => Effect.fail(openFailed(unreachableReason.lost, "Timeout")),
       }),
     );
@@ -207,7 +216,7 @@ export const openTunnel = (
       tunnel.send(options.hello);
       yield* Deferred.await(answered).pipe(
         Effect.timeoutOrElse({
-          duration: OPEN_WITHIN,
+          duration: HELLO_WITHIN,
           orElse: () => Effect.fail(openFailed(unreachableReason.silent, "Timeout")),
         }),
       );

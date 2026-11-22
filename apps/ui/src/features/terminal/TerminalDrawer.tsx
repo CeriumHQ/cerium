@@ -15,6 +15,7 @@ import { useShortcut } from "../../lib/shortcuts.ts";
 import type { AskAgentFix } from "../composer/agentFix.ts";
 import type { MessageBox } from "../composer/messageBox.ts";
 import { HeightHandle } from "./HeightHandle.tsx";
+import { TerminalKeyBar } from "./KeyBar.tsx";
 import {
   DRAWER,
   drawerLayout,
@@ -223,6 +224,7 @@ export function TerminalDrawer({
           ) : null}
         </div>
       </Tabs.Root>
+      {compact && shown ? <TerminalKeyBar key={shown.id} terminal={shown} /> : null}
     </section>
   );
 }

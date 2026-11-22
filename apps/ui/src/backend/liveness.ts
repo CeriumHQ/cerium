@@ -32,6 +32,15 @@ export const liveness = (
   let timer: ReturnType<typeof setTimeout> | undefined;
   let connectedAt: number | undefined;
   let failures = 0;
+  /** How long the next open waits, and how to cut that wait short. */
+  let pending = 0;
+  let wake: (() => void) | undefined;
+  const nextRetry = () => {
+    if (connectedAt !== undefined && Date.now() - connectedAt >= STEADY_FOR_MS) failures = 0;
+    connectedAt = undefined;
+    const attempt = failures++;
+    return attempt === 0 ? 0 : Math.min(5_000, 250 * 2 ** (attempt - 1));
+  };
   const become = (next: ConnectionState) => {
     if (registry.get(state) === next) return;
     registry.set(state, next);
@@ -64,11 +73,46 @@ export const liveness = (
      * Milliseconds until the next open: none after a steady connection, then a quarter second
      * doubling to five. A tunnel's open waits for the relay itself, so going at once costs nothing.
      */
-    nextRetry: () => {
-      if (connectedAt !== undefined && Date.now() - connectedAt >= STEADY_FOR_MS) failures = 0;
+    nextRetry,
+    /**
+     * For the RPC client's retry schedule: no wait there, where nothing could cut it short, but the
+     * next open's `backoff` waits for `nextRetry` instead.
+     */
+    deferRetry: () => {
+      pending = nextRetry();
+      return 0;
+    },
+    /** Waits before an open as long as `deferRetry` said, or until `retryNow`. */
+    backoff: Effect.callback<void>((resume) => {
+      const ms = pending;
+      pending = 0;
+      if (ms <= 0) return resume(Effect.void);
+      const done = () => {
+        clearTimeout(waiting);
+        if (wake === done) wake = undefined;
+        resume(Effect.void);
+      };
+      const waiting = setTimeout(done, ms);
+      wake = done;
+      return Effect.sync(() => {
+        clearTimeout(waiting);
+        if (wake === done) wake = undefined;
+      });
+    }),
+    /**
+     * Tries again now, as the user asking or the app coming back to the screen does: the backoff
+     * starts over and a waiting open goes at once. A machine counted unreachable is connecting
+     * again, and counts as unreachable again only if it stays lost.
+     */
+    retryNow: () => {
+      failures = 0;
       connectedAt = undefined;
-      const attempt = failures++;
-      return attempt === 0 ? 0 : Math.min(5_000, 250 * 2 ** (attempt - 1));
+      pending = 0;
+      if (registry.get(state) === "unreachable") {
+        become("connecting");
+        lost();
+      }
+      wake?.();
     },
     /** Waits while the line is coming back; at once otherwise. */
     settled: Effect.callback<void>((resume) => {

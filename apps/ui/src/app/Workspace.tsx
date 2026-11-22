@@ -2,19 +2,32 @@ import { type ThreadId } from "@cerium/protocol";
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import { useEffect, useEffectEvent, useState } from "react";
 
+import { reconnectNow } from "../backend/client.ts";
 import { machineAtom } from "../backend/machine.ts";
 import { saveProject } from "../backend/projects.ts";
 import { WEB } from "../backend/target.ts";
 import { MachinePicker } from "../features/account/MachinePicker.tsx";
+import { presenceLabel, reachOf } from "../features/account/model.ts";
+import { SwitchComputerSheet } from "../features/account/SwitchComputerSheet.tsx";
+import { hasContent } from "../features/composer/draft.ts";
+import { draftsAtom } from "../features/composer/drafts.ts";
+import { takeShared } from "../features/composer/shareTarget.ts";
 import { Inspector } from "../features/agents/Inspector.tsx";
 import { ArtifactsPanel } from "../features/artifacts/ArtifactsPanel.tsx";
 import { DraftSync } from "../features/composer/useDraftSync.ts";
 import { TaskSync } from "../features/tasks/TaskSync.ts";
 import { CommandPalette } from "../features/palette/CommandPalette.tsx";
-import { ThreadLineage, WorkspaceStatus } from "../features/git/WorkspaceStatus.tsx";
+import {
+  CompactWorkspaceSubtitle,
+  ThreadLineage,
+  WorkspaceStatus,
+} from "../features/git/WorkspaceStatus.tsx";
 import { settingsLabel, SettingsNav, SettingsView } from "../features/settings/Settings.tsx";
 import { ThreadTabs } from "../features/tabs/ThreadTabs.tsx";
+import { nextWaitingThread, type ThreadSummary } from "../features/threads/model.ts";
+import { NextWaitingPill } from "../features/threads/NextWaitingPill.tsx";
 import { Sidebar } from "../features/threads/Sidebar.tsx";
+import { TriageSheet } from "../features/threads/TriageSheet.tsx";
 import { THREAD_SEARCH_VERSION } from "../features/threads/threadSearch.ts";
 import { welcomeShownAtom } from "../features/onboarding/state.ts";
 import { SplitView } from "../features/split/SplitView.tsx";
@@ -23,6 +36,8 @@ import { remember, stored } from "../lib/storage.ts";
 import { useLaunchRequests } from "../features/launch/launchRequests.ts";
 import { AppFrame } from "./AppFrame.tsx";
 import { useCompact } from "./compact.ts";
+import { connectionStatusOf, useConnectionStatus } from "./connectionStatus.ts";
+import { runBusy, type CompactWorkspace } from "./ThreadSheet.tsx";
 import { Rail } from "./Rail.tsx";
 import { soloThread } from "./threadWindow.ts";
 
@@ -113,6 +128,10 @@ export function Workspace() {
     indicators,
     agents,
     lineage,
+    connection,
+    refreshThreads,
+    drivenId,
+    selectedSummary,
   } = threads;
   const tabView = useWorkspaceTabs({
     driven,
@@ -144,6 +163,8 @@ export function Workspace() {
     resize,
     openThreadById,
     beside,
+    jumpNextWaiting,
+    startThreadFrom,
   } = tabView;
   useWorkspacePresence({ driven, solo, compact, settingsOpen, pane, threads, openSummary });
   const bindings = useAtomValue(shortcutBindingsAtom);
@@ -215,6 +236,16 @@ export function Workspace() {
     }
     return true;
   });
+  // What another app shared to the installed web client opens as a new thread with it in the message
+  // box, once the window drives a computer and has come back to where it was: either would reset it.
+  const shareReady = WEB && solo === undefined && driven !== undefined && !sessionState.resumePending;
+  const takeShare = useEffectEvent(() => {
+    const text = takeShared();
+    if (text !== undefined) startThreadFrom({ folder: undefined, text });
+  });
+  useEffect(() => {
+    if (shareReady) takeShare();
+  }, [shareReady]);
   // Back from settings or the welcome, the cursor returns to the message box; a phone's keyboard stays down.
   const welcoming = useAtomValue(welcomeShownAtom);
   const focusAfterOverlay = useEffectEvent(focusComposer);
@@ -317,6 +348,71 @@ export function Workspace() {
   const workspaceThread =
     workspacesOk && runThreadId !== undefined && !compact ? selected?.thread : undefined;
 
+  // How the line to the open thread's computer stands: the compact frame times it itself, and the
+  // machine picker marks its trigger with the timed one.
+  const cloudHome =
+    cloudSelected === undefined || cloudSelected.machine === drivenId ? undefined : cloudSelected.machine;
+  const cloudDevice = cloudHome === undefined ? undefined : deviceOf(cloudHome);
+  const connectionStatus = connectionStatusOf({
+    connection,
+    driven,
+    presence: drivenDevice && !drivenDevice.online ? presenceLabel(drivenDevice) : undefined,
+    cloud:
+      cloudHome === undefined
+        ? undefined
+        : {
+            machine: nameOf(cloudHome),
+            reach: cloudDevice === undefined ? { kind: "offline" } : reachOf(cloudDevice),
+          },
+    web: WEB,
+  });
+  const timedConnectionStatus = useConnectionStatus(connectionStatus);
+  const retryConnection = () => {
+    reconnectNow();
+    refreshThreads();
+  };
+  const [threadSheetOpen, setThreadSheetOpen] = useState(false);
+  const [switchOpen, setSwitchOpen] = useState(false);
+  const [triageOpen, setTriageOpen] = useState(false);
+  const hasOtherMachines =
+    account._tag === "SignedIn" &&
+    account.devices.some((device) => device.kind === "desktop" && device.id !== drivenId);
+
+  // Threads waiting on the user's approval, for the capsules and the triage sheet.
+  const viewedId = viewed?.thread.id;
+  const waiting = summaries.filter((summary) => summary.status === "awaitingApproval");
+  const otherWaitingCount = waiting.filter((summary) => summary.id !== viewedId).length;
+  const nextWaiting = viewedId === undefined ? undefined : nextWaitingThread(summaries, viewedId);
+
+  const runProps =
+    runThreadId === undefined
+      ? undefined
+      : {
+          running: runRunning,
+          onToggle: toggleRun,
+          actions: projectActions,
+          onAction: toggleAction,
+          onMenuOpen: refreshProjectScripts,
+          onEditActions: () => openSettings("sourceControl"),
+        };
+  // The compact thread bar's context line and the Thread sheet's Workspace row: the open work
+  // thread's workspace, kept fresh by the subtitle since no titlebar shows it.
+  const compactThread = compact && workspacesOk && runThreadId !== undefined ? selected?.thread : undefined;
+  const compactWorkspace: CompactWorkspace | undefined =
+    compactThread === undefined
+      ? undefined
+      : {
+          threadId: compactThread.id as ThreadId,
+          checkoutFolder: compactThread.worktree?.root ?? compactThread.cwd ?? "",
+          projectRoot: compactThread.worktree?.project ?? compactThread.cwd ?? "",
+          worktree: compactThread.worktree !== undefined,
+          lineage,
+          onOpenSourceControl: () => {
+            if (!gitOpen) toggleGit();
+          },
+          onOpenThread: openThreadById,
+        };
+
   const notices = <WorkspaceNotices driven={driven} solo={solo} threads={threads} errors={errors} />;
   const page = workspacePage({ compact, places, threads, tabView, tools: projectTools });
   const { paneContent, paneLabel } = workspacePaneViews({
@@ -333,6 +429,19 @@ export function Workspace() {
     paneActions,
     slashCommands,
     notices,
+    ...(solo === undefined && viewed !== undefined
+      ? {
+          aboveComposer: (
+            <WaitingPill
+              current={selectedSummary}
+              next={nextWaiting}
+              draftKey={viewed.thread.id}
+              onOpen={openThreadById}
+            />
+          ),
+        }
+      : {}),
+    ...(compact ? { onOpenConnection: () => setThreadSheetOpen(true) } : {}),
   });
   const frame = (
     <AppFrame
@@ -354,6 +463,39 @@ export function Workspace() {
       pane={pane}
       onBack={() => setPane("list")}
       {...(page === undefined ? {} : { page })}
+      connectionStatus={connectionStatus}
+      onRetryConnection={retryConnection}
+      threadSheetOpen={threadSheetOpen}
+      onThreadSheetOpenChange={setThreadSheetOpen}
+      hasOtherMachines={hasOtherMachines}
+      onSwitchMachine={() => setSwitchOpen(true)}
+      {...(solo === undefined
+        ? {
+            waitingCount: waiting.length,
+            otherWaitingCount,
+            onJumpWaiting: () => void jumpNextWaiting(),
+            onOpenTriage: () => setTriageOpen(true),
+          }
+        : {})}
+      extraBackDepth={(triageOpen ? 1 : 0) + (switchOpen ? 1 : 0)}
+      onCloseOverlay={() => {
+        if (switchOpen) setSwitchOpen(false);
+        else setTriageOpen(false);
+      }}
+      {...(compactThread === undefined
+        ? {}
+        : {
+            compactSubtitle: (
+              <CompactWorkspaceSubtitle
+                threadId={compactThread.id as ThreadId}
+                project={compactThread.cwd ? baseName(compactThread.cwd) : undefined}
+                checkoutFolder={compactThread.worktree?.root ?? compactThread.cwd}
+                running={runBusy(runProps)}
+              />
+            ),
+            compactSubtitleKey: compactThread.id,
+          })}
+      {...(compactWorkspace === undefined ? {} : { compactWorkspace })}
       rail={(orientation) => (
         <Rail
           view={settingsOpen ? "settings" : (place ?? (mode === "work" ? "home" : "chat"))}
@@ -412,9 +554,10 @@ export function Workspace() {
           open={tabs.tabs.map((tab) => tab.key)}
           searchOpen={searchOpen}
           onSearchOpenChange={setSearchOpen}
+          onRefresh={retryConnection}
         />
       }
-      machinePicker={<MachinePicker account={account} />}
+      machinePicker={<MachinePicker account={account} status={timedConnectionStatus} />}
       tabs={
         <ThreadTabs
           tabs={
@@ -531,18 +674,7 @@ export function Workspace() {
           <ThreadLineage key={viewed?.thread.id} lineage={lineage} onOpenThread={openThreadById} />
         ) : undefined
       }
-      {...(runThreadId === undefined
-        ? {}
-        : {
-            run: {
-              running: runRunning,
-              onToggle: toggleRun,
-              actions: projectActions,
-              onAction: toggleAction,
-              onMenuOpen: refreshProjectScripts,
-              onEditActions: () => openSettings("sourceControl"),
-            },
-          })}
+      {...(runProps === undefined ? {} : { run: runProps })}
       {...(previewThread === undefined
         ? {}
         : {
@@ -578,6 +710,18 @@ export function Workspace() {
           <TaskSync signedIn={account._tag === "SignedIn"} />
         </>
       )}
+      {solo ? null : (
+        <>
+          <TriageSheet
+            open={triageOpen}
+            onOpenChange={setTriageOpen}
+            threads={summaries}
+            current={viewedId}
+            onOpen={openThreadById}
+          />
+          <SwitchComputerSheet open={switchOpen} onOpenChange={setSwitchOpen} account={account} />
+        </>
+      )}
       {stopAllDialog}
       {archiveDialog}
     </AppFrame>
@@ -603,4 +747,20 @@ export function Workspace() {
       )}
     </>
   );
+}
+
+/** The pill to the next thread waiting, over the open thread's box: it fades once the user writes there. */
+function WaitingPill({
+  current,
+  next,
+  draftKey,
+  onOpen,
+}: {
+  current: ThreadSummary | undefined;
+  next: ThreadSummary | undefined;
+  draftKey: string;
+  onOpen: (threadId: string) => void;
+}) {
+  const typing = hasContent(useAtomValue(draftsAtom)[draftKey]);
+  return <NextWaitingPill current={current} next={next} onOpen={onOpen} dismissed={typing} />;
 }

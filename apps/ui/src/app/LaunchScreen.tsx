@@ -20,16 +20,25 @@ import { gpuSettled, WelcomeWarmUp } from "../features/onboarding/WarmUp.tsx";
 import { Welcome } from "../features/onboarding/Welcome.tsx";
 import { themeSettled } from "../features/settings/theme.ts";
 import { remember, stored } from "../lib/storage.ts";
-import { launchedAtom, launchProgress, launchStatus, letterShape, type LaunchState } from "./launch.ts";
+import { hasCachedThreads } from "../web/cache.ts";
+import {
+  launchedAtom,
+  launchProgress,
+  launchStatus,
+  launchTimings,
+  letterShape,
+  skipsLaunchScreen,
+  type LaunchState,
+} from "./launch.ts";
 
-/** How long the mark takes to settle; the window is never handed over before it has. */
-const SETTLE_MS = 700;
+/**
+ * How long the mark takes to settle, which the window is never handed over before; how long the full
+ * progress line holds before it takes over; and when it shows whatever it has, with its own notices
+ * for what's still missing.
+ */
+const { settleMs: SETTLE_MS, fullMs: FULL_MS, giveUpMs: GIVE_UP_MS } = launchTimings(WEB);
 /** How long starting goes before the screen says what it waits on. */
 const QUIET_MS = 1_400;
-/** How long the full progress line holds before the window takes over. */
-const FULL_MS = 280;
-/** The window shows whatever it has by now, with its own notices for what's still missing. */
-const GIVE_UP_MS = 12_000;
 /** How much of the step under way the progress line creeps through while it waits, and how slowly. */
 const CREEP = 0.7;
 const CREEP_MS = 4_000;
@@ -51,7 +60,9 @@ const NAME = ["c", "e", "r", "i", "u", "m"] as const;
  * welcome again over it.
  */
 export function Launch({ children }: { children: ReactNode }) {
-  const [launching, setLaunching] = useState(true);
+  const [launching, setLaunching] = useState(
+    () => !skipsLaunchScreen({ web: WEB, cached: hasCachedThreads() }),
+  );
   const [welcoming, setWelcoming] = useState(false);
   const [asked, setAsked] = useAtom(welcomeOpenAtom);
   const threadCount = useAtomValue(threadCountAtom);

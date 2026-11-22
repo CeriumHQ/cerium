@@ -21,6 +21,7 @@ import {
   GitFork,
   Link2,
   MessageSquare,
+  Play,
   RefreshCw,
   RotateCcw,
   Terminal,
@@ -28,7 +29,15 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import { useContext, useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
+import {
+  useContext,
+  useEffect,
+  useEffectEvent,
+  useRef,
+  useState,
+  type ComponentType,
+  type ReactNode,
+} from "react";
 
 import { watchAtom } from "../../backend/explorer.ts";
 import { refreshWorkspace, sourceControl, workspaceAtom } from "../../backend/sourceControl.ts";
@@ -159,41 +168,24 @@ function LineageEntries({
   );
 }
 
-export function WorkspaceStatus({
-  threadId,
-  checkoutFolder,
-  projectRoot,
-  onOpenSourceControl,
-  onOpenThread,
-  lineage,
-}: {
-  readonly threadId: ThreadId;
-  readonly checkoutFolder: string;
-  /** The project's folder, whose checkouts a thread can move to. */
-  readonly projectRoot: string;
-  readonly onOpenSourceControl: () => void;
-  readonly onOpenThread: (threadId: string) => void;
-  readonly lineage?: Lineage | undefined;
-}) {
+/**
+ * Keeps the thread's workspace snapshot fresh while mounted: on file changes in its checkout, on
+ * coming back to the window, on moving to another checkout, and GitHub's side on its own cadence.
+ * Mount it once per thread on screen: the titlebar's trigger, or the compact bar's subtitle.
+ */
+function useWorkspace(threadId: ThreadId, checkoutFolder: string | undefined) {
   const registry = useContext(RegistryContext);
   const result = useAtomValue(workspaceAtom(threadId));
   const refresh = () => refreshWorkspace(registry, threadId);
-  const run = useAtomSet(sourceControl, { mode: "promise" });
-  const [open, setOpen] = useState(false);
-  const [view, setView] = useState<View>("overview");
-  const [busy, setBusy] = useState(false);
-  const [note, setNote] = useState<{ readonly text: string; readonly error: boolean }>();
-  const [checkouts, setCheckouts] = useState<ReadonlyArray<CheckoutInfo>>();
-  const [scope, setScope] = useState<Scope>("branch");
-  const [diff, setDiff] = useState<{ readonly text: string; readonly revision: string }>();
-  const [removing, setRemoving] = useState<string>();
   const state = AsyncResult.getOrElse(result, () => undefined)?.snapshot;
-  const root = state?.root;
+  const watching = checkoutFolder !== undefined;
+  const root = watching ? state?.root : undefined;
   const previousFolder = useRef(checkoutFolder);
 
   // The same watcher supplies the explorer and source control panel when they're open.
   const refreshLocal = useEffectEvent(refresh);
   useEffect(() => {
+    if (!watching) return;
     let pending: ReturnType<typeof setTimeout> | undefined;
     const scheduleRefresh = (delay: number) => {
       if (pending !== undefined || document.visibilityState !== "visible") return;
@@ -225,10 +217,10 @@ export function WorkspaceStatus({
       window.removeEventListener("focus", foreground);
       document.removeEventListener("visibilitychange", foreground);
     };
-  }, [registry, root]);
+  }, [registry, root, watching]);
 
   useEffect(() => {
-    if (checkoutFolder === previousFolder.current) return;
+    if (checkoutFolder === undefined || checkoutFolder === previousFolder.current) return;
     previousFolder.current = checkoutFolder;
     refreshLocal();
   }, [checkoutFolder]);
@@ -239,9 +231,246 @@ export function WorkspaceStatus({
       refreshWorkspace(registry, threadId, false);
   });
   useEffect(() => {
+    if (!watching) return;
     const timer = setInterval(() => refreshGitHub(), 30_000);
     return () => clearInterval(timer);
-  }, []);
+  }, [watching]);
+
+  return { result, state, refresh };
+}
+
+/** What waits in the workspace at a glance: conflicts or uncommitted files, commits to push and pull. */
+function WorkspaceMarks({
+  state,
+  failing = false,
+  small = false,
+}: {
+  readonly state: SourceControlSnapshot;
+  /** A linked pull request's checks fail. */
+  readonly failing?: boolean;
+  /** The compact bar's 10px marks, rather than the titlebar's. */
+  readonly small?: boolean;
+}) {
+  const changed = state.staged + state.unstaged;
+  const icon = small ? 10 : 12;
+  const arrow = small ? 10 : 11;
+  return (
+    <span className="flex shrink-0 items-center gap-1.5 text-fg-tertiary tabular-nums empty:hidden">
+      {state.conflicted > 0 ? (
+        <CircleAlert size={icon} strokeWidth={2} className="text-error-text" />
+      ) : changed > 0 ? (
+        <span className="flex items-center gap-1">
+          <span aria-hidden className="size-1.5 rounded-full bg-attention" />
+          {changed}
+        </span>
+      ) : null}
+      {state.ahead > 0 ? (
+        <span className="flex items-center">
+          <ArrowUp size={arrow} strokeWidth={2} />
+          {state.ahead}
+        </span>
+      ) : null}
+      {state.behind > 0 ? (
+        <span className="flex items-center">
+          <ArrowDown size={arrow} strokeWidth={2} />
+          {state.behind}
+        </span>
+      ) : null}
+      {failing ? <CircleX size={icon} strokeWidth={2} className="text-error-text" /> : null}
+    </span>
+  );
+}
+
+/**
+ * The compact thread bar's context line: the project, the workspace's branch and what waits there,
+ * and whether the thread's run is going. Pass `checkoutFolder` where nothing else on screen keeps the
+ * workspace fresh, as the titlebar's `WorkspaceStatus` does on a wide window.
+ */
+export function CompactWorkspaceSubtitle({
+  threadId,
+  project,
+  checkoutFolder,
+  running = false,
+}: {
+  readonly threadId: ThreadId;
+  readonly project?: string | undefined;
+  readonly checkoutFolder?: string | undefined;
+  /** The thread's run or an action is going. */
+  readonly running?: boolean;
+}) {
+  const { state } = useWorkspace(threadId, checkoutFolder);
+  const words = state ? statusWords(state) : [];
+  return (
+    <span
+      className="flex min-w-0 items-center gap-1.5"
+      aria-label={[project, state?.branch, ...words, ...(running ? ["running"] : [])]
+        .filter(Boolean)
+        .join(" · ")}
+    >
+      {project ? <span className="min-w-0 truncate">{project}</span> : null}
+      {project && state ? (
+        <span aria-hidden className="shrink-0 text-fg-disabled">
+          ·
+        </span>
+      ) : null}
+      {state ? (
+        <>
+          {/* The branch gives way first, then the project. */}
+          <span className="flex min-w-0 shrink-[100] items-center gap-1">
+            <GitBranch size={10} strokeWidth={1.75} className="shrink-0" />
+            <span className="min-w-0 truncate font-mono text-[12px]">{state.branch}</span>
+          </span>
+          <WorkspaceMarks state={state} small />
+        </>
+      ) : null}
+      {running ? (
+        <Play aria-hidden size={10} strokeWidth={2} className="shrink-0 fill-current text-running" />
+      ) : null}
+    </span>
+  );
+}
+
+export function WorkspaceStatus({
+  threadId,
+  checkoutFolder,
+  projectRoot,
+  onOpenSourceControl,
+  onOpenThread,
+  lineage,
+}: {
+  readonly threadId: ThreadId;
+  readonly checkoutFolder: string;
+  /** The project's folder, whose checkouts a thread can move to. */
+  readonly projectRoot: string;
+  readonly onOpenSourceControl: () => void;
+  readonly onOpenThread: (threadId: string) => void;
+  readonly lineage?: Lineage | undefined;
+}) {
+  const { result, state } = useWorkspace(threadId, checkoutFolder);
+  const [open, setOpen] = useState(false);
+
+  if (state === undefined && (lineage?.parent || (lineage?.forks.length ?? 0) > 0)) {
+    return lineage ? <ThreadLineage lineage={lineage} onOpenThread={onOpenThread} /> : null;
+  }
+  if (state === undefined && !AsyncResult.isFailure(result)) return null;
+
+  const failing = state?.pulls.some((pull) => pull.checks === "failed") ?? false;
+  const words = state ? statusWords(state) : [];
+
+  return (
+    <Popover.Root open={open} onOpenChange={setOpen}>
+      <Tooltip
+        label={
+          state
+            ? ["Workspace", ...words, ...(failing ? ["checks fail"] : [])].join(" · ")
+            : "Workspace unavailable"
+        }
+      >
+        <Popover.Trigger
+          aria-label="Workspace"
+          className="mr-1 flex h-7 max-w-72 min-w-0 items-center gap-1.5 rounded-md px-2 text-meta text-fg-secondary transition-colors [app-region:no-drag] hover:bg-surface-hover hover:text-fg-primary data-popup-open:bg-surface-active data-popup-open:text-fg-primary pointer-coarse:h-10 max-md:h-10"
+        >
+          <GitBranch size={13} strokeWidth={1.75} className="shrink-0" />
+          {state ? (
+            <>
+              <span className="truncate">{state.branch}</span>
+              <WorkspaceMarks state={state} failing={failing} />
+            </>
+          ) : (
+            <span className="text-fg-tertiary">Workspace</span>
+          )}
+        </Popover.Trigger>
+      </Tooltip>
+      {/* Kept mounted, so a review, its scope and a removal being confirmed outlast the popover closing. */}
+      <Popover.Portal keepMounted>
+        <Popover.Positioner side="bottom" align="end" sideOffset={6} className="z-50 outline-none">
+          <Popover.Popup className={popupClass}>
+            <WorkspaceStatusBody
+              threadId={threadId}
+              projectRoot={projectRoot}
+              lineage={lineage}
+              open={open}
+              onClose={() => setOpen(false)}
+              onOpenSourceControl={onOpenSourceControl}
+              onOpenThread={onOpenThread}
+              parts={popoverParts}
+            />
+          </Popover.Popup>
+        </Popover.Positioner>
+      </Popover.Portal>
+    </Popover.Root>
+  );
+}
+
+/** The title and description elements the body names itself with: a popover's own, or plain ones. */
+interface BodyParts {
+  readonly Title: ComponentType<{ readonly className: string; readonly children: ReactNode }>;
+  readonly Description: ComponentType<{
+    readonly className: string;
+    readonly title?: string;
+    readonly children: ReactNode;
+  }>;
+}
+
+const popoverParts: BodyParts = { Title: Popover.Title, Description: Popover.Description };
+const plainParts: BodyParts = {
+  Title: ({ className, children }) => <h2 className={className}>{children}</h2>,
+  Description: ({ className, title, children }) => (
+    <p className={className} title={title}>
+      {children}
+    </p>
+  ),
+};
+
+/**
+ * Everything the workspace popover holds: the overview, moving the thread, its checkouts, and the
+ * note after an action. The compact Thread sheet shows it as a page of its own. It reads the
+ * workspace without keeping it fresh: something else on screen does, such as `WorkspaceStatus` or
+ * `CompactWorkspaceSubtitle`.
+ */
+export function WorkspaceStatusBody({
+  threadId,
+  projectRoot,
+  lineage,
+  open = true,
+  onClose,
+  onOpenSourceControl,
+  onOpenThread,
+  parts = plainParts,
+}: {
+  readonly threadId: ThreadId;
+  /** The project's folder, whose checkouts a thread can move to. */
+  readonly projectRoot: string;
+  readonly lineage?: Lineage | undefined;
+  /** Whether the body is on screen: once it isn't, it goes back to the overview. */
+  readonly open?: boolean;
+  /** Called before leaving for another thread or the source control panel. */
+  readonly onClose?: (() => void) | undefined;
+  readonly onOpenSourceControl: () => void;
+  readonly onOpenThread: (threadId: string) => void;
+  readonly parts?: BodyParts;
+}) {
+  const registry = useContext(RegistryContext);
+  const result = useAtomValue(workspaceAtom(threadId));
+  const refresh = () => refreshWorkspace(registry, threadId);
+  const run = useAtomSet(sourceControl, { mode: "promise" });
+  const [view, setView] = useState<View>("overview");
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<{ readonly text: string; readonly error: boolean }>();
+  const [checkouts, setCheckouts] = useState<ReadonlyArray<CheckoutInfo>>();
+  const [scope, setScope] = useState<Scope>("branch");
+  const [diff, setDiff] = useState<{ readonly text: string; readonly revision: string }>();
+  const [removing, setRemoving] = useState<string>();
+  const state = AsyncResult.getOrElse(result, () => undefined)?.snapshot;
+
+  const [shown, setShown] = useState(open);
+  if (shown !== open) {
+    setShown(open);
+    if (!open) {
+      setView("overview");
+      setNote(undefined);
+    }
+  }
 
   const execute = async (command: SourceControlCommand) => {
     if (busy) return false;
@@ -273,141 +502,72 @@ export function WorkspaceStatus({
     void execute({ action: "list" });
   };
 
-  if (state === undefined && (lineage?.parent || (lineage?.forks.length ?? 0) > 0)) {
-    return lineage ? <ThreadLineage lineage={lineage} onOpenThread={onOpenThread} /> : null;
-  }
-  if (state === undefined && !AsyncResult.isFailure(result)) return null;
-
-  const changed = state ? state.staged + state.unstaged : 0;
-  const failing = state?.pulls.some((pull) => pull.checks === "failed") ?? false;
-  const words = state ? statusWords(state) : [];
-
   return (
     <>
-      <Popover.Root
-        open={open}
-        onOpenChange={(next) => {
-          setOpen(next);
-          if (!next) {
-            setView("overview");
-            setNote(undefined);
+      {view === "move" ? (
+        <CheckoutChooser
+          root={projectRoot}
+          branch={state?.branch ?? ""}
+          except={state ? [state.root] : []}
+          title="Move this thread"
+          hint="Its commits come along; uncommitted edits stay where they are. It moves once its turn ends."
+          onBack={() => setView("overview")}
+          confirmLabel="Move here"
+          onPick={(pick) =>
+            void execute({ action: "move", workspace: pick.workspace ?? {} }).then(
+              (moved) => moved && setView("overview"),
+            )
           }
-        }}
-      >
-        <Tooltip
-          label={
-            state
-              ? ["Workspace", ...words, ...(failing ? ["checks fail"] : [])].join(" · ")
-              : "Workspace unavailable"
-          }
+        />
+      ) : view === "checkouts" ? (
+        <Checkouts
+          checkouts={checkouts}
+          current={state?.root}
+          busy={busy}
+          onBack={() => setView("overview")}
+          onRemove={setRemoving}
+        />
+      ) : state ? (
+        <Overview
+          state={state}
+          lineage={lineage}
+          threadId={threadId}
+          busy={busy}
+          scope={scope}
+          diff={diff}
+          parts={parts}
+          onScope={(next) => {
+            setScope(next);
+            if (diff) void execute({ action: "diff", scope: next });
+          }}
+          onDiff={() => void execute({ action: "diff", scope })}
+          onHideDiff={() => setDiff(undefined)}
+          onRefresh={refresh}
+          onExecute={(command) => void execute(command)}
+          onMove={() => setView("move")}
+          onCheckouts={showCheckouts}
+          onRemove={() => setRemoving(state.root)}
+          onOpenThread={(id) => {
+            onClose?.();
+            onOpenThread(id);
+          }}
+          onOpenSourceControl={() => {
+            onClose?.();
+            onOpenSourceControl();
+          }}
+        />
+      ) : (
+        <Unavailable parts={parts} onRetry={refresh} onMove={() => setView("move")} />
+      )}
+      {note ? (
+        <output
+          className={`block shrink-0 border-t border-line-subtle px-3 py-2 text-meta ${
+            note.error ? "text-error-text" : "text-fg-secondary"
+          }`}
         >
-          <Popover.Trigger
-            aria-label="Workspace"
-            className="mr-1 flex h-7 max-w-72 min-w-0 items-center gap-1.5 rounded-md px-2 text-meta text-fg-secondary transition-colors [app-region:no-drag] hover:bg-surface-hover hover:text-fg-primary data-popup-open:bg-surface-active data-popup-open:text-fg-primary pointer-coarse:h-10 max-md:h-10"
-          >
-            <GitBranch size={13} strokeWidth={1.75} className="shrink-0" />
-            {state ? (
-              <>
-                <span className="truncate">{state.branch}</span>
-                <span className="flex shrink-0 items-center gap-1.5 text-fg-tertiary tabular-nums empty:hidden">
-                  {state.conflicted > 0 ? (
-                    <CircleAlert size={12} strokeWidth={2} className="text-error-text" />
-                  ) : changed > 0 ? (
-                    <span className="flex items-center gap-1">
-                      <span aria-hidden className="size-1.5 rounded-full bg-attention" />
-                      {changed}
-                    </span>
-                  ) : null}
-                  {state.ahead > 0 ? (
-                    <span className="flex items-center">
-                      <ArrowUp size={11} strokeWidth={2} />
-                      {state.ahead}
-                    </span>
-                  ) : null}
-                  {state.behind > 0 ? (
-                    <span className="flex items-center">
-                      <ArrowDown size={11} strokeWidth={2} />
-                      {state.behind}
-                    </span>
-                  ) : null}
-                  {failing ? <CircleX size={12} strokeWidth={2} className="text-error-text" /> : null}
-                </span>
-              </>
-            ) : (
-              <span className="text-fg-tertiary">Workspace</span>
-            )}
-          </Popover.Trigger>
-        </Tooltip>
-        <Popover.Portal>
-          <Popover.Positioner side="bottom" align="end" sideOffset={6} className="z-50 outline-none">
-            <Popover.Popup className={popupClass}>
-              {view === "move" ? (
-                <CheckoutChooser
-                  root={projectRoot}
-                  branch={state?.branch ?? ""}
-                  except={state ? [state.root] : []}
-                  title="Move this thread"
-                  hint="Its commits come along; uncommitted edits stay where they are. It moves once its turn ends."
-                  onBack={() => setView("overview")}
-                  confirmLabel="Move here"
-                  onPick={(pick) =>
-                    void execute({ action: "move", workspace: pick.workspace ?? {} }).then(
-                      (moved) => moved && setView("overview"),
-                    )
-                  }
-                />
-              ) : view === "checkouts" ? (
-                <Checkouts
-                  checkouts={checkouts}
-                  current={state?.root}
-                  busy={busy}
-                  onBack={() => setView("overview")}
-                  onRemove={setRemoving}
-                />
-              ) : state ? (
-                <Overview
-                  state={state}
-                  lineage={lineage}
-                  threadId={threadId}
-                  busy={busy}
-                  scope={scope}
-                  diff={diff}
-                  onScope={(next) => {
-                    setScope(next);
-                    if (diff) void execute({ action: "diff", scope: next });
-                  }}
-                  onDiff={() => void execute({ action: "diff", scope })}
-                  onHideDiff={() => setDiff(undefined)}
-                  onRefresh={refresh}
-                  onExecute={(command) => void execute(command)}
-                  onMove={() => setView("move")}
-                  onCheckouts={showCheckouts}
-                  onRemove={() => setRemoving(state.root)}
-                  onOpenThread={(id) => {
-                    setOpen(false);
-                    onOpenThread(id);
-                  }}
-                  onOpenSourceControl={() => {
-                    setOpen(false);
-                    onOpenSourceControl();
-                  }}
-                />
-              ) : (
-                <Unavailable onRetry={refresh} onMove={() => setView("move")} />
-              )}
-              {note ? (
-                <output
-                  className={`block shrink-0 border-t border-line-subtle px-3 py-2 text-meta ${
-                    note.error ? "text-error-text" : "text-fg-secondary"
-                  }`}
-                >
-                  {note.text}
-                </output>
-              ) : null}
-            </Popover.Popup>
-          </Popover.Positioner>
-        </Popover.Portal>
-      </Popover.Root>
+          {note.text}
+        </output>
+      ) : null}
       <ConfirmDialog
         open={removing !== undefined}
         onOpenChange={(next) => {
@@ -433,6 +593,7 @@ function Overview({
   busy,
   scope,
   diff,
+  parts: { Title, Description },
   onScope,
   onDiff,
   onHideDiff,
@@ -450,6 +611,7 @@ function Overview({
   busy: boolean;
   scope: Scope;
   diff: { readonly text: string; readonly revision: string } | undefined;
+  parts: BodyParts;
   onScope: (scope: Scope) => void;
   onDiff: () => void;
   onHideDiff: () => void;
@@ -472,9 +634,7 @@ function Overview({
       <header className="px-3 pt-3 pb-3">
         <div className="flex items-center gap-2">
           <GitBranch size={15} strokeWidth={1.75} className="shrink-0 text-fg-tertiary" />
-          <Popover.Title className="min-w-0 flex-1 truncate text-reading font-medium">
-            {state.branch}
-          </Popover.Title>
+          <Title className="min-w-0 flex-1 truncate text-reading font-medium">{state.branch}</Title>
           <div className="-mr-1.5 flex shrink-0 items-center">
             <IconButton icon={RefreshCw} label="Refresh" onClick={onRefresh} />
             <MenuRoot>
@@ -508,13 +668,10 @@ function Overview({
             </MenuRoot>
           </div>
         </div>
-        <Popover.Description
-          title={state.root}
-          className="mt-0.5 truncate pl-[23px] text-meta text-fg-tertiary"
-        >
+        <Description title={state.root} className="mt-0.5 truncate pl-[23px] text-meta text-fg-tertiary">
           from <span className="text-fg-secondary">{state.baseRef}</span> ·{" "}
           <span className="font-mono">{state.head.slice(0, 7)}</span> · {pathTail(state.root)}
-        </Popover.Description>
+        </Description>
         <div className="mt-3 flex items-center gap-3 pl-[23px]">
           <span className="min-w-0 flex-1 truncate text-meta text-fg-secondary">
             {words.length > 0 ? words.join(" · ") : "Nothing to commit or push"}
@@ -980,14 +1137,22 @@ function Checkouts({
   );
 }
 
-function Unavailable({ onRetry, onMove }: { onRetry: () => void; onMove: () => void }) {
+function Unavailable({
+  parts: { Title, Description },
+  onRetry,
+  onMove,
+}: {
+  parts: BodyParts;
+  onRetry: () => void;
+  onMove: () => void;
+}) {
   return (
     <div className="flex flex-col gap-3 p-4">
       <div className="flex flex-col gap-1">
-        <Popover.Title className="text-reading font-medium">Workspace unavailable</Popover.Title>
-        <Popover.Description className="text-meta text-fg-secondary">
+        <Title className="text-reading font-medium">Workspace unavailable</Title>
+        <Description className="text-meta text-fg-secondary">
           Cerium can't read this thread's checkout. It may have been moved or removed.
-        </Popover.Description>
+        </Description>
       </div>
       <div className="flex justify-end gap-2">
         <DialogButton onClick={onRetry}>Try again</DialogButton>
