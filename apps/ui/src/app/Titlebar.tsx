@@ -10,6 +10,7 @@ import {
   Globe,
   Minus,
   PanelLeft,
+  PanelRight,
   Play,
   Settings2,
   Square,
@@ -48,7 +49,10 @@ export interface RunProps {
   readonly running: boolean;
   readonly onToggle: () => void;
   /** The project's actions, each with whether its terminal runs; the menu shows while there are any. */
-  readonly actions?: ReadonlyArray<{ readonly name: string; readonly running: boolean }>;
+  readonly actions?: ReadonlyArray<{
+    readonly name: string;
+    readonly running: boolean;
+  }>;
   /** Runs an action, or stops it while it runs. */
   readonly onAction?: (name: string) => void;
   /** The menu opened: the project's actions are read again, in case its file changed. */
@@ -95,7 +99,10 @@ interface TitlebarProps {
   readonly workspace?: ReactNode;
   /** The Preview pane's button, offered while the thread can have a browser: the desktop app's own threads. */
   readonly preview?: PreviewToggleProps;
-  /** Which of the account's computers the window drives, once there's a choice. */
+  /**
+   * Which of the account's computers the window drives, once there's a choice. It sits over the
+   * sidebar, whose threads are that computer's, leaving the bar's end to the thread's own controls.
+   */
   readonly machinePicker?: ReactNode;
   /** The open threads' tabs, which take the title's place. */
   readonly tabs?: ReactNode;
@@ -141,16 +148,21 @@ export function Titlebar({
         }`}
       >
         <span
-          style={{ paddingLeft: `max(0px, ${(RAIL + 6 - 22) / 2}px - var(--titlebar-inset))` }}
+          style={{
+            paddingLeft: `max(0px, ${(RAIL + 6 - 22) / 2}px - var(--titlebar-inset))`,
+          }}
           className="flex shrink-0 items-center gap-1"
         >
           <CeriumBrand nameClassName="max-lg:hidden" />
           <NightlyTag />
         </span>
+        {machinePicker ? (
+          <div className="ml-auto flex min-w-0 [app-region:no-drag]">{machinePicker}</div>
+        ) : null}
         {alone ? null : (
           <div
             inert={covered}
-            className={`ml-auto flex items-center transition-opacity duration-200 [app-region:no-drag] ${covered ? "opacity-0" : ""}`}
+            className={`${machinePicker ? "" : "ml-auto "}flex shrink-0 items-center transition-opacity duration-200 [app-region:no-drag] ${covered ? "opacity-0" : ""}`}
           >
             <IconButton
               icon={PanelLeft}
@@ -212,7 +224,6 @@ export function Titlebar({
               preview={preview}
             />
           )}
-          {machinePicker}
           <CaptionButtons />
         </div>
       </div>
@@ -247,7 +258,12 @@ export function CompactPanelMenu({
   const previewKeys = useShortcut("toggle-preview");
   const artifactsKeys = useShortcut("toggle-artifacts");
   const items = [
-    { id: "artifacts", label: "Artifacts", icon: GalleryVerticalEnd, keys: artifactsKeys },
+    {
+      id: "artifacts",
+      label: "Artifacts",
+      icon: GalleryVerticalEnd,
+      keys: artifactsKeys,
+    },
     { id: "github", label: "GitHub", icon: GitPullRequestArrow },
     { id: "git", label: "Source control", icon: GitBranch },
     { id: "files", label: "Files", icon: FolderTree },
@@ -256,7 +272,7 @@ export function CompactPanelMenu({
   const anyOpen =
     (terminal?.open ?? false) || (preview?.open ?? false) || offered.some((item) => panels[item.id] === true);
   const dot = running ? "bg-running" : preview?.live && !anyOpen ? "bg-accent" : undefined;
-  const trigger = (
+  const button = (
     <Button
       aria-label="Panels"
       {...(onOpenSheet ? { onClick: onOpenSheet, "aria-haspopup": "dialog" as const } : {})}
@@ -264,7 +280,8 @@ export function CompactPanelMenu({
         anyOpen ? "text-fg-primary" : "text-fg-secondary hover:bg-surface-hover hover:text-fg-primary"
       }`}
     >
-      <Ellipsis size={18} strokeWidth={1.75} />
+      {/* The compact bar's opens the Thread sheet, which holds more than panels. */}
+      {onOpenSheet ? <Ellipsis size={18} strokeWidth={1.75} /> : <PanelRight size={16} strokeWidth={1.75} />}
       {dot ? (
         <span
           aria-hidden
@@ -273,6 +290,7 @@ export function CompactPanelMenu({
       ) : null}
     </Button>
   );
+  const trigger = onOpenSheet ? button : <Tooltip label="Panels">{button}</Tooltip>;
   return (
     <>
       {onOpenSheet ? (
@@ -393,7 +411,7 @@ export function RunToggle({
   );
 }
 
-/** The thread's agents at a glance; opens the agent inspector. */
+/** The thread's agents at a glance, their providers' marks and how many once there are several; opens the agent inspector. */
 export function AgentsToggle({
   agents,
   open,
@@ -409,7 +427,8 @@ export function AgentsToggle({
       <Button
         onClick={onToggle}
         aria-pressed={open}
-        className={`mr-1 flex h-7 items-center gap-1.5 rounded-md px-2 text-meta transition-colors [app-region:no-drag] pointer-coarse:h-10 max-md:h-10 ${
+        aria-label={`${agents.length} ${agents.length === 1 ? "agent" : "agents"}`}
+        className={`mr-1 flex h-7 items-center gap-1.5 rounded-md px-1.5 text-meta transition-colors [app-region:no-drag] pointer-coarse:h-10 max-md:h-10 ${
           open
             ? "bg-surface-selected text-fg-primary"
             : "text-fg-secondary hover:bg-surface-hover hover:text-fg-primary"
@@ -425,9 +444,7 @@ export function AgentsToggle({
             </span>
           ))}
         </span>
-        <span className="tabular-nums">
-          {agents.length} {agents.length === 1 ? "agent" : "agents"}
-        </span>
+        {agents.length > 1 ? <span className="tabular-nums">{agents.length}</span> : null}
       </Button>
     </Tooltip>
   );
@@ -446,7 +463,9 @@ function CaptionButtons() {
     return (
       <div
         className="shrink-0"
-        style={{ width: "calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw))" }}
+        style={{
+          width: "calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw))",
+        }}
       />
     );
   }

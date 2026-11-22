@@ -8,6 +8,7 @@ import { useContext } from "react";
 import { driveMachine, machineAtom } from "../../backend/machine.ts";
 import type { ShownStatus } from "../../app/connectionStatus.ts";
 import { menuPopupClass } from "../../components/ui/Menu.tsx";
+import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { WEB } from "../../backend/target.ts";
 import { platformLabel, thisDevice, whyUnreachable } from "./model.ts";
 
@@ -37,6 +38,8 @@ export function MachinePicker({
   // Driving another computer from one's own window stands out; the web client always drives one.
   const elsewhere = driven !== undefined && !WEB;
   const driving = driven?.id ?? (WEB ? "" : account.deviceId);
+  // Driving this computer is the usual case, so the wide window's titlebar shows the icon alone; the tooltip names it.
+  const quiet = !WEB && driven === undefined;
   const away = status?.kind === "reconnecting" || status?.kind === "offline" ? status.kind : undefined;
 
   const choose = (id: string) => {
@@ -49,33 +52,42 @@ export function MachinePicker({
 
   return (
     <Menu.Root>
-      <Menu.Trigger
-        render={
-          <Button
-            aria-label={`Computer: ${label}${away === "reconnecting" ? ", reconnecting" : away === "offline" ? ", offline" : ""}`}
-            className={`relative flex h-6 max-w-48 items-center gap-1.5 rounded-md border px-1.5 text-meta transition-colors duration-150 select-none [app-region:no-drag] data-popup-open:bg-surface-active max-md:h-9 max-md:max-w-44 max-md:rounded-lg max-md:px-2.5 max-md:text-[14px] ${
-              // Driving another computer gets a visible edge, so the window never looks like this one by mistake.
-              elsewhere
-                ? "border-line-strong bg-surface-raised font-medium text-fg-primary hover:bg-surface-hover"
-                : "border-transparent text-fg-tertiary hover:bg-surface-hover hover:text-fg-secondary"
-            }`}
+      <Tooltip label={`Working on ${label}`}>
+        <Menu.Trigger
+          render={
+            <Button
+              aria-label={`Computer: ${label}${away === "reconnecting" ? ", reconnecting" : away === "offline" ? ", offline" : ""}`}
+              className={`relative flex h-6 max-w-48 min-w-0 items-center gap-1.5 rounded-md border px-1.5 text-meta transition-colors duration-150 select-none [app-region:no-drag] data-popup-open:bg-surface-active max-md:h-9 max-md:max-w-44 max-md:rounded-lg max-md:px-2.5 max-md:text-[14px] ${
+                // Alone, it takes the size of the icon buttons beside it.
+                quiet ? "md:size-7 md:justify-center md:px-0" : ""
+              } ${
+                // Driving another computer gets a visible edge, so the window never looks like this one by mistake.
+                elsewhere
+                  ? "border-line-strong bg-surface-raised font-medium text-fg-primary hover:bg-surface-hover"
+                  : "border-transparent text-fg-tertiary hover:bg-surface-hover hover:text-fg-secondary"
+              }`}
+            />
+          }
+        >
+          <Monitor size={13} strokeWidth={1.75} className={`shrink-0 ${quiet ? "md:size-[15px]" : ""}`} />
+          <span className={`truncate ${quiet ? "md:hidden" : ""}`}>{label}</span>
+          <ChevronDown
+            size={12}
+            strokeWidth={2}
+            className={`shrink-0 opacity-70 ${quiet ? "md:hidden" : ""}`}
           />
-        }
-      >
-        <Monitor size={13} strokeWidth={1.75} className="shrink-0" />
-        <span className="truncate">{label}</span>
-        <ChevronDown size={12} strokeWidth={2} className="shrink-0 opacity-70" />
-        {away ? (
-          <span
-            aria-hidden
-            className={`absolute top-1.5 right-1.5 size-1.5 rounded-full ring-2 ring-[var(--surface-window)] md:hidden ${
-              away === "reconnecting"
-                ? "animate-[pulse_1.6s_ease-in-out_infinite] bg-attention motion-reduce:animate-none"
-                : "border border-fg-disabled bg-[var(--surface-window)]"
-            }`}
-          />
-        ) : null}
-      </Menu.Trigger>
+          {away ? (
+            <span
+              aria-hidden
+              className={`absolute top-1.5 right-1.5 size-1.5 rounded-full ring-2 ring-[var(--surface-window)] md:hidden ${
+                away === "reconnecting"
+                  ? "animate-[pulse_1.6s_ease-in-out_infinite] bg-attention motion-reduce:animate-none"
+                  : "border border-fg-disabled bg-[var(--surface-window)]"
+              }`}
+            />
+          ) : null}
+        </Menu.Trigger>
+      </Tooltip>
       <Menu.Portal>
         <Menu.Positioner side="bottom" align="end" sideOffset={6} className="z-50 outline-none">
           <Menu.Popup className={`${menuPopupClass} w-64`}>
