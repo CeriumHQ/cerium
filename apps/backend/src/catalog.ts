@@ -199,20 +199,22 @@ export class OfferedModels extends Context.Service<
 
 /**
  * The catalog leads spawn from without asking: each read applies the current roster (Settings → Roster)
- * to the latest model lists.
+ * to the latest model lists, leaving out the harnesses the user turned off (Settings → Harnesses).
  */
 export const CatalogLive = Layer.effect(
   Catalog,
   Effect.gen(function* () {
     const offered = yield* OfferedModels;
     const settings = yield* UserSettings;
+    const enabled = Effect.gen(function* () {
+      const models = yield* offered.all;
+      const current = yield* settings.get;
+      const off = new Set(current.disabledProviders);
+      return { models: models.filter((model) => !off.has(model.provider)), roster: current.roster };
+    });
     return Catalog.of({
-      entries: Effect.gen(function* () {
-        const models = yield* offered.all;
-        const { roster } = yield* settings.get;
-        return catalogEntries(rosterMembers(roster, models));
-      }),
-      models: offered.all,
+      entries: Effect.map(enabled, ({ models, roster }) => catalogEntries(rosterMembers(roster, models))),
+      models: Effect.map(enabled, ({ models }) => models),
     });
   }),
 );

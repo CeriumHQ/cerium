@@ -375,48 +375,6 @@ body {
   font-size: 13px;
 }
 
-/* The end of the flow: connected, waiting for approval, or nothing to connect. */
-.outcome-icon {
-  display: grid;
-  place-items: center;
-  width: 44px;
-  height: 44px;
-  margin-bottom: 20px;
-  border-radius: 999px;
-  background: var(--film-2);
-  box-shadow:
-    var(--rim),
-    0 0 0 1px var(--line-subtle) inset;
-}
-
-.outcome-icon svg {
-  width: 20px;
-  height: 20px;
-}
-
-.outcome-icon.success {
-  color: var(--status-success);
-  box-shadow:
-    var(--rim),
-    0 0 0 1px var(--line-subtle) inset,
-    0 0 32px -4px color-mix(in oklab, var(--status-success) 45%, transparent);
-}
-
-.outcome-icon.muted,
-.outcome-icon.waiting {
-  color: var(--fg-tertiary);
-}
-
-.outcome-icon.waiting svg {
-  animation: spin 900ms linear infinite;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
 .loading {
   margin: 0;
   color: var(--fg-tertiary);
@@ -448,10 +406,6 @@ body {
   .button,
   .panel {
     transition: none;
-    animation: none;
-  }
-
-  .outcome-icon.waiting svg {
     animation: none;
   }
 }

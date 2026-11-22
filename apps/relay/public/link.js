@@ -21,18 +21,13 @@ const svg = (paths) =>
 const FINISH_WITHIN_MS = 15_000;
 const FINISH_POLL_MS = 1_000;
 
-// Lucide's monitor, smartphone, globe, check, link-2-off and loader-circle.
+// Lucide's monitor, smartphone and globe.
 const icons = {
   desktop: svg('<rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/>'),
   phone: svg('<rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/>'),
   browser: svg(
     '<circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/>',
   ),
-  success: svg('<path d="M20 6 9 17l-5-5"/>'),
-  muted: svg(
-    '<path d="M9 17H7A5 5 0 0 1 7 7"/><path d="M15 7h2a5 5 0 0 1 4 8"/><path d="M8 12h4"/><path d="m2 2 20 20"/>',
-  ),
-  waiting: svg('<path d="M21 12a9 9 0 1 1-6.219-8.56"/>'),
 };
 
 const PLATFORMS = { win32: "Windows", darwin: "macOS", linux: "Linux", ios: "iOS", android: "Android" };
@@ -70,15 +65,14 @@ const machineCard = (device) => `
     </div>
   </div>`;
 
-const showOutcome = (tone, title, text) => {
+const showOutcome = (title, text) => {
   panel.innerHTML = `
-    <div class="outcome-icon ${tone}">${icons[tone]}</div>
     <h1>${escapeHtml(title)}</h1>
     <p class="lead">${escapeHtml(text)}</p>`;
 };
 
 const showExpired = () =>
-  showOutcome("muted", "This sign-in link has expired", "Start again from Settings → Account in Cerium.");
+  showOutcome("This sign-in link has expired", "Start again from Settings → Account in Cerium.");
 
 const linkId = () => {
   const fromUrl = location.hash.slice(1);
@@ -102,7 +96,6 @@ const main = async () => {
   if (link.status === 404) return showExpired();
   if (!link.ok || !config.ok || typeof config.body.publishableKey !== "string") {
     return showOutcome(
-      "muted",
       "Sign-in isn't available",
       "Cerium's relay couldn't be reached. Try again in a moment.",
     );
@@ -110,7 +103,6 @@ const main = async () => {
   const device = link.body.device;
   const showConnected = () =>
     showOutcome(
-      "success",
       "Connected",
       `${device.name} is now part of your account. You can close this tab and go back to Cerium.`,
     );
@@ -118,7 +110,7 @@ const main = async () => {
   let error;
   // Cerium on this computer took the code and sent the page back: it joins in a moment.
   if (status === "approved" && !isBrowser(device)) {
-    showOutcome("waiting", "Finishing in Cerium", `${device.name} is joining your account…`);
+    showOutcome("Finishing in Cerium", `${device.name} is joining your account…`);
     const until = Date.now() + FINISH_WITHIN_MS;
     while (status === "approved" && Date.now() < until) {
       await new Promise((resolve) => setTimeout(resolve, FINISH_POLL_MS));
@@ -235,7 +227,7 @@ const main = async () => {
         location.replace(next);
         return;
       }
-      showOutcome("waiting", "Finishing in Cerium", `${device.name} is joining your account…`);
+      showOutcome("Finishing in Cerium", `${device.name} is joining your account…`);
       location.assign(next);
     } catch {
       error = "Couldn't reach Cerium's relay. Check your connection and try again.";
@@ -256,9 +248,5 @@ window.addEventListener("pageshow", (event) => {
 });
 
 main().catch(() =>
-  showOutcome(
-    "muted",
-    "Sign-in isn't available",
-    "Something went wrong loading this page. Reload to try again.",
-  ),
+  showOutcome("Sign-in isn't available", "Something went wrong loading this page. Reload to try again."),
 );

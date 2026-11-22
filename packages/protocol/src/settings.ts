@@ -144,6 +144,15 @@ export type AssistantSettings = typeof AssistantSettings.Type;
 
 const defaultAssistants: AssistantSettings = { enabled: false, access: "ask" };
 
+/**
+ * The harnesses the user turned off on this machine: they offer no models to leads, the roster, titles
+ * or the advisor, and the pickers grey them out, even while installed and signed in.
+ */
+export const DisabledProviders = LenientArray(ProviderId);
+export type DisabledProviders = typeof DisabledProviders.Type;
+
+const defaultDisabledProviders: DisabledProviders = [];
+
 /** Each setting's shape, without the defaults `Settings` reads a missing one as. */
 const SettingsFields = Schema.Struct({
   advisor: AdvisorSettings,
@@ -156,6 +165,7 @@ const SettingsFields = Schema.Struct({
   assistants: AssistantSettings,
   limits: LimitSettings,
   computerUse: ComputerUseSettings,
+  disabledProviders: DisabledProviders,
 });
 
 /**
@@ -186,6 +196,10 @@ export const Settings = Schema.Struct({
   limits: LimitSettings.pipe(Schema.withDecodingDefaultKey(Effect.succeed(defaultLimits))),
   /** Read as its default from a backend that predates it, which has none (`RPC_VERSION` 49). */
   computerUse: ComputerUseSettings.pipe(Schema.withDecodingDefaultKey(Effect.succeed(defaultComputerUse))),
+  /** Read as its default from a backend that predates it, which has none (`RPC_VERSION` 57). */
+  disabledProviders: DisabledProviders.pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed(defaultDisabledProviders)),
+  ),
 });
 export type Settings = typeof Settings.Type;
 
@@ -207,4 +221,5 @@ export const defaultSettings: Settings = {
   assistants: defaultAssistants,
   limits: defaultLimits,
   computerUse: defaultComputerUse,
+  disabledProviders: defaultDisabledProviders,
 };

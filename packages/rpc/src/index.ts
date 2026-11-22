@@ -111,7 +111,9 @@ export const FORK_THREAD_RPC_VERSION = 53;
 export const MEDIA_RANGE_RPC_VERSION = 54;
 export const PER_FILE_TURN_REVERT_RPC_VERSION = 55;
 export const HUB_INSTRUCTIONS_RPC_VERSION = 56;
-export const RPC_VERSION = HUB_INSTRUCTIONS_RPC_VERSION;
+/** Settings' `disabledProviders`: the harnesses the user turned off. */
+export const DISABLED_PROVIDERS_RPC_VERSION = 57;
+export const RPC_VERSION = DISABLED_PROVIDERS_RPC_VERSION;
 export const SCOPED_EVENTS_RPC_VERSION = 50;
 
 /** Status readers send the provider ids their schema can decode. */

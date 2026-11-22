@@ -233,4 +233,19 @@ describe("CatalogLive", () => {
       );
     }).pipe(Effect.provide(layer));
   });
+
+  it.effect("leaves out the harnesses the user turned off, and brings them back when turned on", () => {
+    const { settings, layer } = harnesses(Effect.succeed([model("codex", "gpt-6-sol")]));
+    return Effect.gen(function* () {
+      const catalog = yield* Catalog;
+      settings.current = { ...defaultSettings, disabledProviders: ["claude"] };
+      assert.deepStrictEqual(yield* aliases, ["gpt-6-sol"]);
+      assert.deepStrictEqual(
+        (yield* catalog.models!).map((each) => each.id),
+        ["gpt-6-sol"],
+      );
+      settings.current = defaultSettings;
+      assert.deepStrictEqual(yield* aliases, ["opus", "haiku", "gpt-6-sol"]);
+    }).pipe(Effect.provide(layer));
+  });
 });
