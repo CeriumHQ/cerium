@@ -19,6 +19,7 @@ import {
 import {
   localImagePath,
   rehypeAlerts,
+  rehypeImageReferences,
   rehypeInk,
   rehypeLocalImages,
   remarkDollarGuard,
@@ -202,6 +203,30 @@ describe("rehypeLocalImages", () => {
   it("keeps a web image's src", () => {
     expect(html("![Logo](https://example.com/logo.png)", rehypeLocalImages)).toBe(
       '<p><img src="https://example.com/logo.png" alt="Logo"></p>',
+    );
+  });
+});
+
+describe("rehypeImageReferences", () => {
+  it("previews an image file a list item names in inline code, under its line", () => {
+    expect(html("- After: `/tmp/shot-004.png`", rehypeImageReferences)).toBe(
+      '<ul>\n<li>After: <code>/tmp/shot-004.png</code><div><img data-image-reference="/tmp/shot-004.png"></div></li>\n</ul>',
+    );
+  });
+
+  it("previews a linked image file after its paragraph", () => {
+    expect(html("See [the result](shots/after.png).", rehypeImageReferences)).toBe(
+      '<p>See <a href="shots/after.png">the result</a>.</p><p><img data-image-reference="shots/after.png"></p>',
+    );
+  });
+
+  it("leaves other files, web images and images already shown alone", () => {
+    expect(html("Edit `src/App.tsx`.", rehypeImageReferences)).toBe("<p>Edit <code>src/App.tsx</code>.</p>");
+    expect(html("[logo](https://example.com/a.png)", rehypeImageReferences)).toBe(
+      '<p><a href="https://example.com/a.png">logo</a></p>',
+    );
+    expect(html("![a](a.png) `a.png`", rehypeImageReferences)).toBe(
+      '<p><img src="a.png" alt="a"> <code>a.png</code></p>',
     );
   });
 });

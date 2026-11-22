@@ -20,8 +20,10 @@ import {
 import {
   rehypeAlerts,
   rehypeFolderAddresses,
+  rehypeImageReferences,
   rehypeInk,
   rehypeLocalImages,
+  IMAGE_REFERENCE,
   LOCAL_PATH,
   remarkDollarGuard,
   remarkTypedBreaks,
@@ -48,13 +50,17 @@ const schema: Schema = {
   attributes: {
     ...defaultSchema.attributes,
     code: [["className", /^language-./, "math-inline", "math-display"]],
-    img: [...(defaultSchema.attributes?.["img"] ?? []), LOCAL_PATH],
+    img: [...(defaultSchema.attributes?.["img"] ?? []), LOCAL_PATH, IMAGE_REFERENCE],
   },
 };
-/** A file's Markdown resolves its own images' addresses; anywhere else, one on disk is read by path. */
-const sanitize = (folder: boolean): PluggableList => [
+/**
+ * A file's Markdown resolves its own images' addresses; anywhere else, one on disk is read by path.
+ * An agent's finished block previews the image files it names.
+ */
+const sanitize = (folder: boolean, previews: boolean): PluggableList => [
   rehypeRaw,
   ...(folder ? [] : [rehypeLocalImages]),
+  ...(previews ? [rehypeImageReferences] : []),
   [rehypeSanitize, schema],
 ];
 
@@ -103,12 +109,18 @@ const Block = memo(function Block({
   folder: MarkdownFolder | undefined;
 }) {
   // Where this block's text stood when it last rendered: what comes after it just arrived.
-  const [seen, setSeen] = useState({ source, from: writing ? 0 : source.length });
+  const [seen, setSeen] = useState({
+    source,
+    from: writing ? 0 : source.length,
+  });
   if (seen.source !== source) {
-    setSeen({ source, from: source.startsWith(seen.source) ? seen.source.length : 0 });
+    setSeen({
+      source,
+      from: source.startsWith(seen.source) ? seen.source.length : 0,
+    });
   }
   const rehypePlugins: PluggableList = [
-    ...sanitize(folder !== undefined),
+    ...sanitize(folder !== undefined, !user && !writing && folder === undefined),
     rehypeAlerts,
     ...(folder ? [rehypeFolderAddresses(folder.resolve)] : []),
     ...(ink ? [rehypeInk(seen.from)] : []),

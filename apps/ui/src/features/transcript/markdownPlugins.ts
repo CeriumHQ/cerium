@@ -1,6 +1,8 @@
 // The remark and rehype plugins agent markdown renders through, beyond GitHub's own syntax: plain
 // functions over the trees, so the tests can run them without React.
 
+import { pathReference } from "./paths.ts";
+
 interface MarkdownNode {
   type: string;
   value?: string;
@@ -97,7 +99,10 @@ export const rehypeAlerts = () => (tree: HtmlNode) => {
     if (paragraph.children!.every((child) => child.type === "text" && child.value!.trim() === "")) {
       node.children = node.children!.filter((child) => child !== paragraph);
     }
-    node.properties = { ...node.properties, dataAlert: match[1]!.toLowerCase() };
+    node.properties = {
+      ...node.properties,
+      dataAlert: match[1]!.toLowerCase(),
+    };
   };
   visit(tree);
 };
@@ -163,6 +168,95 @@ export const rehypeLocalImages = () => (tree: HtmlNode) => {
   visit(tree);
 };
 
+/** The property a preview of an image file the agent named (`rehypeImageReferences`) carries its path in. */
+export const IMAGE_REFERENCE = "dataImageReference";
+
+const IMAGE_FILE = /\.(?:png|jpe?g|gif|webp|bmp|avif|svg)$/i;
+
+/** The image file inline code or a link names, as written (maybe relative); undefined for anything else. */
+const referencedImage = (node: HtmlNode): string | undefined => {
+  let path: string | undefined;
+  if (node.tagName === "code") {
+    const className = node.properties?.["className"];
+    if (Array.isArray(className) && className.length > 0) return undefined;
+    const text = node.children?.length === 1 ? node.children[0] : undefined;
+    path = text?.type === "text" ? pathReference(text.value ?? "")?.path : undefined;
+  } else if (node.tagName === "a") {
+    const href = node.properties?.["href"];
+    if (typeof href !== "string") return undefined;
+    if (/^file:/i.test(href)) path = localImagePath(href);
+    else if (!/^[a-z][a-z\d+.-]*:|^#|^\/\//i.test(href)) {
+      try {
+        path = pathReference(decodeURI(href))?.path;
+      } catch {
+        path = undefined;
+      }
+    }
+  }
+  return path !== undefined && IMAGE_FILE.test(path) ? path : undefined;
+};
+
+/**
+ * A preview of each image file a paragraph or list item names in inline code or a link, under its
+ * line: agents cite their screenshots as `/tmp/after.png` far more often than as `![](…)`, and a
+ * chip alone hides what it shows. The chip stays where it was written; an image the block already
+ * shows isn't shown twice.
+ */
+export const rehypeImageReferences = () => (tree: HtmlNode) => {
+  const collect = (node: HtmlNode, found: Array<string>, shown: Set<string>) => {
+    for (const child of node.children ?? []) {
+      // A nested list or paragraph previews its own.
+      if (child.tagName === "ul" || child.tagName === "ol" || child.tagName === "p") continue;
+      if (child.tagName === "img") {
+        const path = child.properties?.[LOCAL_PATH] ?? child.properties?.["src"];
+        if (typeof path === "string") shown.add(path);
+        continue;
+      }
+      const path = referencedImage(child);
+      if (path !== undefined) {
+        if (!found.includes(path)) found.push(path);
+        continue;
+      }
+      collect(child, found, shown);
+    }
+  };
+  const previews = (node: HtmlNode): Array<HtmlNode> => {
+    const found: Array<string> = [];
+    const shown = new Set<string>();
+    collect(node, found, shown);
+    return found
+      .filter((path) => !shown.has(path))
+      .map((path) => ({
+        type: "element",
+        tagName: "img",
+        properties: { [IMAGE_REFERENCE]: path },
+        children: [],
+      }));
+  };
+  const visit = (node: HtmlNode) => {
+    node.children?.forEach(visit);
+    if (node.children === undefined) return;
+    node.children = node.children.flatMap((child): Array<HtmlNode> => {
+      if (child.tagName !== "p") return [child];
+      const images = previews(child);
+      return images.length === 0 ? [child] : [child, { type: "element", tagName: "p", children: images }];
+    });
+    if (node.tagName === "li") {
+      const images = previews(node);
+      if (images.length === 0) return;
+      // Under the item's own line, above any list nested in it.
+      const nested = node.children.findIndex((child) => child.tagName === "ul" || child.tagName === "ol");
+      const at = nested === -1 ? node.children.length : nested;
+      node.children.splice(at, 0, {
+        type: "element",
+        tagName: "div",
+        children: images,
+      });
+    }
+  };
+  visit(tree);
+};
+
 /** Which attribute of an element holds the address `resolve` rewrites. */
 const ADDRESSES: Readonly<Record<string, string>> = { img: "src", a: "href" };
 
@@ -217,7 +311,10 @@ export const rehypeInk = (from: number) => () => (tree: HtmlNode) => {
           {
             type: "element",
             tagName: "span",
-            properties: { className: ["ink"], style: `animation-delay:${delay}ms` },
+            properties: {
+              className: ["ink"],
+              style: `animation-delay:${delay}ms`,
+            },
             children: [{ type: "text", value: part }],
           },
         ];

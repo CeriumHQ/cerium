@@ -16,19 +16,19 @@ import { imageAtom } from "../../backend/files.ts";
 import { baseName } from "../../components/fileIcons/index.ts";
 
 import { FileIcon } from "../../components/FileIcon.tsx";
-import { MissingImage } from "../../components/ImageThumb.tsx";
+import { FileImageThumb, MissingImage } from "../../components/ImageThumb.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { LineText } from "../viewer/CodeView.tsx";
 import { useHighlightRange, useHighlightSource } from "../viewer/highlight.ts";
 import { Artifact } from "./Artifact.tsx";
 import { CopyButton } from "./CopyButton.tsx";
 import { codePreview, fenceText } from "./markdownBlocks.ts";
-import { FileChip, SkillChip } from "./FileChip.tsx";
+import { FileChip, SkillChip, WorkspaceFolder } from "./FileChip.tsx";
 import { Formula } from "./MarkdownMath.tsx";
 import { Diagram } from "./MarkdownMermaid.tsx";
 import type { AlertKind, HtmlNode } from "./markdownPlugins.ts";
 import { isOpenableLink, LINK_ATTRIBUTE } from "./menus.ts";
-import { pathReference } from "./paths.ts";
+import { pathReference, resolvePath } from "./paths.ts";
 import type { Mention } from "@cerium/protocol";
 
 // The elements agent markdown is drawn with: every one Cerium's own, styled through the design
@@ -446,7 +446,12 @@ export function Image({
   title,
   node: _node,
   "data-local-path": localPath,
-}: Part<"img"> & { "data-local-path"?: string }) {
+  "data-image-reference": reference,
+}: Part<"img"> & {
+  "data-local-path"?: string;
+  "data-image-reference"?: string;
+}) {
+  if (typeof reference === "string" && reference !== "") return <ReferencedImage path={reference} />;
   if (typeof localPath === "string" && localPath !== "") {
     return <LocalImage path={localPath} alt={alt ?? ""} title={title} />;
   }
@@ -468,6 +473,20 @@ function LocalImage({ path, alt, title }: { path: string; alt: string; title: st
   );
 }
 
+/**
+ * A preview of an image file the agent named in its text, beside the others its line names. A path
+ * that can't be placed, or a file that can't be read, shows nothing: its chip is already there.
+ */
+function ReferencedImage({ path }: { path: string }) {
+  const location = resolvePath(path, useContext(WorkspaceFolder));
+  if (location === undefined) return null;
+  return (
+    <span className="mt-1.5 mr-2 inline-block align-top">
+      <FileImageThumb path={location} name={baseName(path)} className="h-40" fit="natural" quiet />
+    </span>
+  );
+}
+
 /** The elements of agent markdown, by tag. */
 export const parts = {
   code: InlineCode,
@@ -480,4 +499,7 @@ export const parts = {
 };
 
 export type MarkdownImageProps = Part<"img">;
-export type MarkdownLinkProps = { readonly href?: string | undefined; readonly children?: ReactNode };
+export type MarkdownLinkProps = {
+  readonly href?: string | undefined;
+  readonly children?: ReactNode;
+};
