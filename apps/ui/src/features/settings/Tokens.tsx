@@ -4,7 +4,7 @@ import { ToggleGroup } from "@base-ui/react/toggle-group";
 import type { ProviderId, SpendReport, SpendTotals, UsageSnapshot } from "@cerium/protocol";
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
-import { ChevronRight, CircleDollarSign } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { machineAtom } from "../../backend/machine.ts";
@@ -398,18 +398,13 @@ function Detail({ label, value }: { label: string; value: ReactNode }) {
 
 function Empty({ range }: { range: SpendRange }) {
   return (
-    <SettingsCard className="flex gap-3.5 p-4">
-      <span className="grid size-9 shrink-0 place-items-center rounded-lg border border-line-subtle bg-surface-raised text-fg-secondary">
-        <CircleDollarSign size={17} strokeWidth={1.75} />
+    <SettingsCard className="flex flex-col gap-1 p-4">
+      <span className="text-reading font-medium text-fg-primary">
+        Nothing used {range === "today" ? "today" : range === "week" ? "this week" : "this month"}
       </span>
-      <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <span className="text-reading font-medium text-fg-primary">
-          Nothing used {range === "today" ? "today" : range === "week" ? "this week" : "this month"}
-        </span>
-        <p className="text-meta leading-relaxed text-fg-tertiary">
-          Use shows up here once an agent finishes a turn.
-        </p>
-      </div>
+      <p className="text-meta leading-relaxed text-fg-tertiary">
+        Use shows up here once an agent finishes a turn.
+      </p>
     </SettingsCard>
   );
 }

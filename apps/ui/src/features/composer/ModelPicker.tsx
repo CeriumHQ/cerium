@@ -3,13 +3,14 @@ import { Toggle } from "@base-ui/react/toggle";
 import { ToggleGroup } from "@base-ui/react/toggle-group";
 import type { ModelInfo, ModelSpeed, ProviderId } from "@cerium/protocol";
 import { useAtom } from "@effect/atom-react";
-import { Check, GitFork, Search, Star } from "lucide-react";
+import { Check, ChevronDown, GitFork, Search, Star, Zap } from "lucide-react";
 import { useState, type KeyboardEvent, type ReactNode } from "react";
 
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { ContextBar, contextLabel, ContextRing } from "../agents/ContextMeter.tsx";
 import type { AgentContext } from "../agents/model.ts";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
+import { triggerClass } from "../../components/ui/Select.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { keyLabel, primaryHeld } from "../../lib/keys.ts";
 import { useShortcut } from "../../lib/shortcuts.ts";
@@ -56,6 +57,15 @@ interface ModelGroup {
   readonly items: ReadonlyArray<string>;
 }
 
+/** What the menu offers when Cerium itself can pick the model instead of a fixed one. */
+export interface AutomaticChoice {
+  readonly on: boolean;
+  /** The model Automatic currently resolves to, if any. */
+  readonly model?: ShownModel | undefined;
+  readonly hint: string;
+  readonly onPick: () => void;
+}
+
 interface MenuProps {
   readonly models: ReadonlyArray<ModelInfo>;
   /** The harnesses to list, in order. With one there is no rail. */
@@ -80,6 +90,10 @@ interface MenuProps {
   readonly several?: SeveralChoice | undefined;
   /** What an open thread does when its harness's usage runs out; the menu's last row. */
   readonly limit?: LimitChoice | undefined;
+  /** An Automatic choice pinned at the menu's foot, for settings that let Cerium pick a model. */
+  readonly automatic?: AutomaticChoice | undefined;
+  readonly side?: "top" | "bottom" | undefined;
+  readonly align?: "start" | "end" | undefined;
   readonly open?: boolean;
   readonly onOpenChange?: (open: boolean) => void;
 }
@@ -162,6 +176,9 @@ export function ModelPicker({
   leaves,
   context,
   onCompact,
+  variant = "chip",
+  ariaLabel,
+  placeholder = "Finding models…",
   ...menu
 }: MenuProps & {
   /** Undefined while no harness has listed a model yet. */
@@ -173,24 +190,78 @@ export function ModelPicker({
   readonly context?: AgentContext | undefined;
   /** Asks the lead's harness to compact its conversation; absent where it can't now. */
   readonly onCompact?: (() => void) | undefined;
+  /** `chip` is the composer's pill; `select` matches settings dropdown triggers. */
+  readonly variant?: "chip" | "select" | undefined;
+  readonly ariaLabel?: string | undefined;
+  readonly placeholder?: string | undefined;
 }) {
-  const browse = useBrowse(menu, shown);
+  const automaticOn = menu.automatic?.on === true;
+  const home = automaticOn ? menu.automatic?.model && { provider: menu.automatic.model.provider } : shown;
+  const browse = useBrowse(menu, home);
   const modelShortcut = useShortcut("open-model-picker");
   const pick = (key: string | null) => {
     const picked = key === null ? undefined : browse.byKey.get(key);
     if (picked === undefined) return;
     // The model in use again, or one with neither efforts nor speeds to pick from, ends the choice.
-    const efforts = offersChoice(menu.effort) && picked.efforts.length > 1;
+    const same = !automaticOn && key === shown?.key;
+    const efforts = menu.effort !== undefined && picked.efforts.length > 1;
     // The speed row follows the model picked, wherever speeds can be picked at all.
     const speeds = menu.speed !== undefined && (picked.speeds?.length ?? 0) > 1;
-    if (key === shown?.key || (!efforts && !speeds) || leaves?.(picked) === true) browse.setOpen(false);
-    if (key !== shown?.key) onPick(picked);
+    if (same || (!efforts && !speeds) || leaves?.(picked) === true) browse.setOpen(false);
+    if (!same) onPick(picked);
   };
+  const trigger = (
+    <Combobox.Trigger
+      aria-label={ariaLabel ?? (shown ? `Model: ${shown.label}` : "Model")}
+      className={`${variant === "select" ? triggerClass : chipClass} min-w-0`}
+    >
+      {automaticOn ? (
+        <>
+          {menu.automatic?.model ? <ProviderLogo provider={menu.automatic.model.provider} size={13} /> : null}
+          <span className={variant === "chip" ? "truncate font-medium text-fg-primary" : "truncate"}>
+            Automatic
+          </span>
+          {menu.automatic?.model ? (
+            <span className="truncate text-fg-tertiary">{menu.automatic.model.label}</span>
+          ) : null}
+        </>
+      ) : shown ? (
+        <>
+          <ProviderLogo provider={shown.provider} size={13} />
+          <span
+            className={
+              variant === "chip" ? "truncate font-medium text-fg-primary max-[22.5rem]:hidden" : "truncate"
+            }
+          >
+            {shown.label}
+          </span>
+          {variant === "chip" ? (
+            /* A phone's line is the message's first: the chip keeps the model, and the menu has the rest. */
+            <span className="contents max-md:hidden">
+              <EffortTrail effort={menu.effortShown} />
+              <SpeedMark speed={menu.speedShown} />
+              <ContextRing context={context} />
+            </span>
+          ) : (
+            <>
+              <EffortTrail effort={menu.effortShown} />
+              <SpeedMark speed={menu.speedShown} />
+            </>
+          )}
+        </>
+      ) : (
+        <span className="text-fg-tertiary">{placeholder}</span>
+      )}
+      {variant === "select" ? (
+        <ChevronDown size={12} strokeWidth={2} className="shrink-0 text-fg-tertiary" />
+      ) : null}
+    </Combobox.Trigger>
+  );
   return (
     <Combobox.Root<string, false, ModelGroup>
       items={browse.groups}
       filteredItems={browse.shown}
-      value={shown?.key ?? null}
+      value={automaticOn ? null : (shown?.key ?? null)}
       onValueChange={pick}
       inputValue={browse.query}
       onInputValueChange={(value, details) => {
@@ -209,32 +280,18 @@ export function ModelPicker({
       autoHighlight
     >
       {/* The same tree with or without a reading, so the menu keeps its anchor as one arrives. */}
-      <Tooltip
-        label={context ? contextLabel(context) : "Open model picker"}
-        shortcut={modelShortcut}
-        side="top"
-        disabled={browse.open}
-      >
-        <Combobox.Trigger
-          aria-label={shown ? `Model: ${shown.label}` : "Model"}
-          className={`${chipClass} min-w-0`}
+      {variant === "chip" ? (
+        <Tooltip
+          label={context ? contextLabel(context) : "Open model picker"}
+          shortcut={modelShortcut}
+          side="top"
+          disabled={browse.open}
         >
-          {shown ? (
-            <>
-              <ProviderLogo provider={shown.provider} size={13} />
-              <span className="truncate font-medium text-fg-primary max-[22.5rem]:hidden">{shown.label}</span>
-              {/* A phone's line is the message's first: the chip keeps the model, and the menu has the rest. */}
-              <span className="contents max-md:hidden">
-                <EffortTrail effort={menu.effortShown} />
-                <SpeedMark speed={menu.speedShown} />
-                <ContextRing context={context} />
-              </span>
-            </>
-          ) : (
-            <span className="text-fg-tertiary">Finding models…</span>
-          )}
-        </Combobox.Trigger>
-      </Tooltip>
+          {trigger}
+        </Tooltip>
+      ) : (
+        trigger
+      )}
       <MenuPopup
         {...menu}
         browse={browse}
@@ -360,6 +417,9 @@ function MenuPopup({
   effort,
   speed,
   limit,
+  automatic,
+  side = "top",
+  align = "start",
   label,
   browse,
   multiple = false,
@@ -425,10 +485,10 @@ function MenuPopup({
   const fixed = browse.railed || tunes;
   return (
     <Combobox.Portal>
-      <Combobox.Positioner side="top" align="start" sideOffset={6} className="z-50 outline-none">
+      <Combobox.Positioner side={side} align={align} sideOffset={6} className="z-50 outline-none">
         <Combobox.Popup
           aria-label="Models"
-          className={`flex max-w-(--available-width) origin-(--transform-origin) overflow-hidden rounded-xl border border-line-subtle bg-surface-overlay text-fg-primary shadow-overlay backdrop-blur-2xl transition-[opacity,scale] duration-150 ease-out-soft outline-none data-ending-style:scale-[0.97] data-ending-style:opacity-0 data-starting-style:scale-[0.97] data-starting-style:opacity-0 ${tunes ? "w-[35rem]" : "w-96"} ${fixed ? "md:h-[min(23rem,calc(var(--available-height)-0.5rem))]" : ""}`}
+          className={`flex max-w-(--available-width) origin-(--transform-origin) overflow-hidden rounded-xl border border-line-subtle bg-surface-overlay text-fg-primary shadow-overlay backdrop-blur-2xl transition-[opacity,scale] duration-150 ease-out-soft outline-none data-ending-style:scale-[0.97] data-ending-style:opacity-0 data-starting-style:scale-[0.97] data-starting-style:opacity-0 ${tunes ? "w-[39rem]" : "w-[27rem]"} ${fixed ? "md:h-[min(24.5rem,calc(var(--available-height)-0.5rem))]" : ""}`}
         >
           {browse.railed ? <Rail tabs={tabs} available={available} browse={browse} /> : null}
           <div className="flex min-w-0 flex-1 max-md:flex-col">
@@ -502,12 +562,21 @@ function MenuPopup({
                   {count}
                 </div>
               ) : null}
+              {automatic ? (
+                <AutomaticRow
+                  choice={automatic}
+                  onPick={() => {
+                    if (!automatic.on) automatic.onPick();
+                    browse.setOpen(false);
+                  }}
+                />
+              ) : null}
               {several ? <SeveralSwitch choice={several} count={picked} /> : null}
               {limit ? <LimitRow choice={limit} /> : null}
             </div>
             {/* How hard and how fast the model picked runs: beside the list, or under it on a phone. */}
             {tunes ? (
-              <div className="flex w-48 shrink-0 flex-col overflow-y-auto overscroll-contain border-l border-line-subtle bg-surface-sunken/40 max-md:w-auto max-md:border-t max-md:border-l-0">
+              <div className="flex w-52 shrink-0 flex-col overflow-y-auto overscroll-contain border-l border-line-subtle bg-surface-sunken/40 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden max-md:w-auto max-md:border-t max-md:border-l-0">
                 {offersChoice(effort) ? (
                   <EffortLadder
                     choice={{
@@ -543,6 +612,32 @@ function MenuPopup({
   );
 }
 
+function AutomaticRow({ choice, onPick }: { readonly choice: AutomaticChoice; readonly onPick: () => void }) {
+  return (
+    <button
+      type="button"
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={onPick}
+      aria-pressed={choice.on}
+      className={`flex w-full shrink-0 cursor-default items-center gap-2 border-t border-line-subtle px-3 py-2 text-left transition-colors outline-none select-none hover:bg-surface-hover focus-visible:bg-surface-hover ${
+        choice.on ? "bg-surface-selected/60 text-fg-primary" : "text-fg-secondary hover:text-fg-primary"
+      }`}
+    >
+      <Zap size={13} strokeWidth={1.75} className="shrink-0 text-fg-tertiary" />
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="flex items-center gap-1.5 text-body leading-tight">
+          <span className={choice.on ? "font-medium text-fg-primary" : ""}>Automatic</span>
+          {choice.model ? (
+            <span className="truncate text-meta text-fg-tertiary">{choice.model.label}</span>
+          ) : null}
+        </span>
+        <span className="truncate text-caption text-fg-tertiary">{choice.hint}</span>
+      </span>
+      {choice.on ? <Check size={13} strokeWidth={2.25} className="shrink-0 text-fg-secondary" /> : null}
+    </button>
+  );
+}
+
 /** The menu's side: the starred models, then a tab per harness. One that can't run is dimmed but
  * still opens, to say so. */
 function Rail({
@@ -566,7 +661,7 @@ function Rail({
       }}
       orientation="vertical"
       aria-label="Harness"
-      className="flex w-11 shrink-0 flex-col items-center gap-1 overflow-x-hidden overflow-y-auto border-r border-line-subtle bg-surface-sunken/40 py-1.5 max-md:w-13"
+      className="flex w-12 shrink-0 flex-col items-center gap-1 overflow-x-hidden overflow-y-auto border-r border-line-subtle bg-surface-sunken/40 py-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden max-md:w-13"
     >
       {tabs.map((tab) => (
         <Tooltip key={tab} label={tab === "favorites" ? "Favorites" : providerName[tab]} side="right">
@@ -575,7 +670,7 @@ function Rail({
             aria-label={tab === "favorites" ? "Favorites" : providerName[tab]}
             // The search keeps focus, so typing and the arrow keys carry on after a click.
             onMouseDown={(event) => event.preventDefault()}
-            className="relative grid size-8 shrink-0 place-items-center rounded-md text-fg-tertiary transition-colors select-none after:absolute after:inset-y-2 after:-right-1.5 after:w-0.5 after:rounded-full after:bg-accent after:opacity-0 after:transition-opacity hover:bg-surface-hover hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary data-pressed:after:opacity-100 max-md:size-10"
+            className="relative grid size-8 shrink-0 place-items-center rounded-md text-fg-tertiary transition-colors select-none after:absolute after:inset-y-2 after:-right-2 after:w-0.5 after:rounded-full after:bg-accent after:opacity-0 after:transition-opacity hover:bg-surface-hover hover:text-fg-secondary data-pressed:bg-surface-selected data-pressed:text-fg-primary data-pressed:after:opacity-100 max-md:size-10 max-md:after:-right-1.5"
           >
             {tab === "favorites" ? (
               <Star size={15} strokeWidth={1.75} className="fill-current" />

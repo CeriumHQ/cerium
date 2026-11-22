@@ -1,16 +1,12 @@
-import { TITLE_MODELS, type ModelInfo, type ProviderId } from "@cerium/protocol";
-import { Zap } from "lucide-react";
+import { OFFERED_PROVIDERS, TITLE_MODELS, type ModelInfo, type ProviderId } from "@cerium/protocol";
 
-import { ProviderLogo } from "../../components/ProviderLogo.tsx";
-import { SelectItem, SelectPopup, SelectRoot, SelectTrigger } from "../../components/ui/Select.tsx";
+import { ModelPicker } from "../composer/ModelPicker.tsx";
 import { modelKey } from "../composer/models.ts";
 import { providerName } from "../threads/model.ts";
 import type { HarnessIndicator } from "../threads/Sidebar.tsx";
-import { ModelGroups, readyProviders } from "./ModelGroups.tsx";
+import { readyProviders } from "./ModelGroups.tsx";
 import { SettingsRow, SettingsSwitch } from "./parts.tsx";
 import { useSetting } from "./useSetting.ts";
-
-const AUTOMATIC = "automatic";
 
 /** The model Automatic names threads with here: the first default a usable harness offers. */
 const automaticModel = (models: ReadonlyArray<ModelInfo>, ready: ReadonlySet<ProviderId>) =>
@@ -34,22 +30,12 @@ export function TitleRows({
   const { value: titles, saved, save, error } = useSetting("titles", { enabled: true });
 
   const ready = readyProviders(harnesses);
-  const offered = models.filter((model) => ready.has(model.provider));
   const automatic = automaticModel(models, ready);
   const picked = titles.model;
   const pickedInfo = picked
     ? models.find((model) => model.provider === picked.provider && model.id === picked.model)
     : undefined;
   const pickedReady = picked !== undefined && ready.has(picked.provider) && pickedInfo !== undefined;
-
-  const choose = (key: string) => {
-    const model = offered.find((candidate) => modelKey(candidate) === key);
-    save(
-      model === undefined
-        ? { enabled: true }
-        : { enabled: true, model: { provider: model.provider, model: model.id } },
-    );
-  };
 
   return (
     <>
@@ -78,41 +64,37 @@ export function TitleRows({
           }
           className="pr-2.5"
           control={() => (
-            <SelectRoot
-              value={
-                picked === undefined ? AUTOMATIC : modelKey({ provider: picked.provider, id: picked.model })
+            <ModelPicker
+              variant="select"
+              side="bottom"
+              align="end"
+              ariaLabel="Model that names threads"
+              models={models}
+              providers={OFFERED_PROVIDERS}
+              available={ready}
+              shown={
+                picked !== undefined
+                  ? {
+                      provider: picked.provider,
+                      label: pickedInfo?.label ?? picked.model,
+                      ...(pickedInfo ? { key: modelKey(pickedInfo) } : {}),
+                    }
+                  : undefined
               }
-              onValueChange={(next) => next !== null && choose(next)}
-            >
-              <SelectTrigger label="Model that names threads">
-                {picked === undefined ? (
-                  <>
-                    {automatic ? <ProviderLogo provider={automatic.provider} size={13} /> : null}
-                    <span>Automatic</span>
-                    {automatic ? <span className="text-fg-tertiary">{automatic.label}</span> : null}
-                  </>
-                ) : (
-                  <>
-                    <ProviderLogo provider={picked.provider} size={13} />
-                    <span>{pickedInfo?.label ?? picked.model}</span>
-                  </>
-                )}
-              </SelectTrigger>
-              <SelectPopup>
-                <SelectItem
-                  value={AUTOMATIC}
-                  icon={Zap}
-                  description={
-                    automatic
-                      ? `${automatic.label} now, the quickest your harnesses offer`
-                      : "The quickest model your harnesses offer"
-                  }
-                >
-                  Automatic
-                </SelectItem>
-                <ModelGroups models={models} harnesses={harnesses} separated />
-              </SelectPopup>
-            </SelectRoot>
+              automatic={{
+                on: picked === undefined,
+                model: automatic
+                  ? { provider: automatic.provider, label: automatic.label, key: modelKey(automatic) }
+                  : undefined,
+                hint: automatic
+                  ? `${automatic.label} now, the quickest your harnesses offer`
+                  : "The quickest model your harnesses offer",
+                onPick: () => save({ enabled: true }),
+              }}
+              onPick={(model) =>
+                save({ enabled: true, model: { provider: model.provider, model: model.id } })
+              }
+            />
           )}
         />
       ) : null}

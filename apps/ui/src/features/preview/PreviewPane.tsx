@@ -1,5 +1,5 @@
 import { Button } from "@base-ui/react/button";
-import { ArrowLeft, ArrowRight, Globe, RotateCw, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, RotateCw, X } from "lucide-react";
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import type { PreviewBounds, PreviewBridge } from "../../backend/shell.ts";
@@ -363,9 +363,9 @@ function Page({
         className="relative mx-auto h-full w-full overflow-hidden rounded-lg "
       >
         {empty ? (
-          <Away icon>Type an address above, or click a localhost link in a terminal.</Away>
+          <Away>Type an address above, or click a localhost link in a terminal.</Away>
         ) : error !== undefined ? (
-          <Away icon>
+          <Away>
             <span className="block text-fg-secondary">The page didn't load.</span>
             <span className="mt-1 block max-w-md break-words text-fg-tertiary">{error}</span>
             <Button
@@ -386,12 +386,9 @@ function Page({
   );
 }
 
-function Away({ children, icon = false }: { children: ReactNode; icon?: boolean }) {
+function Away({ children }: { children: ReactNode }) {
   return (
     <div className="flex h-full flex-col items-center justify-center px-6 text-center text-meta text-fg-tertiary">
-      {icon ? (
-        <Globe size={22} strokeWidth={1.5} className="mb-3 text-fg-disabled" aria-hidden="true" />
-      ) : null}
       <div>{children}</div>
     </div>
   );

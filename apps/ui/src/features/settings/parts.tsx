@@ -188,19 +188,20 @@ export function SettingsSwitch({
   checked,
   onCheckedChange,
   disabled = false,
-  labelledBy,
+  ...name
 }: {
   checked: boolean;
   onCheckedChange: (checked: boolean) => void;
   disabled?: boolean;
-  labelledBy: string;
-}) {
+} & ({ labelledBy: string; label?: never } | { label: string; labelledBy?: never })) {
   return (
     <Switch.Root
       checked={checked}
       onCheckedChange={onCheckedChange}
       disabled={disabled}
-      aria-labelledby={labelledBy}
+      {...(name.labelledBy === undefined
+        ? { "aria-label": name.label }
+        : { "aria-labelledby": name.labelledBy })}
       className="relative flex h-4.5 w-8 shrink-0 rounded-full bg-line-strong p-0.5 transition-colors duration-200 ease-out-soft outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-panel data-checked:bg-accent data-disabled:opacity-40"
     >
       <Switch.Thumb className="size-3.5 rounded-full bg-fg-primary shadow-raised transition-[translate,background-color] duration-200 ease-out-soft data-checked:translate-x-3.5 data-checked:bg-accent-fg" />

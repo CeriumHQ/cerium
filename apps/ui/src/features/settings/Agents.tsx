@@ -1,5 +1,11 @@
 import { Button } from "@base-ui/react/button";
-import type { AccessMode, ModelInfo, ReasoningEffort } from "@cerium/protocol";
+import {
+  OFFERED_PROVIDERS,
+  type AccessMode,
+  type ModelInfo,
+  type ModelSpeed,
+  type ReasoningEffort,
+} from "@cerium/protocol";
 import { useAtom, useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
 import {
@@ -17,25 +23,24 @@ import {
 
 import { accountAtom, modelsAtom } from "../../backend/atoms.ts";
 import { machineAtom } from "../../backend/machine.ts";
-import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { SelectItem, SelectPopup, SelectRoot, SelectTrigger } from "../../components/ui/Select.tsx";
-import { accessOptions, effortFor, effortLabel, modelKey, pickModel, useModels } from "../composer/models.ts";
+import { ModelPicker } from "../composer/ModelPicker.tsx";
+import { accessOptions, effortFor, modelKey, pickModel, speedFor, useModels } from "../composer/models.ts";
 import type { HarnessIndicator } from "../threads/Sidebar.tsx";
-import { ModelGroups, readyProviders } from "./ModelGroups.tsx";
+import { readyProviders } from "./ModelGroups.tsx";
 import { SettingsList, SettingsNote, SettingsPage, SettingsRow, SettingsSection } from "./parts.tsx";
-import { accessAtom, effortAtom, inboxCapAtom, inboxCaps, modelAtom, workplaceAtom } from "./preferences.ts";
+import {
+  accessAtom,
+  effortAtom,
+  inboxCapAtom,
+  inboxCaps,
+  modelAtom,
+  speedAtom,
+  workplaceAtom,
+} from "./preferences.ts";
 import { RosterSection } from "./Roster.tsx";
 import { TitleRows } from "./Titles.tsx";
 import { AdvisorRows } from "./Advisor.tsx";
-
-const effortHint: Record<ReasoningEffort, string> = {
-  minimal: "Answers almost at once",
-  low: "Quick answers for simple tasks",
-  medium: "A balance of speed and depth",
-  high: "Thinks problems through first",
-  xhigh: "Takes its time on hard problems",
-  max: "As long as the model allows: slowest and costliest",
-};
 
 /** The first backend that keeps a roster; an older one leads from every model its harnesses offer. */
 const ROSTER_VERSION = 27;
@@ -74,10 +79,12 @@ export function ThreadSettings({
 }) {
   const { models, model, setModelId } = useLeadModel(harnesses);
   const [effort, setEffort] = useAtom(effortAtom);
+  const [speed, setSpeed] = useAtom(speedAtom);
   const [access, setAccess] = useAtom(accessAtom);
   const [workplace, setWorkplace] = useAtom(workplaceAtom);
   // Like the composer, a level the model lacks reads as its default or strongest one.
   const activeEffort = model ? effortFor(model, effort) : undefined;
+  const activeSpeed = model ? speedFor(model, speed) : undefined;
   const accessOption = accessOptions.find((option) => option.value === access);
 
   return (
@@ -98,31 +105,15 @@ export function ThreadSettings({
                 onChange={setModelId}
                 models={models}
                 harnesses={harnesses}
+                effort={effort}
+                activeEffort={activeEffort}
+                onEffort={setEffort}
+                activeSpeed={activeSpeed}
+                onSpeed={setSpeed}
                 {...(onOpen ? { onOpenHarnesses: onOpen } : {})}
               />
             )}
           />
-          {model && activeEffort ? (
-            <SettingsRow
-              label="Reasoning effort"
-              hint={effortHint[activeEffort]}
-              className="pr-2.5"
-              control={() => (
-                <SelectRoot value={activeEffort} onValueChange={(next) => next !== null && setEffort(next)}>
-                  <SelectTrigger label="Reasoning effort">
-                    <span>{effortLabel[activeEffort]}</span>
-                  </SelectTrigger>
-                  <SelectPopup>
-                    {model.efforts.map((level) => (
-                      <SelectItem key={level} value={level} description={effortHint[level]}>
-                        {effortLabel[level]}
-                      </SelectItem>
-                    ))}
-                  </SelectPopup>
-                </SelectRoot>
-              )}
-            />
-          ) : null}
         </SettingsList>
       </SettingsSection>
 
@@ -301,33 +292,50 @@ function ModelSelect({
   onChange,
   models,
   harnesses,
+  effort,
+  activeEffort,
+  onEffort,
+  activeSpeed,
+  onSpeed,
   onOpenHarnesses,
 }: {
   value: ModelInfo | undefined;
   onChange: (model: string) => void;
   models: ReadonlyArray<ModelInfo>;
   harnesses: ReadonlyArray<HarnessIndicator>;
+  effort: ReasoningEffort;
+  activeEffort: ReasoningEffort | undefined;
+  onEffort: (effort: ReasoningEffort) => void;
+  activeSpeed: ModelSpeed | undefined;
+  onSpeed: (speed: ModelSpeed) => void;
   onOpenHarnesses?: () => void;
 }) {
   const loading = useAtomValue(modelsAtom).waiting;
   const retry = useAtomRefresh(modelsAtom);
+  const ready = readyProviders(harnesses);
   const quiet =
     "flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-meta text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary";
 
   if (value !== undefined) {
     return (
-      <SelectRoot value={modelKey(value)} onValueChange={(next) => next !== null && onChange(next)}>
-        <SelectTrigger label="Model">
-          <ProviderLogo provider={value.provider} size={13} />
-          <span>{value.label}</span>
-        </SelectTrigger>
-        <SelectPopup>
-          <ModelGroups models={models} harnesses={harnesses} />
-        </SelectPopup>
-      </SelectRoot>
+      <ModelPicker
+        variant="select"
+        side="bottom"
+        align="end"
+        ariaLabel="Default model"
+        models={models}
+        providers={OFFERED_PROVIDERS}
+        available={ready}
+        shown={{ provider: value.provider, label: value.label, key: modelKey(value) }}
+        effort={{ levels: value.efforts, value: activeEffort ?? effort, onPick: onEffort }}
+        effortShown={activeEffort}
+        speed={{ speeds: value.speeds ?? [], value: activeSpeed ?? "standard", onPick: onSpeed }}
+        speedShown={activeSpeed}
+        onPick={(picked) => onChange(modelKey(picked))}
+      />
     );
   }
-  if (readyProviders(harnesses).size === 0) {
+  if (ready.size === 0) {
     return onOpenHarnesses ? (
       <Button onClick={onOpenHarnesses} className={quiet}>
         Set up a harness

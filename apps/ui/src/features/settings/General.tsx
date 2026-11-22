@@ -652,16 +652,12 @@ function UpdateOffer({ updates }: { updates: Updates }) {
       role={failed ? "alert" : "status"}
       className={`mx-2 mb-2 flex items-center gap-3 rounded-lg py-2.5 pr-2.5 pl-3 ${failed ? "bg-error/6" : "bg-accent-soft"}`}
     >
-      <span
-        className={`grid size-7 shrink-0 place-items-center rounded-full ${failed ? "bg-error/15 text-error-text" : "bg-accent text-accent-fg"}`}
-      >
-        <Icon
-          size={14}
-          strokeWidth={2}
-          aria-hidden="true"
-          className={restarting ? "animate-spin" : undefined}
-        />
-      </span>
+      <Icon
+        size={15}
+        strokeWidth={1.75}
+        aria-hidden="true"
+        className={`shrink-0 ${failed ? "text-error-text" : "text-accent-text"} ${restarting ? "animate-spin" : ""}`}
+      />
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="truncate text-body font-medium text-fg-primary" title={version}>
           {status.kind === "available"

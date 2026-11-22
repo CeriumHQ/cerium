@@ -4,7 +4,6 @@ import { buttonClass } from "../../components/ui/Button.tsx";
 import type { ProviderUsage, UsageMeter, UsageSnapshot } from "@cerium/protocol";
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
-import { Gauge } from "lucide-react";
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 
 import { machineAtom } from "../../backend/machine.ts";
@@ -342,17 +341,12 @@ function LoadingCard() {
 
 function NoSubscriptions({ onOpenHarnesses }: { onOpenHarnesses?: () => void }) {
   return (
-    <SettingsCard className="flex gap-3.5 p-4">
-      <span className="grid size-9 shrink-0 place-items-center rounded-lg border border-line-subtle bg-surface-raised text-fg-secondary">
-        <Gauge size={17} strokeWidth={1.75} />
-      </span>
-      <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <span className="text-reading font-medium text-fg-primary">No subscriptions to show</span>
-        <p className="text-meta leading-relaxed text-fg-tertiary">
-          Sign a harness in with a plan, like Claude Max or ChatGPT Plus, to see its limits here.
-        </p>
-        {onOpenHarnesses ? <LinkButton onClick={onOpenHarnesses}>Open Harnesses</LinkButton> : null}
-      </div>
+    <SettingsCard className="flex flex-col gap-1 p-4">
+      <span className="text-reading font-medium text-fg-primary">No subscriptions to show</span>
+      <p className="text-meta leading-relaxed text-fg-tertiary">
+        Sign a harness in with a plan, like Claude Max or ChatGPT Plus, to see its limits here.
+      </p>
+      {onOpenHarnesses ? <LinkButton onClick={onOpenHarnesses}>Open Harnesses</LinkButton> : null}
     </SettingsCard>
   );
 }

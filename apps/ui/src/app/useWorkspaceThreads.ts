@@ -3,6 +3,7 @@ import {
   type AccountState,
   type AccountThreads,
   type AgentEvent,
+  type Settings,
   type ThreadId,
 } from "@cerium/protocol";
 import { type ThreadOverview } from "@cerium/rpc";
@@ -20,6 +21,7 @@ import {
   harnessesAtom,
   importedThreadsAtom,
   markThreadsRead,
+  settingsAtom,
   summaryEventsAtom,
   threadsAtom,
 } from "../backend/atoms.ts";
@@ -66,6 +68,10 @@ export function useWorkspaceThreads({
   const refreshThreads = useAtomRefresh(threadsAtom);
   const harnessesResult = useAtomValue(harnessesAtom);
   const harnesses = AsyncResult.getOrElse(harnessesResult, () => []);
+  const disabledProviders = AsyncResult.getOrElse(
+    useAtomValue(settingsAtom),
+    (): Pick<Settings, "disabledProviders"> => ({ disabledProviders: [] }),
+  ).disabledProviders;
   const models = useModels();
   // Another machine that can't be reached shows the threads it last listed no more: they read from
   // the cloud copy instead, until it answers again. This computer's own list stays while it reconnects.
@@ -274,6 +280,8 @@ export function useWorkspaceThreads({
     const status = harnesses.find((candidate) => candidate.provider === provider);
     if (status === undefined) return { provider, state: "unsupported" };
     if (status._tag === "HarnessMissing") return { provider, state: "missing" };
+    // Turned off by the user, so it isn't offered, nor nagged about while signed out.
+    if (disabledProviders.includes(provider)) return { provider, state: "disabled" };
     if (status.auth._tag === "LoggedOut") return { provider, state: "loggedOut" };
     return { provider, state: "ready", ...(status.setup ? { needsSetup: true } : {}) };
   });

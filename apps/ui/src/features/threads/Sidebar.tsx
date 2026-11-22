@@ -7,7 +7,6 @@ import {
   Archive,
   ChevronRight,
   CornerDownRight,
-  MessagesSquare,
   Pencil,
   Pin,
   PinOff,
@@ -81,7 +80,8 @@ interface SidebarProps {
 
 export interface HarnessIndicator {
   readonly provider: ProviderId;
-  readonly state: "ready" | "loggedOut" | "missing" | "unsupported";
+  /** `disabled`: installed, but turned off in Settings → Harnesses. */
+  readonly state: "ready" | "disabled" | "loggedOut" | "missing" | "unsupported";
   /** Ready, but some access modes can't run commands until a one-time setup (Settings → Harnesses). */
   readonly needsSetup?: boolean;
 }
@@ -248,6 +248,7 @@ function ChatList({
   } = useBulkSelection(orderIds);
   const ticked = new Set(picked);
   const pickedHere = ordered.filter((thread) => ticked.has(thread.id));
+  const selecting = pickedHere.length > 0;
   /** What a bulk action says it did, and which chats it skipped with why; shown for a moment. */
   const [note, setNote] = useState<string>();
   useEffect(() => {
@@ -280,13 +281,14 @@ function ChatList({
               key={section.key}
               section={section}
               picked={picked}
+              selecting={selecting}
               onToggle={togglePicked}
               {...actions}
             />
           ))}
           {more ? <div ref={end} aria-hidden className="h-px" /> : null}
           {sections.length === 0 && drafts.length === 0 ? (
-            <EmptyList icon={MessagesSquare} title="No chats yet" hint="Your conversations are kept here." />
+            <EmptyList title="No chats yet" hint="Your conversations are kept here." />
           ) : null}
         </nav>
       </ScrollArea>
@@ -316,10 +318,12 @@ function ChatGroup({
   section,
   selectedId,
   picked,
+  selecting,
   onToggle,
   ...actions
 }: { section: ThreadSection } & ChatActions & {
     picked: ReadonlyArray<string>;
+    selecting: boolean;
     onToggle: (threadId: string, mode: SelectMode) => void;
   }) {
   return (
@@ -339,6 +343,7 @@ function ChatGroup({
               <ChatRow
                 thread={thread}
                 selected={thread.id === selectedId}
+                selecting={selecting}
                 checked={picked.includes(thread.id)}
                 onToggle={onToggle}
                 {...actions}
@@ -354,6 +359,7 @@ function ChatGroup({
 function ChatRow({
   thread,
   selected,
+  selecting,
   checked,
   onToggle,
   onSelect,
@@ -365,6 +371,7 @@ function ChatRow({
 }: {
   thread: ThreadSummary;
   selected: boolean;
+  selecting: boolean;
   checked: boolean;
   onToggle: (threadId: string, mode: SelectMode) => void;
 } & Omit<ChatActions, "selectedId">) {
@@ -380,7 +387,7 @@ function ChatRow({
       onSelect={onSelect}
       onRename={onRename}
       onDelete={onDelete}
-      selection={{ checked, onToggle }}
+      selection={{ active: selecting, checked, onToggle }}
       // Another machine's chat is renamed, archived or deleted there, so its row has no menu here.
       {...(thread.elsewhere
         ? {}

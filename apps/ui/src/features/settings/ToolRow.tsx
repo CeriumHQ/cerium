@@ -18,6 +18,7 @@ export function ToolRow({
   dim = false,
   action,
   menu,
+  toggle,
 }: {
   readonly mark: ReactNode;
   readonly name: string;
@@ -30,6 +31,8 @@ export function ToolRow({
   readonly action?: ReactNode;
   /** The row's menu, behind ⋯. */
   readonly menu?: ReactNode;
+  /** A switch at the row's end, after the menu, so switches line up whether or not a row has one. */
+  readonly toggle?: ReactNode;
 }) {
   return (
     <div className="flex items-center gap-3 px-4 py-2.5">
@@ -59,6 +62,7 @@ export function ToolRow({
             <MenuPopup>{menu}</MenuPopup>
           </MenuRoot>
         )}
+        {toggle === undefined ? null : <span className="ml-1.5 flex">{toggle}</span>}
       </div>
     </div>
   );

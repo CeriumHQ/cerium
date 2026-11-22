@@ -6,13 +6,13 @@ import {
   type HarnessStatus,
   type ProviderId,
 } from "@cerium/protocol";
-import type { CommandTerminal, HarnessCommand } from "@cerium/rpc";
+import { DISABLED_PROVIDERS_RPC_VERSION, type CommandTerminal, type HarnessCommand } from "@cerium/rpc";
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
 import { Check, ChevronDown, Download, ExternalLink, RefreshCw } from "lucide-react";
 import { useEffect, useEffectEvent, useState } from "react";
 
-import { harnessesAtom, loginAtom } from "../../backend/atoms.ts";
+import { drivenRpcVersionAtom, harnessesAtom, loginAtom } from "../../backend/atoms.ts";
 import { machineAtom } from "../../backend/machine.ts";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { accessOptions } from "../composer/models.ts";
@@ -24,13 +24,33 @@ import {
   useStartCommand,
 } from "./ActionDialog.tsx";
 import { useHarnessUpdates, type HarnessUpdate } from "./harnessUpdates.ts";
-import { SettingsNote, SettingsPage } from "./parts.tsx";
+import { SettingsNote, SettingsPage, SettingsSwitch } from "./parts.tsx";
+import { useSetting } from "./useSetting.ts";
 import { buttonClass } from "../../components/ui/Button.tsx";
 import { InstalledMenu, RowButton, RowLink, ToolRow } from "./ToolRow.tsx";
 
 export { harnessName };
 
 type Installed = Extract<HarnessStatus, { _tag: "HarnessInstalled" }>;
+
+/** A row's on/off switch: on while the harness is used, locked off while it can't be. */
+interface Use {
+  /** The user hasn't turned it off. */
+  readonly on: boolean;
+  /** The switch can be flipped: the setting has loaded and this machine's backend keeps it. */
+  readonly changeable: boolean;
+  readonly set: (on: boolean) => void;
+}
+
+/** The switch, locked off when the harness can't run whatever the user chose. */
+const UseSwitch = ({ name, use, runnable }: { name: string; use: Use; runnable: boolean }) => (
+  <SettingsSwitch
+    label={`Use ${name}`}
+    checked={runnable && use.on}
+    onCheckedChange={use.set}
+    disabled={!runnable || !use.changeable}
+  />
+);
 
 /**
  * Each harness on the driven machine, with the account it runs on and the one thing to do about it. Check again reads them all afresh, and says when it last ran.
@@ -39,6 +59,18 @@ export function HarnessSettings() {
   const result = useAtomValue(harnessesAtom);
   const refreshHarnesses = useAtomRefresh(harnessesAtom);
   const machine = useAtomValue(machineAtom)?.name;
+  const keepsChoice = useAtomValue(drivenRpcVersionAtom) >= DISABLED_PROVIDERS_RPC_VERSION;
+  const disabled = useSetting("disabledProviders", []);
+  const useOf = (provider: ProviderId): Use => ({
+    on: !disabled.value.includes(provider),
+    changeable: keepsChoice && disabled.saved !== undefined,
+    set: (on) =>
+      disabled.save(
+        on
+          ? disabled.value.filter((each) => each !== provider)
+          : [...disabled.value.filter((each) => each !== provider), provider],
+      ),
+  });
   const [checkedAt, setCheckedAt] = useState<number>();
   const checking = result.waiting;
   const check = () => {
@@ -58,7 +90,7 @@ export function HarnessSettings() {
     <SettingsPage
       perMachine
       title="Harnesses"
-      description="Each keeps its own login, and Cerium never reads its keys. Signing in and updating run its own command."
+      description="Each keeps its own login, and Cerium never reads its keys. Signing in and updating run its own command. A harness turned off isn't offered to threads or agents."
       action={
         <div className="flex items-center gap-3">
           {/* The last check, once finished, so a check that changed nothing still shows it ran. */}
@@ -82,19 +114,26 @@ export function HarnessSettings() {
             : "Couldn't check the harnesses. Try again in a moment."}
         </SettingsNote>
       ) : (
-        <ul className="divide-y divide-line-subtle rounded-lg border border-line-subtle bg-surface-pane">
-          {OFFERED_PROVIDERS.map((provider) => (
-            <li key={provider}>
-              <HarnessRow
-                provider={provider}
-                status={statuses?.find((status) => status.provider === provider)}
-                local={machine === undefined}
-                onChanged={check}
-                unknown={statuses === undefined}
-              />
-            </li>
-          ))}
-        </ul>
+        <>
+          {disabled.error ? <SettingsNote tone="error">{disabled.error}</SettingsNote> : null}
+          {keepsChoice ? null : (
+            <SettingsNote>Update Cerium on this machine to turn harnesses off.</SettingsNote>
+          )}
+          <ul className="divide-y divide-line-subtle rounded-lg border border-line-subtle bg-surface-pane">
+            {OFFERED_PROVIDERS.map((provider) => (
+              <li key={provider}>
+                <HarnessRow
+                  provider={provider}
+                  status={statuses?.find((status) => status.provider === provider)}
+                  local={machine === undefined}
+                  onChanged={check}
+                  unknown={statuses === undefined}
+                  use={useOf(provider)}
+                />
+              </li>
+            ))}
+          </ul>
+        </>
       )}
     </SettingsPage>
   );
@@ -191,6 +230,7 @@ function HarnessRow({
   local,
   onChanged,
   unknown = false,
+  use,
 }: {
   provider: ProviderId;
   /** Absent when Cerium has no adapter for the provider yet, or the machine hasn't answered. */
@@ -201,12 +241,22 @@ function HarnessRow({
   onChanged: () => void;
   /** The machine hasn't answered yet, so nothing is known. */
   unknown?: boolean;
+  use: Use;
 }) {
   const name = harnessName[provider];
   const mark = <ProviderLogo provider={provider} size={16} />;
+  const locked = <UseSwitch name={name} use={use} runnable={false} />;
 
   if (unknown || status === undefined) {
-    return <ToolRow mark={mark} name={name} dim detail={unknown ? "Checking…" : "Not supported yet"} />;
+    return (
+      <ToolRow
+        mark={mark}
+        name={name}
+        dim
+        detail={unknown ? "Checking…" : "Not supported yet"}
+        toggle={locked}
+      />
+    );
   }
   if (status._tag === "HarnessMissing") {
     const url = installUrl(status);
@@ -216,6 +266,7 @@ function HarnessRow({
         name={name}
         dim
         detail="Not installed"
+        toggle={locked}
         action={
           url === undefined ? undefined : (
             <RowLink href={url}>
@@ -227,17 +278,19 @@ function HarnessRow({
       />
     );
   }
-  return <InstalledRow status={status} local={local} onChanged={onChanged} />;
+  return <InstalledRow status={status} local={local} onChanged={onChanged} use={use} />;
 }
 
 function InstalledRow({
   status,
   local,
   onChanged,
+  use,
 }: {
   status: Installed;
   local: boolean;
   onChanged: () => void;
+  use: Use;
 }) {
   const { auth, setup, provider } = status;
   const flows = useHarnessFlows(status, onChanged);
@@ -258,10 +311,13 @@ function InstalledRow({
       <ToolRow
         mark={<ProviderLogo provider={provider} size={16} />}
         name={harnessName[provider]}
-        dim={signedOut}
+        dim={signedOut || !use.on}
         tone={
-          update?.state === "failed" || (update === undefined && (signedOut || setup)) ? "attention" : "quiet"
+          update?.state === "failed" || (update === undefined && use.on && (signedOut || setup))
+            ? "attention"
+            : "quiet"
         }
+        toggle={<UseSwitch name={harnessName[provider]} use={use} runnable={!signedOut} />}
         detail={
           update?.state === "running" ? (
             <span className="inline-flex items-center gap-1.5">
@@ -360,7 +416,10 @@ function UpdateOutput({
   onEnded: (code: number | undefined) => void;
 }) {
   // Held with the run it came from, so a retry never hears the last run's terminal end.
-  const [started, setStarted] = useState<{ run: Promise<CommandTerminal>; terminal: CommandTerminal }>();
+  const [started, setStarted] = useState<{
+    run: Promise<CommandTerminal>;
+    terminal: CommandTerminal;
+  }>();
   const terminal = started?.run === update.started ? started.terminal : undefined;
   useEffect(() => {
     let current = true;
@@ -430,8 +489,8 @@ function SetupDialog({
     >
       <div className="flex flex-col gap-2 text-meta">
         <p className="text-fg-secondary">
-          Run this once{setup.elevated ? " in a terminal opened as administrator" : " in a terminal"}, then
-          check again:
+          Run this once
+          {setup.elevated ? " in a terminal opened as administrator" : " in a terminal"}, then check again:
         </p>
         <CopyableCommand text={setup.command} />
       </div>

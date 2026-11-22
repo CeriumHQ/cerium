@@ -121,14 +121,16 @@ function MachineItem({
       className="group relative flex cursor-default items-center gap-2.5 rounded-lg py-1.5 pr-8 pl-2 outline-none select-none data-highlighted:bg-surface-hover"
     >
       {/* Dimmed when it can't be chosen; its detail stays readable, since that says why. */}
-      <span className="relative grid size-7 shrink-0 place-items-center rounded-md border border-line-subtle bg-surface-raised text-fg-secondary group-data-disabled:opacity-40">
-        <Monitor size={13} strokeWidth={1.75} />
-        {reachable ? (
-          <span className="absolute -right-0.5 -bottom-0.5 size-2 rounded-full border-[1.5px] border-surface-overlay bg-success" />
-        ) : null}
-      </span>
+      <Monitor
+        size={15}
+        strokeWidth={1.75}
+        className="shrink-0 text-fg-tertiary group-data-disabled:opacity-40"
+      />
       <span className="flex min-w-0 flex-col">
-        <span className="truncate text-body text-fg-primary group-data-disabled:opacity-40">{name}</span>
+        <span className="flex items-center gap-1.5">
+          <span className="truncate text-body text-fg-primary group-data-disabled:opacity-40">{name}</span>
+          {reachable ? <span className="size-1.5 shrink-0 rounded-full bg-success" aria-hidden /> : null}
+        </span>
         <span className={`truncate text-caption ${attention ? "text-attention-text" : "text-fg-tertiary"}`}>
           {reachable ? <span className="sr-only">Online, </span> : null}
           {detail}

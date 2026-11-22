@@ -179,6 +179,7 @@ const settingsIndex: ReadonlyArray<{ readonly name: string; readonly category: S
     ["updates", "What's new"],
     ["threads", "Default model"],
     ["threads", "Reasoning effort"],
+    ["threads", "Model speed"],
     ["threads", "Access"],
     ["threads", "Where new work threads run"],
     ["threads", "Name new threads"],
@@ -283,9 +284,7 @@ export function SettingsNav({ category, onSelect, active, compact = false }: Set
                     onClick={() => onSelect(id)}
                     className="flex min-h-13 items-center gap-3 px-3 py-2 text-left transition-colors active:bg-surface-active"
                   >
-                    <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-surface-window text-fg-secondary">
-                      <Icon size={18} />
-                    </span>
+                    <Icon size={18} className="shrink-0 text-fg-tertiary" />
                     <span className="flex min-w-0 flex-1 flex-col">
                       <span className="text-reading text-fg-primary">{label}</span>
                       <span className="truncate text-meta text-fg-tertiary">{description}</span>

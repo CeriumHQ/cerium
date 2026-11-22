@@ -10,7 +10,6 @@ import {
   Globe,
   LogIn,
   Monitor,
-  MonitorSmartphone,
   Pencil,
   RefreshCw,
   Smartphone,
@@ -153,38 +152,29 @@ function SignInCard({ account }: { account: Exclude<AccountState, SignedIn> }) {
 
   const shownError = error ?? (account._tag === "SignedOut" ? account.error : undefined);
   return (
-    <SettingsCard className="flex gap-3.5 p-4">
-      <span className="grid size-9 shrink-0 place-items-center rounded-lg border border-line-subtle bg-surface-raised text-fg-secondary">
-        <MonitorSmartphone size={17} strokeWidth={1.75} />
-      </span>
-      <div className="flex min-w-0 flex-1 flex-col gap-3">
-        <div className="flex flex-col gap-1">
-          <span className="text-reading font-medium text-fg-primary">Connect this {selfNoun}</span>
-          <p className="text-meta leading-relaxed text-fg-tertiary">
-            Reach it from your phone and your other computers, and get notified there when an agent needs you.
-          </p>
-        </div>
-        {account._tag === "SigningIn" ? (
-          <Progress url={account.url} onCancel={() => void cancel({ payload: undefined })}>
-            {WEB ? "Finish signing in on Cerium's page." : "Finish signing in using your browser."}
-          </Progress>
-        ) : (
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-            <Button
-              onClick={begin}
-              disabled={starting}
-              className={`${buttonClass({ tone: "primary" })} w-fit`}
-            >
-              <LogIn size={13} strokeWidth={2} />
-              {starting ? "Opening your browser…" : "Sign in"}
-            </Button>
-            <p className="text-meta text-fg-tertiary">
-              Google, GitHub, X or email. Cerium never sees your password.
-            </p>
-            {shownError ? <p className="w-full text-meta text-error-text">{shownError}</p> : null}
-          </div>
-        )}
+    <SettingsCard className="flex flex-col gap-3 p-4">
+      <div className="flex flex-col gap-1">
+        <span className="text-reading font-medium text-fg-primary">Connect this {selfNoun}</span>
+        <p className="text-meta leading-relaxed text-fg-tertiary">
+          Reach it from your phone and your other computers, and get notified there when an agent needs you.
+        </p>
       </div>
+      {account._tag === "SigningIn" ? (
+        <Progress url={account.url} onCancel={() => void cancel({ payload: undefined })}>
+          {WEB ? "Finish signing in on Cerium's page." : "Finish signing in using your browser."}
+        </Progress>
+      ) : (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <Button onClick={begin} disabled={starting} className={`${buttonClass({ tone: "primary" })} w-fit`}>
+            <LogIn size={13} strokeWidth={2} />
+            {starting ? "Opening your browser…" : "Sign in"}
+          </Button>
+          <p className="text-meta text-fg-tertiary">
+            Google, GitHub, X or email. Cerium never sees your password.
+          </p>
+          {shownError ? <p className="w-full text-meta text-error-text">{shownError}</p> : null}
+        </div>
+      )}
     </SettingsCard>
   );
 }
@@ -371,15 +361,8 @@ function DeviceRow({ device, self, live }: { device: DeviceInfo; self: boolean; 
 
   return (
     <div className="flex flex-col gap-1.5 py-3 pr-3 pl-4">
-      <div className="flex items-center gap-3.5">
-        <span className="relative grid size-8 shrink-0 place-items-center rounded-lg border border-line-subtle bg-surface-raised text-fg-secondary">
-          <Icon size={15} strokeWidth={1.75} />
-          {live && device.online && !outdated ? (
-            <span className="absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full border-2 border-surface-panel bg-success">
-              <span className="sr-only">Online</span>
-            </span>
-          ) : null}
-        </span>
+      <div className="flex items-center gap-3">
+        <Icon size={16} strokeWidth={1.75} className="shrink-0 text-fg-tertiary" />
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="flex min-w-0 items-center gap-2">
             {editing ? (
@@ -395,6 +378,11 @@ function DeviceRow({ device, self, live }: { device: DeviceInfo; self: boolean; 
                 {device.name}
               </span>
             )}
+            {live && device.online && !outdated && !editing ? (
+              <span className="size-1.5 shrink-0 rounded-full bg-success">
+                <span className="sr-only">Online</span>
+              </span>
+            ) : null}
             {self && !editing ? (
               <span className="shrink-0 rounded-full border border-line-subtle px-1.5 text-caption leading-4 text-fg-tertiary">
                 This {selfNoun}
@@ -440,7 +428,7 @@ function DeviceRow({ device, self, live }: { device: DeviceInfo; self: boolean; 
           </MenuPopup>
         </MenuRoot>
       </div>
-      {error ? <p className="pl-11.5 text-meta text-error-text">{error}</p> : null}
+      {error ? <p className="pl-7 text-meta text-error-text">{error}</p> : null}
       <ConfirmDialog
         open={removing}
         onOpenChange={setRemoving}

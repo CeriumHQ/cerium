@@ -65,9 +65,8 @@ export function useBulkSelection(ordered: ReadonlyArray<string>) {
 export type BulkSelection = ReturnType<typeof useBulkSelection>;
 
 /**
- * A thread's tick box. It floats over the row's mark on hover, and keeps its own room on a touch
- * screen, which can't hover: the row then carries extra left padding for it. It sits beside the
- * row's own button rather than in it, so ticking never opens the thread.
+ * A thread's tick box, shown only while bulk picking (the row slides right to make room for it).
+ * It sits beside the row's own button rather than in it, so ticking never opens the thread.
  */
 export function SelectBox({
   checked,
@@ -85,25 +84,19 @@ export function SelectBox({
   readonly onChange: () => void;
   /** Where it floats, such as `left-2 top-2` on a card or `left-2 top-1/2` on a row. */
   readonly className?: string;
-  /** Inbox cards show their checkbox only while bulk picking. */
-  readonly visible?: boolean;
+  readonly visible: boolean;
   readonly returnFocus?: () => void;
 }) {
   const shown = checked || mixed;
   const checkbox = useRef<HTMLElement>(null);
   useLayoutEffect(() => {
-    if (visible === false && checkbox.current?.contains(document.activeElement)) returnFocus?.();
+    if (!visible && checkbox.current?.contains(document.activeElement)) returnFocus?.();
   }, [visible, returnFocus]);
-  const visibility =
-    visible === undefined
-      ? shown
-        ? "opacity-100 duration-150"
-        : "opacity-0 duration-150 group-hover/row:opacity-100 group-has-[:focus-visible]/row:opacity-100 pointer-coarse:opacity-100"
-      : `duration-200 ease-out-soft ${visible ? "opacity-100 starting:opacity-0" : "opacity-0"}`;
+  const visibility = `duration-200 ease-out-soft ${visible ? "opacity-100 starting:opacity-0" : "opacity-0"}`;
   return (
     <Checkbox.Root
       ref={checkbox}
-      inert={visible === false}
+      inert={!visible}
       checked={checked}
       onClick={(event) => event.stopPropagation()}
       onMouseDown={(event) => event.stopPropagation()}

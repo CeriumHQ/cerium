@@ -1,7 +1,8 @@
 import { Button } from "@base-ui/react/button";
-import { Monitor } from "lucide-react";
+import { CheckSquare, Monitor } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
+import { MenuItem } from "../../components/ui/Menu.tsx";
 import { shortAgo } from "../../lib/time.ts";
 import { paneDrag, THREAD_DRAG_TYPE } from "../split/drag.ts";
 import { SelectBox, type SelectMode } from "./BulkBar.tsx";
@@ -43,6 +44,7 @@ export interface ThreadRowProps {
    * the thread instead of opening it in a tab; Shift click ticks a run of the list.
    */
   readonly selection?: {
+    readonly active: boolean;
     readonly checked: boolean;
     readonly onToggle: (threadId: string, mode: SelectMode) => void;
   };
@@ -67,13 +69,26 @@ export function ThreadRow({
   const tick =
     selection === undefined ? null : (
       <SelectBox
-        checked={selection.checked}
+        visible={selection.active}
+        returnFocus={() => row.current?.focus({ preventScroll: true })}
+        checked={selection.active && selection.checked}
         label={`Select “${title}”`}
         onChange={() => selection.onToggle(thread.id, "toggle")}
         className="left-2 top-1/2 -translate-y-1/2"
       />
     );
-  const rowClass = `flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-body transition-colors duration-150 data-popup-open:bg-surface-active max-md:h-11 max-md:gap-3 max-md:rounded-lg max-md:text-[15px] ${menu === undefined ? "" : moreRoom} ${selection === undefined ? "" : "group/row relative pointer-coarse:pl-7"} ${
+  const menuItems =
+    menu === undefined ? undefined : (
+      <>
+        {selection && !selection.active ? (
+          <MenuItem icon={CheckSquare} onClick={() => selection.onToggle(thread.id, "toggle")}>
+            Select
+          </MenuItem>
+        ) : null}
+        {menu({ rename: start, remove: () => setDeleting(true) })}
+      </>
+    );
+  const rowClass = `flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-body transition-[background-color,padding-left] duration-[150ms,180ms] ease-out-soft data-popup-open:bg-surface-active max-md:h-11 max-md:gap-3 max-md:rounded-lg max-md:text-[15px] ${menuItems === undefined ? "" : moreRoom} ${selection?.active ? "pl-8 max-md:pl-8" : ""} ${
     selected || editing
       ? "bg-surface-selected text-fg-primary"
       : quiet
@@ -148,7 +163,7 @@ export function ThreadRow({
       {content}
     </Button>
   );
-  if (menu === undefined)
+  if (menuItems === undefined)
     return selection === undefined ? (
       button
     ) : (
@@ -159,7 +174,7 @@ export function ThreadRow({
     );
   return (
     <>
-      <RowFrame label={title} menu={menu({ rename: start, remove: () => setDeleting(true) })} extra={tick}>
+      <RowFrame label={title} menu={menuItems} extra={tick}>
         {button}
       </RowFrame>
       {onDelete ? (

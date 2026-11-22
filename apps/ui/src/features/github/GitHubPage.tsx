@@ -314,12 +314,7 @@ function Notice({ title, body, children }: { title: string; body: string; childr
 export function GitHubPageEmpty() {
   return (
     <div className={`grid h-full place-items-center ${paneClass}`}>
-      <div className="flex flex-col items-center gap-3 text-fg-tertiary">
-        <span className="grid size-10 place-items-center rounded-xl border border-line-subtle bg-surface-raised shadow-raised">
-          <GitPullRequest size={18} strokeWidth={1.75} />
-        </span>
-        <p className="text-body">Pick a pull request or an issue</p>
-      </div>
+      <p className="text-body text-fg-tertiary">Pick a pull request or an issue</p>
     </div>
   );
 }

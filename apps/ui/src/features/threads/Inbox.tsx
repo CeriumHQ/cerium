@@ -9,7 +9,6 @@ import {
   CornerDownRight,
   FunnelX,
   GitFork,
-  Inbox as InboxIcon,
   ListFilter,
   Mail,
   MailOpen,
@@ -240,7 +239,6 @@ export function Inbox({
   const filteredEmpty =
     project !== undefined || status !== "all" ? (
       <EmptyList
-        icon={ListFilter}
         title="No threads match this filter."
         hint={`${[project?.name, activeStatus === "all" ? undefined : statusLabel].filter(Boolean).join(", ")} shows nothing in this list.`}
         action={
@@ -547,11 +545,7 @@ export function Inbox({
               (threads.length + archived.length + drafts.length > 0 ? (
                 "You're all caught up."
               ) : (
-                <EmptyList
-                  icon={InboxIcon}
-                  title="No threads yet"
-                  hint="Threads from every project gather here."
-                />
+                <EmptyList title="No threads yet" hint="Threads from every project gather here." />
               )))
         }
         bar={

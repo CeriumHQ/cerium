@@ -1,13 +1,17 @@
-import type { AdvisorSettings, ModelInfo, ReasoningEffort } from "@cerium/protocol";
+import {
+  OFFERED_PROVIDERS,
+  type AdvisorSettings,
+  type ModelInfo,
+  type ReasoningEffort,
+} from "@cerium/protocol";
 import { useAtomValue } from "@effect/atom-react";
 
 import { modelsAtom } from "../../backend/atoms.ts";
-import { ProviderLogo } from "../../components/ProviderLogo.tsx";
-import { SelectItem, SelectPopup, SelectRoot, SelectTrigger } from "../../components/ui/Select.tsx";
-import { effortLabel, modelKey } from "../composer/models.ts";
+import { ModelPicker } from "../composer/ModelPicker.tsx";
+import { modelKey } from "../composer/models.ts";
 import type { HarnessIndicator } from "../threads/Sidebar.tsx";
 import { advisorModelHint } from "./advisorModel.ts";
-import { ModelGroups, readyProviders } from "./ModelGroups.tsx";
+import { readyProviders } from "./ModelGroups.tsx";
 import { SettingsRow, SettingsSwitch } from "./parts.tsx";
 import { useSetting } from "./useSetting.ts";
 
@@ -41,7 +45,8 @@ export function AdvisorRows({
     ? models.find((candidate) => candidate.provider === picked.provider && candidate.id === picked.model)
     : undefined;
   const effort = model ? advisorEffort(model, picked?.effort) : undefined;
-  const idle = picked !== undefined && !readyProviders(harnesses).has(picked.provider);
+  const ready = readyProviders(harnesses);
+  const idle = picked !== undefined && !ready.has(picked.provider);
   const loading = useAtomValue(modelsAtom).waiting;
   const modelHint = advisorModelHint({ picked, listed: model !== undefined, idle, loading });
 
@@ -49,10 +54,6 @@ export function AdvisorRows({
     const start: Partial<AdvisorSettings> =
       on && picked === undefined && leadModel ? { model: advisorPick(leadModel) } : {};
     save({ ...advisor, ...start, enabled: on });
-  };
-  const chooseModel = (key: string) => {
-    const next = models.find((candidate) => modelKey(candidate) === key);
-    if (next) save({ enabled: true, model: advisorPick(next, picked?.effort) });
   };
 
   return (
@@ -76,37 +77,32 @@ export function AdvisorRows({
           hint={modelHint ? <span className="text-attention-text">{modelHint}</span> : undefined}
           className="pr-2.5"
           control={() => (
-            <span className="flex shrink-0 items-center">
-              <SelectRoot
-                value={model ? modelKey(model) : null}
-                onValueChange={(next) => next !== null && chooseModel(next)}
-              >
-                <SelectTrigger label="Advisor model">
-                  {picked ? <ProviderLogo provider={picked.provider} size={13} /> : null}
-                  <span>{model?.label ?? picked?.model ?? "Choose"}</span>
-                </SelectTrigger>
-                <SelectPopup>
-                  <ModelGroups models={models} harnesses={harnesses} />
-                </SelectPopup>
-              </SelectRoot>
-              {model && picked && effort ? (
-                <SelectRoot
-                  value={effort}
-                  onValueChange={(next) =>
-                    next !== null && save({ enabled: true, model: { ...picked, effort: next } })
-                  }
-                >
-                  <SelectTrigger label="Advisor reasoning effort">{effortLabel[effort]}</SelectTrigger>
-                  <SelectPopup>
-                    {model.efforts.map((level) => (
-                      <SelectItem key={level} value={level}>
-                        {effortLabel[level]}
-                      </SelectItem>
-                    ))}
-                  </SelectPopup>
-                </SelectRoot>
-              ) : null}
-            </span>
+            <ModelPicker
+              variant="select"
+              side="bottom"
+              align="end"
+              ariaLabel="Advisor model"
+              placeholder="Choose"
+              models={models}
+              providers={OFFERED_PROVIDERS}
+              available={ready}
+              shown={
+                picked
+                  ? {
+                      provider: picked.provider,
+                      label: model?.label ?? picked.model,
+                      ...(model ? { key: modelKey(model) } : {}),
+                    }
+                  : undefined
+              }
+              effort={{
+                levels: model?.efforts ?? [],
+                value: effort ?? "high",
+                onPick: (next) => picked && save({ enabled: true, model: { ...picked, effort: next } }),
+              }}
+              effortShown={effort}
+              onPick={(next) => save({ enabled: true, model: advisorPick(next, picked?.effort) })}
+            />
           )}
         />
       ) : null}
