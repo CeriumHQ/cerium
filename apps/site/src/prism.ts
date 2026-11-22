@@ -169,6 +169,9 @@ const beamMaterial = () =>
     transparent: false,
   });
 
+/** The height the top bar takes, in pixels, with the air under it. */
+const BAR = 76;
+
 /** A plane whose left edge sits at the origin, so it grows from there. */
 const strip = (length: number, width: number) => {
   const geometry = new PlaneGeometry(length, width);
@@ -176,7 +179,12 @@ const strip = (length: number, width: number) => {
   return geometry;
 };
 
-export const mountPrism = (canvas: HTMLCanvasElement, bands: ReadonlyArray<Band>): Prism | undefined => {
+/** `copy` is the headline and what follows it, which the scene stays clear of where it sits above them. */
+export const mountPrism = (
+  canvas: HTMLCanvasElement,
+  bands: ReadonlyArray<Band>,
+  copy: HTMLElement,
+): Prism | undefined => {
   let renderer: WebGLRenderer;
   try {
     renderer = new WebGLRenderer({
@@ -315,8 +323,12 @@ export const mountPrism = (canvas: HTMLCanvasElement, bands: ReadonlyArray<Band>
     beams.instanceMatrix.needsUpdate = true;
     beams.computeBoundingSphere();
     const x = narrow ? -0.9 : Math.min(1.5, camera.aspect * 0.8);
-    const y = narrow ? 1.25 : 1.34;
-    const scale = narrow ? 0.78 : 0.8;
+    // On a narrow screen the mark and its fan sit in the middle of what's left between the top bar
+    // and the copy, however tall the copy runs, and shrink when that is less than the labels need.
+    const tall = 2 * camera.position.z * Math.tan((camera.fov * Math.PI) / 360);
+    const room = copy.offsetTop - BAR;
+    const y = narrow ? (0.5 - (BAR + room / 2) / height) * tall : 1.34;
+    const scale = narrow ? 0.78 * Math.min(1, Math.max(0.6, room / 300)) : 0.8;
     pivot.position.set(x, y, 0);
     pivot.scale.setScalar(scale);
     rig.position.set(x, y, 0);
@@ -398,13 +410,18 @@ export const mountPrism = (canvas: HTMLCanvasElement, bands: ReadonlyArray<Band>
     { threshold: 0.001 },
   ).observe(canvas);
   document.addEventListener("visibilitychange", requestDraw);
-  new ResizeObserver(() => {
+  let clear = copy.offsetTop;
+  const resized = new ResizeObserver(() => {
     const width = canvas.clientWidth;
     const height = canvas.clientHeight;
-    if (width === sized.width && height === sized.height) return;
+    // The copy grows as its fonts arrive, which moves its top without resizing the canvas.
+    if (width === sized.width && height === sized.height && copy.offsetTop === clear) return;
+    clear = copy.offsetTop;
     place(width, height);
     requestDraw();
-  }).observe(canvas);
+  });
+  resized.observe(canvas);
+  resized.observe(copy);
 
   place(canvas.clientWidth, canvas.clientHeight);
   const play = () => {

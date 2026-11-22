@@ -121,6 +121,7 @@ const startScene = async () => {
   prism = mountPrism(
     canvas,
     labels.map((label) => ({ label, color: getComputedStyle(label).getPropertyValue("--band").trim() })),
+    hero.querySelector<HTMLElement>(".hero-copy")!,
   );
   if (prism === undefined) {
     hero.toggleAttribute("data-no-webgl", true);

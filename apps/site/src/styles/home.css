@@ -198,8 +198,12 @@
   .hero-actions {
     justify-content: start;
   }
+  /* The copy stays short here, so the mark and its nine labels have the room above it. */
+  .hero-foot .lede {
+    max-width: none;
+  }
   .hero-fact {
-    text-align: left;
+    display: none;
   }
   .bands li {
     font-size: 0.75rem;
