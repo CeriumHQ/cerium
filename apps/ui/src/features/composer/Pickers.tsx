@@ -98,10 +98,14 @@ function TuneSection({
   readonly children: ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-1.5 px-2 pt-2.5 pb-2 max-md:px-2.5">
-      <span className="px-1.5 text-caption font-medium text-fg-tertiary select-none">{label}</span>
+    <div className="flex flex-col gap-1.5 px-2 pt-2.5 pb-2 max-md:px-2.5 max-md:pt-2">
+      {/* A phone's room goes to the list, so the trade sits on the name's line rather than its own. */}
+      <span className="flex min-w-0 items-baseline gap-2 px-1.5 text-caption text-fg-tertiary select-none">
+        <span className="shrink-0 font-medium">{label}</span>
+        <span className="min-w-0 truncate md:hidden">{hint}</span>
+      </span>
       {children}
-      <span className="truncate px-1.5 text-caption text-fg-tertiary select-none">{hint}</span>
+      <span className="truncate px-1.5 text-caption text-fg-tertiary select-none max-md:hidden">{hint}</span>
     </div>
   );
 }

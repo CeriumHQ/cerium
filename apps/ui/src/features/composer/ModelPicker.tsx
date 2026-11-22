@@ -482,17 +482,20 @@ function MenuPopup({
         : "No models listed yet.";
   const tunes = offersChoice(effort) || offersSpeed(speed);
   // With a rail or a side panel the menu keeps one height, so switching tab or model doesn't move it.
+  // On a phone that height is what fits above the message box, under the status bar: the rail and the
+  // list scroll inside it rather than stretching it off the top of the screen, as the keyboard would.
   const fixed = browse.railed || tunes;
   return (
     <Combobox.Portal>
       <Combobox.Positioner side={side} align={align} sideOffset={6} className="z-50 outline-none">
         <Combobox.Popup
           aria-label="Models"
-          className={`flex max-w-(--available-width) origin-(--transform-origin) overflow-hidden rounded-xl border border-line-subtle bg-surface-overlay text-fg-primary shadow-overlay backdrop-blur-2xl transition-[opacity,scale] duration-150 ease-out-soft outline-none data-ending-style:scale-[0.97] data-ending-style:opacity-0 data-starting-style:scale-[0.97] data-starting-style:opacity-0 ${tunes ? "w-[39rem]" : "w-[27rem]"} ${fixed ? "md:h-[min(24.5rem,calc(var(--available-height)-0.5rem))]" : ""}`}
+          className={`flex max-w-(--available-width) origin-(--transform-origin) overflow-hidden rounded-xl border border-line-subtle bg-surface-overlay text-fg-primary shadow-overlay backdrop-blur-2xl transition-[opacity,scale] duration-150 ease-out-soft outline-none data-ending-style:scale-[0.97] data-ending-style:opacity-0 data-starting-style:scale-[0.97] data-starting-style:opacity-0 ${tunes ? "w-[39rem]" : "w-[27rem]"} ${fixed ? "h-[min(30rem,calc(var(--available-height)-env(safe-area-inset-top)-0.5rem))] md:h-[min(24.5rem,calc(var(--available-height)-0.5rem))]" : "max-md:max-h-[calc(var(--available-height)-env(safe-area-inset-top)-0.5rem)]"}`}
         >
           {browse.railed ? <Rail tabs={tabs} available={available} browse={browse} /> : null}
-          <div className="flex min-w-0 flex-1 max-md:flex-col">
-            <div className="flex min-w-0 flex-1 flex-col">
+          <div className="flex min-w-0 flex-1 max-md:min-h-0 max-md:flex-col">
+            {/* On a phone the list keeps room for a few rows; the panel under it scrolls first. */}
+            <div className="flex min-w-0 flex-1 flex-col max-md:min-h-48">
               <div className="mx-2.5 flex h-10 shrink-0 items-center gap-2 border-b border-line-subtle transition-colors focus-within:border-accent">
                 <Search size={13} strokeWidth={1.75} className="shrink-0 text-fg-tertiary" />
                 <Combobox.Input
@@ -503,11 +506,7 @@ function MenuPopup({
                 />
               </div>
               <ScrollArea
-                className={
-                  fixed
-                    ? "h-[min(15rem,calc(var(--available-height)-14rem))] md:h-auto md:min-h-0 md:flex-1"
-                    : ""
-                }
+                className={fixed ? "flex-1" : ""}
                 viewportClassName={`scroll-py-1 ${fixed ? "" : "max-h-[min(17rem,calc(var(--available-height)-4rem))]"}`}
               >
                 <Combobox.Empty>
@@ -576,7 +575,7 @@ function MenuPopup({
             </div>
             {/* How hard and how fast the model picked runs: beside the list, or under it on a phone. */}
             {tunes ? (
-              <div className="flex w-52 shrink-0 flex-col overflow-y-auto overscroll-contain border-l border-line-subtle bg-surface-sunken/40 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden max-md:w-auto max-md:border-t max-md:border-l-0">
+              <div className="flex w-52 shrink-0 flex-col overflow-y-auto overscroll-contain border-l border-line-subtle bg-surface-sunken/40 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden max-md:w-auto max-md:shrink max-md:border-t max-md:border-l-0">
                 {offersChoice(effort) ? (
                   <EffortLadder
                     choice={{
