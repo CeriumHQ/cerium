@@ -36,7 +36,7 @@ export function PreviewDock({ preview, children }: { preview: ReactNode; childre
   const content = useRetained(preview, shows);
   return (
     <div ref={row} className="relative flex h-full overflow-clip">
-      <div inert={shows && layout.covers} className="h-full min-w-0 flex-1">
+      <div inert={shows && layout.covers} className="h-full min-w-0 flex-1 [&[inert]]:opacity-0">
         {children}
       </div>
       {shows && !layout.covers ? (
