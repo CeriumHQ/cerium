@@ -240,7 +240,7 @@ function Ring({ ring }: { ring: UsageRing }) {
 
 function RingTip({ ring, now }: { ring: UsageRing; now: number }) {
   return (
-    <span className="flex flex-col gap-1.5 py-0.5 whitespace-nowrap">
+    <span className="flex min-w-0 flex-col gap-1.5 py-0.5 wrap-anywhere">
       <span className="font-medium">
         {harnessName[ring.provider]}
         {ring.plan ? <span className="font-normal text-fg-tertiary"> · {planName(ring.plan)}</span> : null}
@@ -249,13 +249,15 @@ function RingTip({ ring, now }: { ring: UsageRing; now: number }) {
         const drawn = meter.label === ring.label;
         return (
           <span key={meter.label} className="flex flex-col">
-            <span className="flex justify-between gap-6 tabular-nums">
-              <span className="flex items-center gap-1.5 text-fg-secondary">
+            <span className="flex justify-between gap-3 tabular-nums">
+              <span className="flex min-w-0 items-start gap-1.5 text-fg-secondary">
                 {/* The ring's colour on the limit it draws; the others keep the gap. */}
-                <span className={`size-2 rounded-full ${drawn ? arcTone(ring.left).fill : ""}`} />
-                {meter.label}
+                <span
+                  className={`mt-[0.35em] size-2 shrink-0 rounded-full ${drawn ? arcTone(ring.left).fill : ""}`}
+                />
+                <span>{meter.label}</span>
               </span>
-              {leftLabel(meter)}
+              <span className="shrink-0 whitespace-nowrap">{leftLabel(meter)}</span>
             </span>
             {meter.resetsAt === undefined ? null : (
               <span className="pl-3.5 text-caption text-fg-tertiary">
