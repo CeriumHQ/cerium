@@ -34,40 +34,16 @@ export const palettes = [
       "Cream stock and espresso, written on in blue-black ink. The most solid glass, and muted code.",
   },
   {
-    id: "dusk",
-    label: "Dusk",
-    kind: "Soft and lifted",
-    description: "The sky after sunset: softer, lighter blue-grey glass, a peach accent and pastel code.",
-  },
-  {
     id: "concrete",
     label: "Concrete",
     kind: "Grey and safety yellow",
     description: "Cool grey and charcoal with no colour of their own, and one saturated safety yellow.",
   },
   {
-    id: "blush",
-    label: "Blush",
-    kind: "Rose quartz",
-    description: "Lifted mulberry glass and a powder-rose accent, with pastel code.",
-  },
-  {
-    id: "ember",
-    label: "Ember",
-    kind: "Smoke and flame",
-    description: "Smoky brown-black glass and a flame-orange accent, its code warm against one cool blue.",
-  },
-  {
     id: "cherry",
     label: "Cherry",
     kind: "Butter and cherry red",
     description: "Butter and olive-brown, soft as an old diner, and one cherry red.",
-  },
-  {
-    id: "moss",
-    label: "Moss",
-    kind: "Forest floor",
-    description: "Deep green glass and a fern accent, with straw and rust in the code.",
   },
   {
     id: "phosphor",

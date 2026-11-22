@@ -47,16 +47,6 @@
   --terminal-bright-white: oklch(0.58 var(--tint-c) var(--tint-h));
 }
 
-/* The soft themes' terminals in pastel, a step lighter and quieter, as their code is. */
-:is([data-palette="dusk"], [data-palette="blush"])[data-theme="dark"] {
-  --terminal-red: oklch(0.76 0.12 20);
-  --terminal-green: oklch(0.82 0.11 155);
-  --terminal-yellow: oklch(0.87 0.1 90);
-  --terminal-blue: oklch(0.78 0.1 250);
-  --terminal-magenta: oklch(0.79 0.11 330);
-  --terminal-cyan: oklch(0.84 0.08 205);
-}
-
 /* Neon's at full chroma. */
 [data-palette="neon"][data-theme="dark"] {
   --terminal-red: oklch(0.7 0.22 20);
