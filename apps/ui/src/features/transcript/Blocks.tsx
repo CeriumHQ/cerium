@@ -170,7 +170,8 @@ export function UserMessage({
           <div
             ref={bubble}
             data-find={block.id}
-            className="max-w-full rounded-2xl rounded-br-md border border-line-subtle bg-surface-raised px-4 py-2.5 shadow-raised select-text"
+            data-statement
+            className="max-w-full rounded-2xl rounded-br-md border border-line-subtle bg-surface-statement px-4 py-2.5 shadow-raised select-text"
           >
             <FoldedText text={block.text}>
               <Markdown text={block.text} streaming={false} user={{ mentions: block.mentions }} />

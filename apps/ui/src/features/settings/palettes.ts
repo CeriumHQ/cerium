@@ -40,6 +40,12 @@ export const palettes = [
     description: "The sky after sunset: softer, lighter blue-grey glass, a peach accent and pastel code.",
   },
   {
+    id: "concrete",
+    label: "Concrete",
+    kind: "Grey and safety yellow",
+    description: "Cool grey and charcoal with no colour of their own, and one saturated safety yellow.",
+  },
+  {
     id: "blush",
     label: "Blush",
     kind: "Rose quartz",
@@ -50,6 +56,12 @@ export const palettes = [
     label: "Ember",
     kind: "Smoke and flame",
     description: "Smoky brown-black glass and a flame-orange accent, its code warm against one cool blue.",
+  },
+  {
+    id: "cherry",
+    label: "Cherry",
+    kind: "Butter and cherry red",
+    description: "Butter and olive-brown, soft as an old diner, and one cherry red.",
   },
   {
     id: "moss",
@@ -68,6 +80,12 @@ export const palettes = [
     label: "Lagoon",
     kind: "Teal and coral",
     description: "Shallow water over sand: teal glass, a coral accent and sand in the code.",
+  },
+  {
+    id: "flamingo",
+    label: "Flamingo",
+    kind: "Mist and flamingo pink",
+    description: "Mist and deep teal, cool and still, and one flamingo pink.",
   },
   {
     id: "midnight",

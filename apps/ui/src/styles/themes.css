@@ -9,8 +9,32 @@
  * dark text) or deep (and takes white), and the character of its code: muted, pastel or vivid. Any
  * status hue its accent would be mistaken for turns away from it.
  *
- * Order: the neutrals (Ink, Paper, Dusk), then the tinted ones round the wheel, red to violet.
+ * Order: the neutrals (Ink, Paper, Dusk, Concrete), then the tinted ones round the wheel, red to violet.
  */
+
+/*
+ * Concrete, Cherry and Flamingo keep their glass and type to two quiet colours of one family and
+ * spend all the colour on one saturated accent. It fills what's pressed, tints what's selected
+ * (`--surface-selected`), and paints the statement surfaces solid (the user's own messages and the
+ * New thread button), where everything inside takes the accent's own ink.
+ */
+:is([data-palette="concrete"], [data-palette="cherry"], [data-palette="flamingo"])[data-theme] {
+  --surface-statement: var(--accent);
+}
+
+:is([data-palette="concrete"], [data-palette="cherry"], [data-palette="flamingo"]) [data-statement] {
+  --fg-primary: var(--accent-fg);
+  --fg-secondary: color-mix(in oklab, var(--accent-fg) 80%, var(--accent));
+  --fg-tertiary: color-mix(in oklab, var(--accent-fg) 62%, var(--accent));
+  --accent-text: var(--accent-fg);
+  --line-subtle: color-mix(in oklab, var(--accent-fg) 16%, transparent);
+  --line-strong: color-mix(in oklab, var(--accent-fg) 26%, transparent);
+  --surface-raised: color-mix(in oklab, var(--accent-fg) 10%, transparent);
+  --surface-sunken: color-mix(in oklab, var(--accent-fg) 10%, transparent);
+  --surface-hover: var(--accent-strong);
+  --surface-active: var(--accent-strong);
+  --selection: color-mix(in oklab, var(--accent-fg) 24%, transparent);
+}
 
 /* Cerium's dark glass sits a step deeper than the ramp's; the rest of it is the base in tokens.css. */
 [data-palette="cerium"][data-theme="dark"] {
@@ -193,6 +217,71 @@
   --syntax-parameter: oklch(0.49 0.07 15);
 }
 
+/*
+ * Concrete: cool grey and charcoal, nearly without colour, and one saturated safety yellow. The yellow
+ * fills what's selected as well as what's pressed, like a painted line on a concrete floor, and
+ * takes charcoal text in both modes. Attention turns from it to orange.
+ */
+[data-palette="concrete"] {
+  --tint-h: 250;
+  --tint-c: 0.006;
+  --glass-c: 0.006;
+}
+
+[data-palette="concrete"][data-theme="dark"] {
+  --lift: -0.04;
+  --acrylic-alpha: 0.78;
+
+  --fg-primary: oklch(0.94 0.004 250);
+  --fg-secondary: oklch(0.79 0.006 250);
+  --fg-tertiary: oklch(0.66 0.008 250);
+
+  --accent: oklch(0.88 0.18 95);
+  --accent-strong: oklch(0.92 0.17 97);
+  --accent-fg: oklch(0.2 0.01 250);
+  --accent-text: var(--accent);
+  --accent-soft: color-mix(in oklab, var(--accent) 16%, transparent);
+  --selection: color-mix(in oklab, var(--accent) 30%, transparent);
+  /* Yellow thinned over near-black goes khaki; more of it, over a little light, stays yellow. */
+  --surface-selected: color-mix(in oklab, var(--accent) 26%, oklch(1 0 0 / 0.07));
+  --glass-light: color-mix(in oklab, var(--accent) 9%, transparent);
+
+  --status-attention: oklch(0.76 0.16 52);
+
+  --syntax-keyword: oklch(0.88 0.17 95);
+  --syntax-string: oklch(0.82 0.04 200);
+  --syntax-constant: oklch(0.78 0.09 45);
+  --syntax-function: oklch(0.93 0.004 250);
+  --syntax-parameter: oklch(0.76 0.01 250);
+}
+
+[data-palette="concrete"][data-theme="light"] {
+  --lift: 0.02;
+  --acrylic-alpha: 0.84;
+
+  --fg-primary: oklch(0.21 0.008 250);
+  --fg-secondary: oklch(0.38 0.01 250);
+  --fg-tertiary: oklch(0.51 0.01 250);
+
+  --accent: oklch(0.86 0.18 95);
+  --accent-strong: oklch(0.81 0.18 90);
+  --accent-fg: oklch(0.2 0.01 250);
+  --accent-text: oklch(0.52 0.12 85);
+  --accent-soft: color-mix(in oklab, var(--accent) 32%, transparent);
+  --selection: color-mix(in oklab, var(--accent) 45%, transparent);
+  --focus-ring: color-mix(in oklab, var(--accent-text) 65%, transparent);
+  --surface-selected: color-mix(in oklab, var(--accent) 34%, transparent);
+
+  --status-attention: oklch(0.66 0.17 50);
+  --status-attention-text: oklch(0.53 0.15 48);
+
+  --syntax-keyword: oklch(0.52 0.12 85);
+  --syntax-string: oklch(0.47 0.06 200);
+  --syntax-constant: oklch(0.5 0.11 40);
+  --syntax-function: oklch(0.28 0.008 250);
+  --syntax-parameter: oklch(0.47 0.015 250);
+}
+
 /* Blush: rose quartz. Soft, lifted mulberry glass and a powder-rose accent, pastel code. */
 [data-palette="blush"] {
   --tint-h: 352;
@@ -295,6 +384,73 @@
   --syntax-constant: oklch(0.5 0.12 60);
   --syntax-function: oklch(0.47 0.1 230);
   --syntax-parameter: oklch(0.5 0.09 20);
+}
+
+/*
+ * Cherry: butter and olive-brown, soft as an old diner, and one cherry red that carries white. Error
+ * turns from the cherry to magenta.
+ */
+[data-palette="cherry"] {
+  --tint-h: 90;
+}
+
+[data-palette="cherry"][data-theme="dark"] {
+  --tint-h: 85;
+  --tint-c: 0.012;
+  --glass-c: 0.02;
+  --lift: -0.03;
+  --acrylic-alpha: 0.78;
+
+  --fg-primary: oklch(0.94 0.035 95);
+  --fg-secondary: oklch(0.8 0.035 92);
+  --fg-tertiary: oklch(0.67 0.03 90);
+  --fg-disabled: oklch(0.47 0.02 85);
+
+  --accent: oklch(0.6 0.21 22);
+  --accent-strong: oklch(0.65 0.2 24);
+  --accent-fg: oklch(0.99 0.01 30);
+  --accent-text: oklch(0.74 0.15 24);
+  --accent-soft: color-mix(in oklab, var(--accent) 22%, transparent);
+  --selection: color-mix(in oklab, var(--accent) 40%, transparent);
+  --focus-ring: color-mix(in oklab, var(--accent-text) 80%, transparent);
+  --surface-selected: color-mix(in oklab, var(--accent) 24%, oklch(1 0 0 / 0.02));
+  --glass-light: color-mix(in oklab, var(--accent) 10%, transparent);
+
+  --status-error: oklch(0.7 0.19 355);
+
+  --syntax-keyword: oklch(0.74 0.16 24);
+  --syntax-string: oklch(0.86 0.07 100);
+  --syntax-constant: oklch(0.8 0.08 70);
+  --syntax-function: oklch(0.93 0.03 95);
+  --syntax-parameter: oklch(0.76 0.03 90);
+}
+
+[data-palette="cherry"][data-theme="light"] {
+  --tint-h: 95;
+  --tint-c: 0.02;
+  --glass-c: 0.035;
+  --lift: 0.01;
+  --acrylic-alpha: 0.84;
+
+  --fg-primary: oklch(0.26 0.035 85);
+  --fg-secondary: oklch(0.41 0.04 85);
+  --fg-tertiary: oklch(0.53 0.035 85);
+  --fg-disabled: oklch(0.7 0.02 90);
+
+  --accent: oklch(0.55 0.22 22);
+  --accent-strong: oklch(0.49 0.21 22);
+  --accent-fg: oklch(0.99 0.01 30);
+  --accent-text: oklch(0.5 0.2 22);
+  --surface-selected: color-mix(in oklab, var(--accent) 14%, transparent);
+
+  --status-error: oklch(0.54 0.21 355);
+  --status-error-text: oklch(0.5 0.2 355);
+
+  --syntax-keyword: oklch(0.5 0.2 22);
+  --syntax-string: oklch(0.47 0.08 120);
+  --syntax-constant: oklch(0.5 0.1 70);
+  --syntax-function: oklch(0.3 0.035 85);
+  --syntax-parameter: oklch(0.47 0.04 85);
 }
 
 /* Moss: a forest floor. Deep green glass, a fern accent, straw and rust in the code. */
@@ -460,6 +616,77 @@
   --syntax-constant: oklch(0.5 0.12 55);
   --syntax-function: oklch(0.47 0.1 205);
   --syntax-parameter: oklch(0.48 0.07 230);
+}
+
+/*
+ * Flamingo: mist and deep teal, cool and still, and one flamingo pink that stays light and takes the
+ * teal for its text. Error turns from the pink to orange, and attention to gold.
+ */
+[data-palette="flamingo"] {
+  --tint-h: 222;
+}
+
+[data-palette="flamingo"][data-theme="dark"] {
+  --tint-c: 0.014;
+  --glass-c: 0.025;
+  --lift: -0.03;
+  --acrylic-alpha: 0.78;
+
+  --fg-primary: oklch(0.94 0.01 220);
+  --fg-secondary: oklch(0.8 0.016 220);
+  --fg-tertiary: oklch(0.67 0.02 222);
+  --fg-disabled: oklch(0.47 0.02 225);
+
+  --accent: oklch(0.76 0.16 5);
+  --accent-strong: oklch(0.82 0.14 5);
+  --accent-fg: oklch(0.22 0.05 225);
+  --accent-text: var(--accent);
+  --accent-soft: color-mix(in oklab, var(--accent) 16%, transparent);
+  --selection: color-mix(in oklab, var(--accent) 30%, transparent);
+  --surface-selected: color-mix(in oklab, var(--accent) 20%, oklch(1 0 0 / 0.02));
+  --glass-light: color-mix(in oklab, var(--accent) 10%, transparent);
+
+  --status-error: oklch(0.72 0.17 40);
+  --status-attention: oklch(0.86 0.14 92);
+
+  --syntax-keyword: oklch(0.76 0.16 5);
+  --syntax-string: oklch(0.82 0.05 190);
+  --syntax-constant: oklch(0.8 0.08 65);
+  --syntax-function: oklch(0.93 0.01 220);
+  --syntax-parameter: oklch(0.76 0.02 225);
+}
+
+[data-palette="flamingo"][data-theme="light"] {
+  --tint-h: 220;
+  --tint-c: 0.016;
+  --glass-c: 0.016;
+  --lift: 0.01;
+  --acrylic-alpha: 0.84;
+
+  --fg-primary: oklch(0.27 0.05 225);
+  --fg-secondary: oklch(0.42 0.05 225);
+  --fg-tertiary: oklch(0.53 0.04 222);
+  --fg-disabled: oklch(0.7 0.02 220);
+
+  --accent: oklch(0.74 0.17 5);
+  --accent-strong: oklch(0.69 0.18 5);
+  --accent-fg: oklch(0.24 0.05 225);
+  --accent-text: oklch(0.55 0.2 5);
+  --accent-soft: color-mix(in oklab, var(--accent) 25%, transparent);
+  --selection: color-mix(in oklab, var(--accent) 35%, transparent);
+  --focus-ring: color-mix(in oklab, var(--accent-text) 60%, transparent);
+  --surface-selected: color-mix(in oklab, var(--accent) 22%, transparent);
+
+  --status-error: oklch(0.58 0.19 40);
+  --status-error-text: oklch(0.52 0.17 40);
+  --status-attention: oklch(0.72 0.15 88);
+  --status-attention-text: oklch(0.52 0.12 88);
+
+  --syntax-keyword: oklch(0.55 0.2 5);
+  --syntax-string: oklch(0.47 0.07 190);
+  --syntax-constant: oklch(0.5 0.1 60);
+  --syntax-function: oklch(0.3 0.05 225);
+  --syntax-parameter: oklch(0.47 0.04 225);
 }
 
 /* Midnight: deep, saturated navy glass with an electric cyan accent, gold and coral in the code. */

@@ -10,6 +10,7 @@
   --color-surface-pane: var(--surface-pane);
   --color-surface-film: var(--surface-film);
   --color-surface-raised: var(--surface-raised);
+  --color-surface-statement: var(--surface-statement);
   --color-surface-overlay: var(--surface-overlay);
   --color-surface-hover: var(--surface-hover);
   --color-surface-active: var(--surface-active);

@@ -57,6 +57,11 @@
   --surface-film: oklch(0.97 var(--glass-c) var(--tint-h) / 0.08);
   /* A light film like the pane's and the message box's: a dark layer here would hide the glass under buttons and chips. */
   --surface-raised: oklch(0.97 var(--glass-c) var(--tint-h) / 0.1);
+  /*
+   * The few surfaces a theme may paint in its accent, as a statement: the user's own messages and the
+   * New thread button. Raised like any other surface unless the theme says otherwise (themes.css).
+   */
+  --surface-statement: var(--surface-raised);
   --surface-overlay: oklch(calc(0.22 + var(--lift)) var(--glass-c) var(--tint-h) / 0.72);
   --surface-hover: oklch(1 0 0 / 0.05);
   --surface-active: oklch(1 0 0 / 0.085);
@@ -177,6 +182,7 @@
   --surface-pane: oklch(0.995 calc(var(--glass-c) * 0.3) var(--tint-h) / 0.3);
   --surface-film: oklch(0.995 calc(var(--glass-c) * 0.3) var(--tint-h) / 0.42);
   --surface-raised: oklch(0.995 calc(var(--glass-c) * 0.3) var(--tint-h) / 0.55);
+  --surface-statement: var(--surface-raised);
   --surface-overlay: oklch(0.995 calc(var(--glass-c) * 0.3) var(--tint-h) / 0.78);
   --surface-hover: oklch(0 0 0 / 0.04);
   --surface-active: oklch(0 0 0 / 0.07);
