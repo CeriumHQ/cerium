@@ -1,766 +1,516 @@
-/* The home page below the hero: the proof, the roster, three moves, the glass picker and the close. */
+/* The home page below the hero: the thread, the harnesses, three moves, the themes, what stays local, and the close. */
 
-/* ── The app window, as the site frames it: glass edge, deep shadow, the room's light on its rim. ── */
-
-.window {
-  margin: 0;
-  border-radius: clamp(10px, 1.2vw, 18px);
-  overflow: hidden;
-  background: var(--void-deep);
-  box-shadow:
-    0 0 0 1px var(--line-2),
-    0 1px 0 1px oklch(1 0 0 / 0.08) inset,
-    0 50px 120px -40px oklch(0 0 0 / 0.9),
-    0 30px 60px -30px oklch(0 0 0 / 0.6);
+/* A section whose words hold their place on the left while what they describe runs down the right. */
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  gap: 2.5rem clamp(2rem, 6vw, 6rem);
+  align-items: start;
 }
 
-.window :is(img, video) {
+.split-copy {
+  position: sticky;
+  top: 7rem;
+  display: grid;
+  gap: 1.125rem;
+}
+
+.split-copy .title {
+  margin-bottom: 0.375rem;
+}
+
+@media (max-width: 860px) {
+  .split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .split-copy {
+    position: static;
+  }
+}
+
+/* ── Pictures of the app: its window, a card out of a thread, a side panel. ── */
+
+.shot {
+  margin: 0;
+  min-width: 0;
+}
+
+.shot img {
   width: 100%;
   height: auto;
+  background: var(--window);
+  transition: background-color 700ms var(--ease-out);
 }
 
-/* ── Proof ── */
-
-.proof {
-  position: relative;
-  padding: clamp(80px, 14vh, 160px) var(--gutter) 0;
+.shot-window img {
+  border-radius: clamp(0.5rem, 1vw, 0.75rem);
+  box-shadow:
+    0 0 0 1px var(--line-strong),
+    0 2px 0.375rem oklch(0 0 0 / 0.3),
+    0 3.125rem 6.25rem -2.5rem oklch(0 0 0 / 0.85);
 }
 
-.proof-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: end;
-  justify-content: space-between;
-  gap: 20px 48px;
-  margin-bottom: clamp(40px, 7vh, 80px);
+/* The card's own corners, so the thread behind them doesn't show. */
+.shot-card img {
+  border-radius: 0.5rem;
+  box-shadow: var(--shadow-raised);
 }
 
-.proof-title {
-  font-size: clamp(2.75rem, 1rem + 6vw, 7rem);
+.shot-panel {
+  justify-self: center;
+  width: min(100%, 27.5rem);
 }
 
-.proof-stage {
-  position: relative;
-  perspective: 1600px;
-  perspective-origin: 50% 0%;
+.shot-panel img {
+  border-radius: 0.75rem;
+  box-shadow:
+    0 0 0 1px var(--line-subtle),
+    var(--shadow-raised);
 }
 
-.proof-stage .window {
-  transform-origin: 50% 100%;
-  will-change: transform;
+@media (max-width: 700px) {
+  .shot-window {
+    width: min(100%, 25.75rem);
+    margin-inline: auto;
+  }
+  .shot-window img {
+    border-radius: 1.375rem;
+  }
 }
 
-/* The bench light the window sits in. */
-.proof-stage::before {
-  content: "";
-  position: absolute;
-  inset: 30% -10% -10%;
-  z-index: -1;
-  background: radial-gradient(50% 50% at 50% 50%, oklch(from var(--fg) l c h / 0.08), transparent 70%);
-  filter: blur(40px);
-}
-
-/* ── Roster ── */
+/* ── Harnesses ── */
 
 .roster {
-  --size: clamp(2.25rem, 0.6rem + 6vw, 7rem);
-  padding: clamp(120px, 22vh, 240px) var(--gutter) clamp(100px, 16vh, 180px);
-  display: grid;
-  gap: clamp(6px, 1.2vh, 14px);
+  width: 100%;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  border-spacing: 0;
+  overflow: hidden;
+  transition: background-color 700ms var(--ease-out);
 }
 
-.roster-line {
-  --stretch: 62%;
-  --lit: 0;
-  position: relative;
+.roster th,
+.roster td {
+  padding: 0.375rem 1.125rem;
+  height: 3.25rem;
+  text-align: left;
+}
+
+.roster th {
+  white-space: nowrap;
+}
+
+.roster thead th {
+  height: 2.5rem;
+  border-bottom: 1px solid var(--line-subtle);
+  color: var(--fg-tertiary);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.roster tbody tr + tr > * {
+  border-top: 1px solid var(--line-subtle);
+}
+
+.roster tbody th {
   display: flex;
   align-items: center;
-  gap: 0.32em;
-  margin: 0;
-  font-family: var(--font-display);
-  font-weight: 330;
-  font-stretch: var(--stretch);
-  font-size: var(--size);
-  letter-spacing: -0.035em;
-  line-height: 1.04;
-  white-space: nowrap;
-  color: color-mix(in oklab, var(--fg) calc(28% + var(--lit) * 72%), transparent);
+  gap: 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 560;
 }
 
-.roster-line svg {
-  flex: none;
-  width: 0.42em;
-  height: 0.42em;
-  color: var(--band, var(--fg));
-  opacity: calc(0.25 + var(--lit) * 0.75);
-  filter: drop-shadow(0 0 calc(var(--lit) * 18px) var(--band, transparent));
+.roster td {
+  color: var(--fg-secondary);
 }
 
-/* The band's light runs under the line as it lights. */
-.roster-line::after {
-  content: "";
-  position: absolute;
-  left: 0.74em;
-  right: 0;
-  bottom: 0.05em;
-  height: 2px;
-  background: linear-gradient(to right, var(--band, var(--fg)), transparent 80%);
-  transform-origin: left;
-  scale: var(--lit) 1;
-  opacity: calc(var(--lit) * 0.9);
-  box-shadow: 0 0 18px var(--band, transparent);
+.roster tbody tr {
+  transition: background-color 150ms;
 }
 
-.roster-end {
-  margin-top: 0.3em;
+.roster tbody tr:hover {
+  background: var(--surface-hover);
 }
 
-.roster-end::after {
-  display: none;
-}
-
-.roster-note {
-  margin: clamp(28px, 5vh, 56px) 0 0 calc(var(--size) * 0.74);
-  max-width: 44ch;
-  color: var(--fg-3);
+@media (max-width: 560px) {
+  .roster th:nth-child(2),
+  .roster td:nth-child(2) {
+    display: none;
+  }
+  .roster th,
+  .roster td {
+    padding: 0.375rem 0.75rem;
+  }
 }
 
 /* ── Moves ── */
 
-.moves {
-  position: relative;
-  isolation: isolate;
-  display: grid;
-  gap: clamp(120px, 20vh, 220px);
-  padding: 0 var(--gutter) clamp(120px, 20vh, 220px);
-}
-
 .move {
-  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
-  gap: clamp(32px, 6vw, 96px);
+  gap: 1.75rem clamp(2rem, 6vw, 6rem);
   align-items: center;
 }
 
-/* A pool of bench light under each move's picture, in the colour of whoever is at work in it. */
-.move::before {
-  content: "";
-  position: absolute;
-  z-index: -1;
-  inset: -10% -4% -10% 40%;
-  background: radial-gradient(
-    45% 50% at 50% 50%,
-    color-mix(in oklab, var(--pool) 16%, transparent),
-    transparent 70%
-  );
-  filter: blur(50px);
-  pointer-events: none;
-}
-
-.move-review {
-  --pool: var(--sp-uranium);
-}
-
-.move-ci {
-  --pool: var(--accent);
-}
-
-.move-ci::before {
-  inset: -10% 40% -10% -4%;
-}
-
-.move-play {
-  --pool: var(--sp-cobalt);
-}
-
-.move-play::before {
-  inset: 20% 0 -10%;
+.move + .move {
+  margin-top: clamp(4rem, 9vh, 6.5rem);
 }
 
 .move-copy {
   display: grid;
-  gap: 24px;
-  align-content: center;
+  gap: 0.875rem;
 }
 
-.move-title {
-  font-size: clamp(2.25rem, 1rem + 3.4vw, 4.5rem);
-  font-stretch: 104%;
-  line-height: 0.96;
-}
-
-.move-ci {
-  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
-}
-
-.move-ci .move-copy {
-  order: 2;
-}
-
-.move-play {
-  grid-template-columns: 1fr;
-}
-
-.move-play .move-copy {
-  grid-template-columns: minmax(0, 6fr) minmax(0, 5fr);
-  align-items: end;
-  gap: 24px 64px;
-}
-
-/* The artifact, close up: a wide strip of the window, zoomed in on the agent's page. */
-.window-flat {
-  aspect-ratio: 2.1 / 1;
-}
-
-.window-flat video {
-  height: 100%;
-  object-fit: cover;
-  transform-origin: 57% 38%;
-  scale: var(--zoom, 1.5);
-}
-
-/* A review, drawn as the app draws one: the diff, and the other lab's note on its line. */
-.review {
-  position: relative;
-  border-radius: 20px;
-  background: var(--film);
-  box-shadow:
-    var(--rim),
-    0 0 0 1px var(--line) inset,
-    0 40px 90px -40px oklch(0 0 0 / 0.8);
-  backdrop-filter: blur(20px);
-  font-size: 0.875rem;
-  overflow: hidden;
-}
-
-.review-file {
-  display: flex;
-  justify-content: space-between;
-  padding: 14px 20px;
-  color: var(--fg-2);
-  border-bottom: 1px solid var(--line);
-  font-weight: 520;
-}
-
-.review-path {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.review-by {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 2px 9px 2px 7px;
-  border-radius: 999px;
-  background: var(--film-2);
-  color: var(--fg-2);
-  font-size: 0.8125rem;
-  font-weight: 500;
-}
-
-.review-by svg {
-  width: 12px;
-  height: 12px;
-  color: var(--sp-cranberry);
-}
-
-.review-stat b {
-  color: var(--sp-uranium);
-  font-weight: 560;
-}
-
-.review-stat i {
-  color: var(--sp-cranberry);
-  font-style: normal;
-}
-
-.review-code {
+.move-copy p {
   margin: 0;
-  padding: 16px 0;
-  font-family: var(--font-mono);
-  font-size: clamp(0.6875rem, 0.55rem + 0.3vw, 0.8125rem);
-  line-height: 1.9;
-  color: var(--fg-2);
-  overflow: hidden;
+  max-width: 40ch;
+  color: var(--fg-secondary);
+  text-wrap: pretty;
 }
 
-.review-code .ln {
-  display: inline-block;
-  width: 3.5em;
-  padding-right: 1em;
-  text-align: right;
-  color: var(--fg-3);
-  opacity: 0.6;
-}
-
-.review-code .add {
-  color: var(--fg);
-}
-
-.review-code .ln.add {
-  color: var(--sp-uranium);
-  opacity: 1;
-}
-
-.review-code .k {
-  color: oklch(0.79 0.1 305);
-}
-
-.review-code .s {
-  color: oklch(0.79 0.09 150);
-}
-
-.review-note {
-  margin: 0 20px 20px 3.5em;
-  padding: 16px 18px;
-  border-radius: 14px;
-  background: var(--film-2);
-  box-shadow:
-    var(--rim),
-    0 0 0 1px color-mix(in oklab, var(--sp-uranium) 25%, transparent) inset,
-    0 0 50px -20px color-mix(in oklab, var(--sp-uranium) 60%, transparent);
+/* What else is in the box, as a list: no picture would say more than the sentence does. */
+.rest {
   display: grid;
-  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 2.25rem clamp(1.5rem, 4vw, 3.5rem);
+  margin: clamp(4.5rem, 10vh, 7.5rem) 0 0;
 }
 
-.review-who {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--fg-2);
+.rest div {
+  padding-top: 1.125rem;
+  border-top: 1px solid var(--line-strong);
 }
 
-.review-who b {
-  color: var(--fg);
+.rest dt {
+  margin-bottom: 0.375rem;
+  font-size: 1rem;
   font-weight: 600;
 }
 
-.review-who svg {
-  width: 15px;
-  height: 15px;
-  color: var(--sp-uranium);
-}
-
-.review-note p {
+.rest dd {
   margin: 0;
-  color: var(--fg);
-  line-height: 1.5;
+  color: var(--fg-secondary);
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  text-wrap: pretty;
 }
 
-.review-note code {
-  font-family: var(--font-mono);
-  font-size: 0.92em;
-  padding: 1px 6px;
-  border-radius: 6px;
-  background: oklch(0 0 0 / 0.3);
-}
-
-.review-send {
-  justify-self: start;
-  margin-top: 4px;
-  padding: 6px 12px;
-  border-radius: 999px;
-  background: var(--film-3);
-  font-weight: 560;
-  font-size: 0.8125rem;
-}
-
-/* A phone, standing on the bench, with the notification it just got. It stands upright, since a
-   tilted screenshot resamples its text soft. The frame is a metal band around a black bezel; the
-   display wears the screenshot's own backdrop, so the status bar and the inset around the shot
-   read as one screen, and nothing of the app runs under the corners. */
-.phone {
-  --phone-screen: oklch(0.205 0 0);
-  position: relative;
-  justify-self: center;
-  margin: 0;
-  width: min(312px, 76vw);
-  padding: 2.5px;
-  border-radius: 54px;
-  background: linear-gradient(
-    150deg,
-    oklch(0.62 0.004 260),
-    oklch(0.32 0.004 260) 18%,
-    oklch(0.2 0.004 260) 50%,
-    oklch(0.3 0.004 260) 82%,
-    oklch(0.55 0.004 260)
-  );
-  box-shadow:
-    0 0 0 1px oklch(0 0 0 / 0.7),
-    0 2px 6px oklch(0 0 0 / 0.5),
-    0 70px 120px -40px oklch(0 0 0 / 0.95),
-    0 30px 80px -30px color-mix(in oklab, var(--accent) 22%, transparent);
-}
-
-/* The side keys: power on the right, the volume pair on the left. */
-.phone::before,
-.phone::after {
-  content: "";
-  position: absolute;
-  width: 3px;
-  border-radius: 2px;
-  background: linear-gradient(90deg, oklch(0.24 0 0), oklch(0.5 0.004 260), oklch(0.24 0 0));
-}
-
-.phone::before {
-  right: -3px;
-  top: 27%;
-  height: 72px;
-}
-
-.phone::after {
-  left: -3px;
-  top: 21%;
-  height: 46px;
-  box-shadow: 0 60px 0 oklch(0.36 0.004 260);
-}
-
-.phone-bezel {
-  padding: 7px;
-  border-radius: 51.5px;
-  background: oklch(0.07 0 0);
-  box-shadow: 0 0 0 1px oklch(1 0 0 / 0.08) inset;
-}
-
-.phone-display {
-  position: relative;
-  overflow: hidden;
-  border-radius: 44.5px;
-  padding: 0 7px 20px;
-  background: var(--phone-screen);
-}
-
-/* Glare across the glass, faint enough to leave the text alone. */
-.phone-display::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(118deg, oklch(1 0 0 / 0.07), transparent 34%);
-  pointer-events: none;
-}
-
-.phone-status {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  align-items: center;
-  height: 46px;
-  padding: 2px 22px 0;
-  color: oklch(0.97 0 0);
-  font-size: 0.875rem;
-  font-weight: 620;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.01em;
-}
-
-.phone-status span {
-  justify-self: center;
-}
-
-.phone-island {
-  width: 88px;
-  height: 26px;
-  border-radius: 13px;
-  background: oklch(0.03 0 0);
-}
-
-.phone-status svg {
-  justify-self: center;
-  width: 58px;
-  height: 11px;
-  fill: currentColor;
-}
-
-.phone img {
-  display: block;
-  width: 100%;
-  height: auto;
-}
-
-.phone-home {
-  position: absolute;
-  bottom: 7px;
-  left: 50%;
-  width: 36%;
-  height: 4px;
-  translate: -50% 0;
-  border-radius: 2px;
-  background: oklch(0.97 0 0 / 0.85);
-}
-
-/* The banner it just got, drawn as the phone draws one: a pane of Liquid Glass under the island, lit
-   along its rim, frosting the thread behind it, at the scale of the screenshot's own text. */
-.ping {
-  position: absolute;
-  top: 50px;
-  left: 9px;
-  right: 9px;
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  column-gap: 10px;
-  align-items: center;
-  padding: 11px 13px 11px 11px;
-  border-radius: 22px;
-  background: oklch(0.32 0 0 / 0.55);
-  backdrop-filter: blur(14px) saturate(1.8) brightness(1.1);
-  box-shadow:
-    0 1px 0 oklch(1 0 0 / 0.28) inset,
-    0 -1px 0 oklch(1 0 0 / 0.08) inset,
-    0 0 0 0.5px oklch(1 0 0 / 0.16) inset,
-    0 10px 30px -6px oklch(0 0 0 / 0.6);
-  color: oklch(0.98 0 0);
-  font-size: 0.75rem;
-  line-height: 1.3;
-}
-
-.ping-icon {
-  grid-row: span 2;
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  background: linear-gradient(170deg, oklch(1 0 0), oklch(0.9 0 0));
-  box-shadow: 0 0 0 0.5px oklch(1 0 0 / 0.5) inset;
-  color: oklch(0.15 0 0);
-}
-
-.ping-icon svg {
-  width: 17px;
-  height: 17px;
-}
-
-.ping b {
-  font-weight: 640;
-}
-
-.ping time {
-  color: oklch(0.98 0 0 / 0.55);
-  font-size: 0.6875rem;
-}
-
-.ping p {
-  grid-column: 2 / -1;
-  margin: 0;
-  color: oklch(0.98 0 0 / 0.86);
-}
-
-/* It drops from under the island as the phone comes into view, where the browser can tie that to
-   the scroll; elsewhere it's simply there. */
-@supports (animation-timeline: view()) {
-  @media (prefers-reduced-motion: no-preference) {
-    .ping {
-      animation: ping-arrive linear both;
-      animation-timeline: view();
-      animation-range: entry 60% cover 40%;
-    }
+@media (max-width: 860px) {
+  .move {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .rest {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
-@keyframes ping-arrive {
-  from {
-    opacity: 0;
-    translate: 0 -36px;
-    scale: 0.6 0.5;
+@media (max-width: 560px) {
+  .rest {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1.75rem;
   }
 }
 
-/* ── Glass ── */
+/* ── Themes: each sample draws itself in its own theme, dark beside light, and the app below wears the one picked. ── */
 
-.glass {
-  position: relative;
-  padding: 0 var(--gutter) clamp(120px, 20vh, 220px);
+.samples {
+  display: grid;
+  grid-template-columns: repeat(11, minmax(0, 1fr));
+  gap: 0.625rem;
+  margin-bottom: clamp(1.75rem, 4vh, 2.75rem);
 }
 
-.glass-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: end;
-  justify-content: space-between;
-  gap: 28px 48px;
-  margin-bottom: clamp(40px, 6vh, 72px);
-}
-
-.glass-title {
-  font-size: clamp(2.75rem, 1rem + 6vw, 7rem);
-}
-
-.glass-picker {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  padding: 5px;
-  border-radius: 26px;
-  background: var(--film);
-  box-shadow:
-    var(--rim),
-    0 0 0 1px var(--line) inset;
-}
-
-.glass-picker button {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  height: 40px;
-  padding: 0 16px 0 10px;
+.sample {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0;
   border: 0;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--fg-2);
+  background: none;
+  color: var(--fg-tertiary);
   font: inherit;
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   font-weight: 520;
+  text-align: left;
   cursor: pointer;
-  transition:
-    background-color 200ms var(--ease-out),
-    color 200ms var(--ease-out);
+  transition: color 150ms;
 }
 
-/* Each theme's bead: a drop of its glass, lit from above. */
-.glass-picker button::before {
-  content: "";
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background:
-    radial-gradient(60% 50% at 35% 28%, oklch(1 0 0 / 0.85), transparent 60%),
-    radial-gradient(100% 100% at 50% 70%, var(--bead), color-mix(in oklab, var(--bead) 35%, black));
-  box-shadow:
-    0 0 0 1px oklch(1 0 0 / 0.18) inset,
-    0 2px 8px -2px color-mix(in oklab, var(--bead) 70%, transparent);
-  transition: scale 300ms cubic-bezier(0.3, 1.45, 0.6, 1);
+.sample:hover,
+.sample[aria-checked="true"] {
+  color: var(--fg-primary);
 }
 
-.glass-picker button:hover {
-  color: var(--fg);
-  background: var(--film-2);
-}
-
-.glass-picker button[aria-checked="true"] {
-  color: var(--fg);
-  background: var(--film-3);
-}
-
-.glass-picker button[aria-checked="true"]::before {
-  scale: 1.12;
-}
-
-.glass-stage {
-  position: relative;
-  isolation: isolate;
-}
-
-/* What lies behind the window: in clear glass the whole spectrum, in a tinted one its own light. */
-.glass-light {
-  position: absolute;
-  inset: -5% -3% -7%;
-  z-index: -1;
-  border-radius: 40px;
-  background:
-    radial-gradient(34% 46% at 16% 30%, var(--sp-cranberry), transparent 70%),
-    radial-gradient(30% 40% at 38% 78%, var(--sp-amber), transparent 70%),
-    radial-gradient(30% 44% at 58% 22%, var(--sp-uranium), transparent 70%),
-    radial-gradient(30% 44% at 76% 70%, var(--sp-seaglass), transparent 70%),
-    radial-gradient(34% 50% at 92% 30%, var(--sp-cobalt), transparent 70%);
-  filter: blur(60px) saturate(1.2);
-  opacity: 0.95;
-  transition: opacity 900ms var(--ease-out);
-}
-
-/* Under a tinted glass, only that glass's light. */
-.glass-light::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: radial-gradient(
-    60% 70% at 50% 50%,
-    var(--accent),
-    color-mix(in oklab, var(--accent) 30%, transparent)
-  );
-  opacity: 0;
-  transition: opacity 900ms var(--ease-out);
-}
-
-html:not([data-palette="cerium"]) .glass-light::after {
-  opacity: 1;
-}
-
-html:not([data-palette="cerium"]) .glass-light {
-  opacity: 0.5;
-}
-
-.glass-window {
+.sample-pair {
   display: grid;
-  aspect-ratio: 3200 / 2000;
-  background: oklch(0.2 0 0 / 0.25);
-}
-
-.glass-window img {
-  grid-area: 1 / 1;
-  opacity: 0;
-  filter: blur(10px);
-  scale: 1.015;
+  grid-template-columns: 1fr 1fr;
+  height: 3.25rem;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  box-shadow: 0 0 0 1px var(--line-strong);
   transition:
-    opacity 700ms var(--ease-out),
-    filter 700ms var(--ease-out),
-    scale 900ms var(--ease-out);
+    box-shadow 200ms var(--ease-out),
+    translate 200ms var(--ease-out);
 }
 
-.glass-window img[data-on] {
-  opacity: 1;
-  filter: none;
-  scale: 1;
+.sample:hover .sample-pair {
+  translate: 0 -2px;
+}
+
+.sample[aria-checked="true"] .sample-pair {
+  box-shadow:
+    0 0 0 2px var(--page),
+    0 0 0 0.25rem var(--accent-text);
+}
+
+.sample-glass {
+  display: grid;
+  align-content: end;
+  justify-items: start;
+  gap: 0.25rem;
+  padding: 0.5rem;
+  background: var(--page);
+}
+
+.sample-glass i {
+  height: 3px;
+  border-radius: 2px;
+}
+
+.sample-glass .s-accent {
+  width: 0.625rem;
+  height: 0.625rem;
+  margin-bottom: 2px;
+  border-radius: 3px;
+  background: var(--accent);
+}
+
+.s-k {
+  width: 62%;
+  background: var(--syntax-keyword);
+}
+
+.s-f {
+  width: 90%;
+  background: var(--syntax-function);
+}
+
+.s-s {
+  width: 46%;
+  background: var(--syntax-string);
+}
+
+@media (max-width: 1000px) {
+  .samples {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 1rem 0.625rem;
+  }
+}
+
+@media (max-width: 560px) {
+  .samples {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+/* ── Local ── */
+
+.facts {
+  display: grid;
+  gap: 0;
+  margin: 0.625rem 0 0;
+}
+
+.facts div {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  gap: 0.25rem 1.25rem;
+  padding: 0.875rem 0;
+  border-top: 1px solid var(--line-subtle);
+}
+
+.facts dt {
+  font-weight: 600;
+}
+
+.facts dd {
+  margin: 0;
+  color: var(--fg-secondary);
+  font-size: 0.9375rem;
+  text-wrap: pretty;
+}
+
+.machine {
+  display: grid;
+  gap: 0;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  padding: 1.25rem 1.375rem 1.375rem;
+  color: var(--fg-secondary);
+  transition: background-color 700ms var(--ease-out);
+}
+
+:where(.machine) :where(p, ul) {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.machine-label {
+  margin-bottom: 1.125rem;
+  color: var(--fg-tertiary);
+  font-size: 0.75rem;
+}
+
+.flow {
+  display: grid;
+  grid-template-columns: auto minmax(2.5rem, 1fr) auto minmax(1.5rem, 0.5fr) auto;
+  align-items: center;
+}
+
+.node {
+  display: grid;
+  padding: 0.625rem 1rem;
+  border-radius: 0.625rem;
+  background: var(--surface-film);
+  box-shadow: var(--shadow-film);
+  color: var(--fg-tertiary);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.node b {
+  color: var(--fg-primary);
+  font-size: 0.875rem;
+  font-weight: 560;
+}
+
+.wire {
+  position: relative;
+  height: 1px;
+  background: var(--line-strong);
+}
+
+.wire span {
+  position: absolute;
+  left: 50%;
+  bottom: 0.5rem;
+  translate: -50% 0;
+  color: var(--fg-tertiary);
+  font-size: 0.6875rem;
+  white-space: nowrap;
+}
+
+/* The bus hangs from the backend, in the middle of the row above it. */
+.bus {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  padding-top: 2.125rem;
+}
+
+.bus::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0;
+  height: 2.125rem;
+  border-left: 1px dashed var(--line-strong);
+}
+
+.bus span {
+  padding: 0.3125rem 0.75rem;
+  border-radius: 62.4375rem;
+  border: 1px dashed var(--line-strong);
+  color: var(--fg-secondary);
+  font-size: 0.75rem;
+}
+
+.machine-harnesses {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
+  padding-top: 1.375rem;
+}
+
+.machine-harnesses::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0;
+  height: 1.375rem;
+  border-left: 1px dashed var(--line-strong);
+}
+
+.machine-harnesses .tile {
+  width: 2.125rem;
+  height: 2.125rem;
+  border-radius: 0.5625rem;
+}
+
+.machine-harnesses .tile svg {
+  width: 1.0625rem;
+  height: 1.0625rem;
+}
+
+.machine-note {
+  margin-top: 1.125rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line-subtle);
+  color: var(--fg-tertiary);
+  text-align: center;
+}
+
+@media (max-width: 560px) {
+  .facts div {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .machine {
+    padding: 1rem;
+  }
+  .flow {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+  }
+  .wire {
+    width: 1px;
+    height: 2.125rem;
+  }
+  .wire span {
+    left: 0.75rem;
+    bottom: 0.5625rem;
+    translate: none;
+  }
+  .node {
+    width: 100%;
+    justify-items: center;
+  }
 }
 
 /* ── Close ── */
 
 .close {
   position: relative;
-  isolation: isolate;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  justify-items: center;
-  text-align: center;
-  padding: clamp(80px, 14vh, 160px) var(--gutter) clamp(80px, 12vh, 140px);
-  overflow: hidden;
+  padding-block: 0 var(--band);
 }
 
-.close::before {
-  content: "";
-  position: absolute;
-  inset: 20% 10% 0;
-  z-index: -1;
-  background: radial-gradient(
-    50% 60% at 50% 60%,
-    color-mix(in oklab, var(--accent) 12%, transparent),
-    transparent 70%
-  );
-  filter: blur(50px);
-}
-
-.close-plans {
-  margin: 0;
-  max-width: 40ch;
-  color: var(--fg-2);
-  font-size: clamp(1.0625rem, 0.95rem + 0.4vw, 1.25rem);
-  text-wrap: balance;
-}
-
-/* The name, set as wide as the axis goes and sized to fill the page. */
+/* The name, set as wide as the axis goes and sized to span the page's column. */
 .close-word {
-  justify-self: stretch;
-  margin: 0.04em 0 0.1em;
+  margin: 0 0 0.16em;
   font-family: var(--font-display);
+  font-size-adjust: none;
   font-weight: 300;
   font-stretch: 150%;
-  font-size: var(--fit, 18vw);
+  font-size: var(--fit, 17vw);
   letter-spacing: -0.05em;
-  line-height: 0.9;
+  line-height: 1;
   white-space: nowrap;
-  background: linear-gradient(to bottom, var(--fg) 30%, color-mix(in oklab, var(--fg) 15%, transparent));
+  background: linear-gradient(
+    to bottom,
+    var(--fg-primary) 30%,
+    color-mix(in oklab, var(--fg-primary) 18%, transparent)
+  );
   background-clip: text;
   color: transparent;
 }
@@ -777,7 +527,7 @@ html:not([data-palette="cerium"]) .glass-light {
 .facet {
   position: absolute;
   left: 50%;
-  top: 0.1em;
+  top: 0.15em;
   width: 0.13em;
   height: 0.13em;
   translate: -50% 0;
@@ -785,16 +535,14 @@ html:not([data-palette="cerium"]) .glass-light {
   border-radius: 0.012em;
   background: conic-gradient(
     from var(--turn, 0deg),
-    var(--sp-cranberry),
-    var(--sp-amber),
-    var(--sp-uranium),
-    var(--sp-seaglass),
-    var(--sp-cobalt),
-    var(--sp-cranberry)
+    var(--spectrum-1),
+    var(--spectrum-2),
+    var(--spectrum-3),
+    var(--spectrum-4),
+    var(--spectrum-5),
+    var(--spectrum-1)
   );
-  box-shadow:
-    0 0 0.08em color-mix(in oklab, var(--sp-seaglass) 60%, transparent),
-    0 0 0.3em color-mix(in oklab, var(--sp-cobalt) 35%, transparent);
+  box-shadow: 0 0 0.3em color-mix(in oklab, var(--spectrum-4) 30%, transparent);
   animation: turn 8s linear infinite;
 }
 
@@ -810,26 +558,16 @@ html:not([data-palette="cerium"]) .glass-light {
   }
 }
 
+.close-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1.5rem 3rem;
+}
+
 .close-actions {
   display: flex;
   flex-wrap: wrap;
-  justify-content: center;
-  gap: 10px;
-}
-
-.close-small {
-  margin: 20px 0 0;
-  color: var(--fg-3);
-  font-size: 0.875rem;
-}
-
-@media (max-width: 900px) {
-  .move,
-  .move-ci,
-  .move-play .move-copy {
-    grid-template-columns: 1fr;
-  }
-  .move-ci .move-copy {
-    order: 0;
-  }
+  gap: 0.625rem;
 }

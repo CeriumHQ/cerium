@@ -28,6 +28,8 @@ All notable changes to Cerium are recorded here. The format follows
 
 - The website loads its animated homepage sooner and reuses downloaded assets on return visits.
 
+- The website is redesigned on the app's own tokens and themes, so it wears whichever of the eleven themes you pick, and every picture of the app on it is now taken from the app itself: a staged thread, a cross-lab review and an automation, as a desktop window and as a phone shows them. The home page lists the nine harnesses and how each signs in, runs a working artifact you can drag, and says what stays on your machine. Downloads is one pane of the three builds, with yours lit and its install note. Past a 1920px window the pages grow with it. Shared links show a new card of the hero, and the site gains a sitemap, robots rules and structured data for search.
+
 - Handing off or restoring one conversation leaves other threads responsive. Find reuses searchable message text and skips intervening tool output on deep jumps.
 - Desktop windows receive tool output for the threads they display. Cloud uploads use stored screenshot references, and desktop audio and video previews can request byte ranges from another updated computer.
 - Provider SDKs load when needed, and subscription checks reuse open harness sessions. Folded code highlights its visible prefix and the highlighting worker shuts down when idle.

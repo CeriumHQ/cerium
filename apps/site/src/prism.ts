@@ -301,7 +301,7 @@ export const mountPrism = (canvas: HTMLCanvasElement, bands: ReadonlyArray<Band>
     sized = { width, height };
     renderer.setSize(width, height, false);
     camera.aspect = width / height;
-    narrow = width < 760;
+    narrow = width < 760 || width < height;
     camera.fov = narrow ? 44 : 30;
     camera.updateProjectionMatrix();
     // The fan keeps the spread it was drawn with for eight harnesses, however many there are.

@@ -1,0 +1,21 @@
+/* The pages beside the home page: a title on the page's column, and a line under it. */
+
+@import "./ui.css";
+
+/* What the page holds sits in the middle of a window taller than it. */
+.page {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding-block: clamp(8rem, 20vh, 11.5rem) var(--band);
+}
+
+.page-head {
+  display: grid;
+  gap: 1.375rem;
+  margin-bottom: clamp(2.5rem, 7vh, 4.5rem);
+}
+
+.page-title {
+  font-size: clamp(3rem, 1rem + 6vw, 6.5rem);
+}

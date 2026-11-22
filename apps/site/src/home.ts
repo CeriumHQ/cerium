@@ -1,9 +1,11 @@
 import "./styles/home.css";
 import "./styles/sections.css";
+import "./styles/ui.css";
 
+import { startArtifact } from "./artifact.ts";
 import { startChrome } from "./chrome.ts";
 import type { Prism } from "./prism.ts";
-import { palettes, savedPalette, setPalette } from "./palette.ts";
+import { savedPalette, setPalette } from "./palette.ts";
 
 /** Splits a headline's lines into letters the width animation can stretch one by one. */
 const split = (root: HTMLElement) => {
@@ -29,7 +31,7 @@ const split = (root: HTMLElement) => {
   root.setAttribute("aria-label", [...root.children].map((line) => line.textContent).join(" "));
 };
 
-const lenis = startChrome({ appOnHandheld: true });
+startChrome({ appOnHandheld: true });
 
 for (const root of document.querySelectorAll<HTMLElement>("[data-split]")) split(root);
 // Start the entrance as soon as its display face is ready, independently of below-fold fonts.
@@ -41,61 +43,53 @@ const labels = [...hero.querySelectorAll<HTMLElement>("[data-band]")];
 labels.forEach((label, i) => label.style.setProperty("--i", String(i)));
 // The prism's scene loads on its own, so the headline never waits for three.js.
 let prism: Prism | undefined;
+/** What tints the prism's glass: the theme's accent, thinned, so the glass stays clear. */
+const GLASS = "color-mix(in oklab, var(--accent) 45%, white)";
 
-// The sections start below a full-height hero. Warm them on the first scroll, or immediately
-// when opening an anchor or restoring a visit partway down the page.
-const startSections = () => {
-  void import("./scroll.ts").then(({ startScrollEffects }) => startScrollEffects(lenis));
-  const footage = new IntersectionObserver(
-    (entries) => {
-      for (const { target, isIntersecting } of entries) {
-        const video = target as HTMLVideoElement;
-        if (isIntersecting) void video.play().catch(() => {});
-        else video.pause();
-      }
-    },
-    { rootMargin: "50% 0px" },
-  );
-  for (const video of document.querySelectorAll("[data-footage]")) footage.observe(video);
+startArtifact(document.querySelector<HTMLElement>("[data-artifact]")!);
+
+// The closing word is sized to span the page's column.
+const word = document.querySelector<HTMLElement>("[data-fit]")!;
+const fit = () => {
+  word.style.setProperty("--fit", "100px");
+  const inner = word.firstElementChild as HTMLElement;
+  word.style.setProperty("--fit", `${(100 * word.clientWidth) / inner.offsetWidth}px`);
 };
-if (scrollY > 0 || location.hash) startSections();
-else addEventListener("scroll", startSections, { passive: true, once: true });
+void document.fonts.load('300 1em "Anybody Variable"').then(fit, fit);
+addEventListener("resize", fit);
 
-// The glass picker tints the whole page, the hero's prism and the bench light with it.
-const stage = document.querySelector<HTMLElement>("[data-shots]")!;
-const previews = stage.querySelector("template")!;
-const shots = [...previews.content.querySelectorAll<HTMLImageElement>("[data-shot]")];
+// Picking a theme dresses the whole page in it: the hero's prism, and each picture of the app, which
+// was taken in every theme (scripts/shoot.ts).
+const pictures = import.meta.glob<string>("./media/app/*.webp", {
+  eager: true,
+  query: "?url",
+  import: "default",
+});
+const shots = [...document.querySelectorAll<HTMLImageElement | HTMLSourceElement>("[data-shot]")];
 const picks = [...document.querySelectorAll<HTMLButtonElement>("[data-pick]")];
-// Keep the current screenshot on screen until the visitor's choice can crossfade in.
-const warmShot = (id: string) => {
-  const shot = shots.find((image) => image.dataset.shot === id)!;
-  if (shot.parentElement !== stage) stage.append(shot);
-  return shot;
-};
-const showShot = (shot: HTMLImageElement) => {
-  if (shot.dataset.shot !== document.documentElement.dataset.palette) return;
-  for (const image of shots) image.toggleAttribute("data-on", image === shot);
-};
-for (const shot of shots) shot.addEventListener("load", () => showShot(shot));
-
 const pick = (id: string) => {
   setPalette(id);
   for (const button of picks) {
     button.setAttribute("aria-checked", String(button.dataset.pick === id));
     button.tabIndex = button.dataset.pick === id ? 0 : -1;
   }
-  const shot = warmShot(id);
-  if ((shot.complete && shot.naturalWidth > 0) || !shots.some((image) => image.hasAttribute("data-on"))) {
-    showShot(shot);
+  const name = picks.find((button) => button.dataset.pick === id)?.textContent.trim() ?? id;
+  for (const shot of shots) {
+    const phone = shot.hasAttribute("data-phone") ? "-phone" : "";
+    const url = pictures[`./media/app/${shot.dataset.shot}-${id}${phone}.webp`];
+    if (url === undefined) continue;
+    if (shot instanceof HTMLSourceElement) {
+      shot.srcset = url;
+      continue;
+    }
+    shot.src = url;
+    // The one picture whose description names the theme it is in.
+    if (shot.hasAttribute("data-shot-alt"))
+      shot.alt = shot.alt.replace(/in the .+ theme/, `in the ${name} theme`);
   }
-  prism?.tint(palettes[id] ?? "#ffffff");
+  prism?.tint(GLASS);
 };
-for (const button of picks) {
-  const id = button.dataset.pick!;
-  button.addEventListener("pointerenter", () => warmShot(id), { once: true });
-  button.addEventListener("focus", () => warmShot(id), { once: true });
-  button.addEventListener("click", () => pick(id));
-}
+for (const button of picks) button.addEventListener("click", () => pick(button.dataset.pick!));
 // Arrow keys move the choice, as a radio group's do.
 document.querySelector("[data-picker]")?.addEventListener("keydown", (event) => {
   const key = (event as KeyboardEvent).key;
@@ -133,7 +127,7 @@ const startScene = async () => {
     hero.toggleAttribute("data-lit", true);
     return;
   }
-  prism.tint(palettes[savedPalette()] ?? "#ffffff");
+  prism.tint(GLASS);
   prism.play();
   // The labels land as their bands reach them.
   setTimeout(() => hero.toggleAttribute("data-lit", true), 1700);

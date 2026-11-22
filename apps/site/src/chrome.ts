@@ -28,7 +28,7 @@ const pointDownloads = () => {
 /** The primary download buttons open the web app instead, which drives the visitor's computer. */
 const pointApp = () => {
   for (const text of document.querySelectorAll("[data-download-label]")) {
-    text.textContent = "Open the web app";
+    text.textContent = "Open web app";
     text.closest("a")!.href = "/app/";
   }
   for (const use of document.querySelectorAll("[data-system-mark] use"))

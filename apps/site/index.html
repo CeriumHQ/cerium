@@ -1,30 +1,59 @@
 <!doctype html>
-<html lang="en" data-palette="cerium">
+<html lang="en" data-palette="cerium" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Cerium — Run every coding agent in one thread</title>
     <meta
       name="description"
-      content="Local-first desktop app that runs Claude Code, Codex, Cursor, OpenCode, Muse Code, Copilot, Grok Build, Antigravity, and Devin together in one thread on your existing plans. Free and open source."
+      content="Local-first desktop app for Claude Code, Codex, Cursor, OpenCode, Muse Code, Antigravity, GitHub Copilot, Grok Build, and Devin on your existing subscriptions. Free and open source."
     />
-    <meta name="theme-color" content="#121316" />
+    <meta name="theme-color" content="#1b1a18" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://cerium.nonlooped.xyz/" />
     <meta property="og:title" content="Cerium — Run every coding agent in one thread" />
     <meta
       property="og:description"
-      content="Run Claude Code, Codex, Cursor, OpenCode, and your other local harnesses together on your existing plans, with no custom wrapper or API markup."
+      content="Run Claude Code, Codex, Cursor, and six other local coding agents together in one thread, on your existing subscriptions."
     />
-    <meta property="og:image" content="https://cerium.nonlooped.xyz/og-prism.png" />
-    <meta property="og:image:width" content="1732" />
-    <meta property="og:image:height" content="908" />
+    <meta property="og:site_name" content="Cerium" />
+    <meta property="og:image" content="https://cerium.nonlooped.xyz/og.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="Cerium's glass mark splitting one white beam into nine, one for each coding agent: Claude Code, Antigravity, Codex, Grok Build, Devin, Muse Code, GitHub Copilot, Cursor, and OpenCode."
+    />
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Cerium — Run every coding agent in one thread" />
+    <meta
+      name="twitter:description"
+      content="Run Claude Code, Codex, Cursor, and six other local coding agents together in one thread, on your existing subscriptions."
+    />
+    <meta name="twitter:image" content="https://cerium.nonlooped.xyz/og.jpg" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="canonical" href="https://cerium.nonlooped.xyz/" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "Cerium",
+        "url": "https://cerium.nonlooped.xyz/",
+        "image": "https://cerium.nonlooped.xyz/og.jpg",
+        "description": "Local-first desktop app that runs Claude Code, Codex, Cursor, OpenCode, Muse Code, Antigravity, GitHub Copilot, Grok Build, and Devin together in one thread, on your existing subscriptions.",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "Windows 11, macOS, Linux",
+        "license": "https://www.apache.org/licenses/LICENSE-2.0",
+        "isAccessibleForFree": true,
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+        "downloadUrl": "https://cerium.nonlooped.xyz/downloads/",
+        "codeRepository": "https://github.com/CeriumHQ/cerium",
+        "sameAs": ["https://github.com/CeriumHQ/cerium"]
+      }
+    </script>
     <script>
       document.documentElement.classList.add("js");
-      // The glass picked on an earlier visit, before the first paint (src/palette.ts).
+      // The theme picked on an earlier visit, before the first paint (src/palette.ts).
       try {
         const saved = localStorage.getItem("cerium-site:palette");
         if (saved) document.documentElement.dataset.palette = saved;
@@ -39,15 +68,16 @@
         <span>cerium</span>
       </a>
       <nav aria-label="Site">
-        <a class="hide-narrow" href="#team">How it works</a>
+        <a class="hide-narrow" href="#thread">How it works</a>
+        <a class="hide-narrow" href="#harnesses">Harnesses</a>
         <a class="hide-narrow" href="https://github.com/CeriumHQ/cerium">GitHub</a>
         <a href="/app/">Web app</a>
-        <a class="button button-solid" href="/downloads/" data-download>Download</a>
+        <a class="button button-solid" href="/downloads/">Download</a>
       </nav>
     </header>
 
     <main>
-      <!-- One white beam in, five out: one prompt, a whole team. -->
+      <!-- One white beam in, nine out: one prompt, a whole team. -->
       <section class="hero" aria-labelledby="hero-title">
         <canvas class="hero-scene" data-scene aria-hidden="true"></canvas>
         <div class="hero-fallback" aria-hidden="true">
@@ -55,31 +85,49 @@
         </div>
         <ol class="bands" aria-label="Supported local coding harnesses">
           <li data-band style="--band: #d97757">
-            <svg aria-hidden="true"><use href="/icons.svg#mark-claude" /></svg>Claude Code
+            <span class="tile m-claude"
+              ><svg aria-hidden="true"><use href="/icons.svg#mark-claude" /></svg></span
+            >Claude Code
           </li>
           <li data-band style="--band: #f0b43c">
-            <svg aria-hidden="true"><use href="/icons.svg#mark-antigravity" /></svg>Antigravity
+            <span class="tile m-antigravity"
+              ><svg aria-hidden="true"><use href="/icons.svg#mark-antigravity" /></svg></span
+            >Antigravity
           </li>
           <li data-band style="--band: #10a37f">
-            <svg aria-hidden="true"><use href="/icons.svg#mark-openai" /></svg>Codex
+            <span class="tile m-openai"
+              ><svg aria-hidden="true"><use href="/icons.svg#mark-openai" /></svg></span
+            >Codex
           </li>
           <li data-band style="--band: #4fd0e0">
-            <svg aria-hidden="true"><use href="/icons.svg#mark-grok" /></svg>Grok Build
+            <span class="tile m-grok"
+              ><svg aria-hidden="true"><use href="/icons.svg#mark-grok" /></svg></span
+            >Grok Build
           </li>
           <li data-band style="--band: #0294de">
-            <svg aria-hidden="true"><use href="/icons.svg#mark-devin" /></svg>Devin
+            <span class="tile m-devin"
+              ><svg aria-hidden="true"><use href="/icons.svg#mark-devin" /></svg></span
+            >Devin
           </li>
           <li data-band style="--band: #0866ff">
-            <svg aria-hidden="true"><use href="/icons.svg#mark-meta" /></svg>Muse Code
+            <span class="tile m-meta"
+              ><svg aria-hidden="true"><use href="/icons.svg#mark-meta" /></svg></span
+            >Muse Code
           </li>
           <li data-band style="--band: #a371f7">
-            <svg aria-hidden="true"><use href="/icons.svg#mark-copilot" /></svg>GitHub Copilot
+            <span class="tile m-copilot"
+              ><svg aria-hidden="true"><use href="/icons.svg#mark-copilot" /></svg></span
+            >GitHub Copilot
           </li>
           <li data-band style="--band: #e8e8ea">
-            <svg aria-hidden="true"><use href="/icons.svg#mark-cursor" /></svg>Cursor
+            <span class="tile m-cursor"
+              ><svg aria-hidden="true"><use href="/icons.svg#mark-cursor" /></svg></span
+            >Cursor
           </li>
           <li data-band style="--band: #a8a29e">
-            <svg aria-hidden="true"><use href="/icons.svg#mark-opencode" /></svg>OpenCode
+            <span class="tile m-opencode"
+              ><svg aria-hidden="true"><use href="/icons.svg#mark-opencode" /></svg></span
+            >OpenCode
           </li>
         </ol>
 
@@ -90,404 +138,630 @@
           </h1>
           <div class="hero-foot" data-rise>
             <p class="lede">
-              Run Claude Code, Codex, Cursor, and your other local harnesses together on your existing plans,
-              with no custom wrapper or API markup.
+              A local-first desktop app for Claude Code, Codex, Cursor, and six more coding agents, running on
+              the subscriptions you already pay for.
             </p>
             <div class="hero-actions">
               <a class="button button-solid" href="/downloads/" data-download>
                 <svg aria-hidden="true" data-system-mark><use href="/icons.svg#mark-windows" /></svg>
                 <span data-download-label>Download for Windows</span>
               </a>
-              <a class="button button-glass" href="#team">Watch a run</a>
+              <a class="button button-glass" href="#thread">See a thread</a>
+              <p class="hero-fact">Free and open source (Apache 2.0) for Windows, macOS, and Linux.</p>
             </div>
           </div>
         </div>
       </section>
 
-      <!-- The proof: the real app, rising off the bench and flattening as it comes into view. -->
-      <section class="proof" id="team" aria-labelledby="proof-title">
-        <div class="proof-head">
-          <h2 class="display proof-title" id="proof-title">Delegate across labs.</h2>
-          <p class="lede">
-            A lead agent assigns subtasks to whichever local harness fits best, with scoped permissions and
-            full visibility in one thread.
-          </p>
-        </div>
-        <div class="proof-stage" data-tilt>
-          <figure class="window">
-            <video
-              width="2560"
-              height="1440"
-              preload="none"
-              muted
-              loop
-              playsinline
-              disablepictureinpicture
-              data-footage
-              aria-label="A prompt typed on Cerium's home screen: a Claude lead takes it and hands the tests to a Codex agent, the docs to an OpenCode agent and a timing review to a Cursor agent, all in one thread"
-            >
-              <source media="(max-width: 760px)" src="./src/media/footage/hero-small.mp4" type="video/mp4" />
-              <source src="./src/media/footage/hero.mp4" type="video/mp4" />
-            </video>
-            <noscript>
-              <style>
-                .proof [data-footage] {
-                  display: none;
-                }
-              </style>
-              <video
-                width="2560"
-                height="1440"
-                autoplay
-                muted
-                loop
-                playsinline
-                disablepictureinpicture
-                aria-label="A prompt typed on Cerium's home screen: a Claude lead takes it and hands the tests to a Codex agent, the docs to an OpenCode agent and a timing review to a Cursor agent, all in one thread"
-              >
-                <source
-                  media="(max-width: 760px)"
-                  src="./src/media/footage/hero-small.mp4"
-                  type="video/mp4"
-                />
-                <source src="./src/media/footage/hero.mp4" type="video/mp4" />
-              </video>
-            </noscript>
-          </figure>
-        </div>
-      </section>
-
-      <!-- Who does what, in the words the lead reports it. Each line widens as it crosses the middle. -->
-      <section class="roster" aria-label="How agents divide work in one thread">
-        <p class="roster-line" data-stretch style="--band: var(--sp-cranberry)">
-          <svg aria-hidden="true"><use href="/icons.svg#mark-claude" /></svg>
-          <span>Claude builds it.</span>
-        </p>
-        <p class="roster-line" data-stretch style="--band: var(--sp-uranium)">
-          <svg aria-hidden="true"><use href="/icons.svg#mark-openai" /></svg>
-          <span>Codex writes tests.</span>
-        </p>
-        <p class="roster-line" data-stretch style="--band: var(--sp-seaglass)">
-          <svg aria-hidden="true"><use href="/icons.svg#mark-opencode" /></svg>
-          <span>OpenCode writes docs.</span>
-        </p>
-        <p class="roster-line" data-stretch style="--band: var(--sp-amber)">
-          <svg aria-hidden="true"><use href="/icons.svg#mark-cursor" /></svg>
-          <span>Cursor catches races.</span>
-        </p>
-        <p class="roster-line roster-end" data-stretch>
-          <svg aria-hidden="true"><use href="/icons.svg#mark-cerium" /></svg>
-          <span>All in one thread.</span>
-        </p>
-        <p class="roster-note">
-          Subagents message each other over Cerium's built-in MCP bus, coordinating file edits so two agents
-          don't overwrite the same change.
-        </p>
-      </section>
-
-      <!-- Three things a team does that one agent can't. -->
-      <section class="moves" aria-label="Key features">
-        <article class="move move-review">
-          <div class="move-copy">
-            <h2 class="display move-title">Cross-lab code review.</h2>
+      <!-- The proof: the app itself, with a finished thread open (scripts/stage.ts, scripts/shoot.ts). -->
+      <section class="band thread" id="thread" aria-labelledby="thread-title">
+        <div class="wrap">
+          <div class="head">
+            <h2 class="title" id="thread-title">Delegate across harnesses</h2>
             <p class="lede">
-              When Claude writes the patch, send the diff to Codex before you commit. Comments attach directly
-              to the changed lines, one click from handing them back to fix.
+              Prompt a lead agent once. It assigns subtasks to any signed-in harness with scoped permissions,
+              while every subagent transcript stays open live.
             </p>
           </div>
-          <div class="review" aria-hidden="true">
-            <div class="review-file">
-              <span class="review-path">
-                src/queue.ts
-                <span class="review-by"
-                  ><svg><use href="/icons.svg#mark-claude" /></svg>Opus 5.5</span
-                >
-              </span>
-              <span class="review-stat"><b>+30</b> <i>−2</i></span>
-            </div>
-            <pre
-              class="review-code"
-            ><code><span class="ln">41</span>  <span class="k">if</span> (signal?.aborted) <span class="k">return</span> reject(signal.reason);
-<span class="ln add">42</span><span class="add">  signal?.addEventListener(<span class="s">"abort"</span>, onAbort, { once: <span class="k">true</span> });</span>
-<span class="ln add">43</span><span class="add">  <span class="k">this</span>.#pending.add(job);</span>
-<span class="ln">44</span>  <span class="k">this</span>.#drain();</code></pre>
-            <div class="review-note">
-              <div class="review-who">
-                <svg><use href="/icons.svg#mark-openai" /></svg>
-                <span><b>GPT-6 Luna</b> reviewing Opus 5.5</span>
-              </div>
-              <p>The listener stays attached after the job settles. Remove it in <code>finally</code>.</p>
-              <span class="review-send">Send to agent</span>
-            </div>
-          </div>
-        </article>
 
-        <article class="move move-ci">
-          <div class="move-copy">
-            <h2 class="display move-title">Fixes CI. Pings your phone.</h2>
-            <p class="lede">
-              When CI fails, an automation loads the logs, fixes the break, and pushes again. Get notified
-              when checks pass, or unblock agents from your phone.
-            </p>
-          </div>
-          <figure class="phone">
-            <div class="phone-bezel">
-              <div class="phone-display">
-                <div class="phone-status" aria-hidden="true">
-                  <span>9:41</span>
-                  <i class="phone-island"></i>
-                  <svg viewBox="0 0 64 12">
-                    <rect x="0" y="8" width="3" height="4" rx="1" />
-                    <rect x="5" y="5.5" width="3" height="6.5" rx="1" />
-                    <rect x="10" y="3" width="3" height="9" rx="1" />
-                    <rect x="15" y="0.5" width="3" height="11.5" rx="1" />
-                    <path
-                      d="M31 11.5 28.6 9a3.4 3.4 0 0 1 4.8 0zM26.5 7a6.4 6.4 0 0 1 9 0l1.4-1.4a8.4 8.4 0 0 0-11.8 0zM24 4.5a10 10 0 0 1 14 0l1.4-1.4a12 12 0 0 0-16.8 0z"
-                    />
-                    <rect
-                      x="43.5"
-                      y="0.5"
-                      width="18"
-                      height="11"
-                      rx="3.2"
-                      fill="none"
-                      stroke="currentColor"
-                      opacity="0.45"
-                    />
-                    <rect x="45.5" y="2.5" width="12.5" height="7" rx="1.6" />
-                    <path d="M62.8 4.2v3.6a1.9 1.9 0 0 0 0-3.6z" opacity="0.45" />
-                  </svg>
-                </div>
-                <img
-                  src="./src/media/feature-phone.webp"
-                  width="1170"
-                  height="2532"
-                  loading="lazy"
-                  alt="Cerium on a phone: an agent asks whether a timeout should reject or resolve, with the choices as buttons"
-                />
-                <div class="ping" aria-hidden="true">
-                  <span class="ping-icon"
-                    ><svg><use href="/icons.svg#mark-cerium" /></svg
-                  ></span>
-                  <b>Fix failing CI</b>
-                  <time>now</time>
-                  <p>All 37 checks pass. Pushed 2c41f9e.</p>
-                </div>
-                <i class="phone-home" aria-hidden="true"></i>
-              </div>
-            </div>
-          </figure>
-        </article>
-
-        <article class="move move-play">
-          <div class="move-copy">
-            <h2 class="display move-title">Interactive artifacts.</h2>
-            <p class="lede">
-              Agents render live charts, timelines, and simulators right inside the thread. Drag controls to
-              test tradeoffs, then send your settings straight back.
-            </p>
-          </div>
-          <figure class="window window-flat">
-            <video
-              width="3712"
-              height="2088"
-              preload="none"
-              muted
-              loop
-              playsinline
-              disablepictureinpicture
-              data-footage
-              aria-label="An agent's answer as an interactive page: sliders for a job queue's rate limit and a timeline of jobs that re-plans as they move"
-            >
+          <figure class="shot shot-window">
+            <picture>
               <source
-                media="(max-width: 760px)"
-                src="./src/media/footage/artifact-small.mp4"
-                type="video/mp4"
+                media="(max-width: 700px)"
+                srcset="./src/media/app/thread-cerium-phone.webp"
+                width="1236"
+                height="2676"
+                data-shot="thread"
+                data-phone
               />
-              <source src="./src/media/footage/artifact.mp4" type="video/mp4" />
-            </video>
+              <img
+                src="./src/media/app/thread-cerium.webp"
+                width="2880"
+                height="1920"
+                loading="lazy"
+                data-shot="thread"
+                alt="Cerium thread showing a Claude lead asked to add a rateLimit option; it delegated tests to Codex, docs to OpenCode, and a read-only timing review to Cursor, then summarized each result."
+              />
+            </picture>
           </figure>
-        </article>
+        </div>
       </section>
 
-      <!-- The app's six kinds of glass. Picking one tints this page, its prism included. -->
-      <section class="glass" aria-labelledby="glass-title">
-        <div class="glass-head">
-          <h2 class="display glass-title" id="glass-title">Pick your theme.</h2>
-          <div class="glass-picker" role="radiogroup" aria-label="Theme" data-picker>
-            <button role="radio" aria-checked="true" data-pick="cerium" style="--bead: oklch(0.95 0 0)">
-              Cerium
+      <!-- Which harnesses, and that each keeps its own sign-in. -->
+      <section class="band harnesses" id="harnesses" aria-labelledby="harnesses-title">
+        <div class="wrap split">
+          <div class="split-copy">
+            <h2 class="title" id="harnesses-title">Nine harnesses, direct sign-in</h2>
+            <p class="lede">
+              Install any of these locally and sign in as usual. Cerium detects them automatically, never
+              reads your tokens or API keys, and adds no proxy or markup.
+            </p>
+          </div>
+          <table class="roster pane">
+            <thead>
+              <tr>
+                <th scope="col">Harness</th>
+                <th scope="col">Integration</th>
+                <th scope="col">Sign-in</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row">
+                  <span class="tile m-claude"
+                    ><svg aria-hidden="true"><use href="/icons.svg#mark-claude" /></svg></span
+                  >Claude Code
+                </th>
+                <td>Claude Agent SDK</td>
+                <td><code>claude</code> login</td>
+              </tr>
+              <tr>
+                <th scope="row">
+                  <span class="tile m-openai"
+                    ><svg aria-hidden="true"><use href="/icons.svg#mark-openai" /></svg></span
+                  >Codex
+                </th>
+                <td><code>codex app-server</code></td>
+                <td><code>codex login</code></td>
+              </tr>
+              <tr>
+                <th scope="row">
+                  <span class="tile m-cursor"
+                    ><svg aria-hidden="true"><use href="/icons.svg#mark-cursor" /></svg></span
+                  >Cursor
+                </th>
+                <td><code>@cursor/sdk</code></td>
+                <td>Cursor browser sign-in</td>
+              </tr>
+              <tr>
+                <th scope="row">
+                  <span class="tile m-opencode"
+                    ><svg aria-hidden="true"><use href="/icons.svg#mark-opencode" /></svg></span
+                  >OpenCode
+                </th>
+                <td><code>opencode serve</code></td>
+                <td><code>opencode auth login</code></td>
+              </tr>
+              <tr>
+                <th scope="row">
+                  <span class="tile m-meta"
+                    ><svg aria-hidden="true"><use href="/icons.svg#mark-meta" /></svg></span
+                  >Muse Code
+                </th>
+                <td><code>muse serve</code></td>
+                <td><code>muse login</code></td>
+              </tr>
+              <tr>
+                <th scope="row">
+                  <span class="tile m-antigravity"
+                    ><svg aria-hidden="true"><use href="/icons.svg#mark-antigravity" /></svg></span
+                  >Antigravity
+                </th>
+                <td>Antigravity CLI (ACP)</td>
+                <td><code>agy acp --login</code></td>
+              </tr>
+              <tr>
+                <th scope="row">
+                  <span class="tile m-copilot"
+                    ><svg aria-hidden="true"><use href="/icons.svg#mark-copilot" /></svg></span
+                  >GitHub Copilot
+                </th>
+                <td>Copilot CLI (JSON-RPC)</td>
+                <td><code>copilot login</code></td>
+              </tr>
+              <tr>
+                <th scope="row">
+                  <span class="tile m-grok"
+                    ><svg aria-hidden="true"><use href="/icons.svg#mark-grok" /></svg></span
+                  >Grok Build
+                </th>
+                <td>Grok Build CLI (ACP)</td>
+                <td><code>grok login</code></td>
+              </tr>
+              <tr>
+                <th scope="row">
+                  <span class="tile m-devin"
+                    ><svg aria-hidden="true"><use href="/icons.svg#mark-devin" /></svg></span
+                  >Devin
+                </th>
+                <td>Devin CLI (ACP)</td>
+                <td><code>devin auth login</code></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Three things a team does that one agent can't, each drawn as the app draws it. -->
+      <section class="band moves" aria-labelledby="moves-title">
+        <div class="wrap">
+          <div class="head">
+            <h2 class="title" id="moves-title">Built for multi-agent work</h2>
+            <p class="lede">
+              Review diffs across labs, inspect outputs with live controls, and trigger threads from schedules
+              or failing CI.
+            </p>
+          </div>
+
+          <article class="move">
+            <div class="move-copy">
+              <h3 class="subtitle">Cross-lab code review</h3>
+              <p>
+                Have Codex audit a patch Claude wrote before you commit. Every finding quotes the exact diff
+                lines so you can send any finding back to the agent in one click.
+              </p>
+            </div>
+            <figure class="shot shot-card">
+              <picture>
+                <source
+                  media="(max-width: 700px)"
+                  srcset="./src/media/app/review-cerium-phone.webp"
+                  width="1140"
+                  height="2072"
+                  data-shot="review"
+                  data-phone
+                />
+                <img
+                  src="./src/media/app/review-cerium.webp"
+                  width="1478"
+                  height="1089"
+                  loading="lazy"
+                  data-shot="review"
+                  alt="Three files changed by a Claude turn, with GPT-6 Luna on Codex listing two findings quoting lines of src/queue.ts, each with Send to agent and Dismiss buttons."
+                />
+              </picture>
+            </figure>
+          </article>
+
+          <article class="move">
+            <div class="move-copy">
+              <h3 class="subtitle">Interactive artifacts</h3>
+              <p>
+                Agents render live HTML charts, timelines, and simulators inline. Adjust the controls to test
+                a tradeoff, then send your chosen settings straight back.
+              </p>
+            </div>
+            <div class="artifact pane" data-artifact>
+              <div class="knobs">
+                <label>
+                  <span>count<output data-out="count">6</output></span>
+                  <input type="range" min="1" max="12" value="6" data-knob="count" />
+                </label>
+                <label>
+                  <span>interval<output data-out="interval">60 ms</output></span>
+                  <input type="range" min="20" max="200" step="10" value="60" data-knob="interval" />
+                </label>
+                <label>
+                  <span>concurrency<output data-out="concurrency">6</output></span>
+                  <input type="range" min="1" max="8" value="6" data-knob="concurrency" />
+                </label>
+              </div>
+              <dl class="stats">
+                <div>
+                  <dt>24 jobs done in</dt>
+                  <dd><b data-stat="total">254</b> ms</dd>
+                  <dd data-stat="free">234 ms unlimited</dd>
+                </div>
+                <div>
+                  <dt>Peak starts per window</dt>
+                  <dd><b data-stat="peak">6</b> of <span data-stat="count">6</span></dd>
+                  <dd class="ok">within limit</dd>
+                </div>
+                <div>
+                  <dt>Max queue wait</dt>
+                  <dd><b data-stat="wait">209</b> ms</dd>
+                  <dd data-stat="last">job 24, queued at 0 ms</dd>
+                </div>
+              </dl>
+              <svg
+                class="chart"
+                data-chart
+                role="img"
+                aria-label="Timeline of 24 jobs starting under the rate limit"
+              ></svg>
+              <p class="legend">
+                <span class="l-run">Running</span><span class="l-start">Job start</span
+                ><span class="l-free">Unlimited finish</span>
+              </p>
+            </div>
+          </article>
+
+          <article class="move">
+            <div class="move-copy">
+              <h3 class="subtitle">Automations and CI recovery</h3>
+              <p>
+                Trigger threads on a schedule, on GitHub events, or when CI fails. Cerium pulls the failed
+                logs, fixes the break in a fresh git worktree, and pushes again.
+              </p>
+            </div>
+            <figure class="shot shot-panel">
+              <img
+                src="./src/media/app/automation-cerium.webp"
+                width="880"
+                height="1444"
+                loading="lazy"
+                data-shot="automation"
+                alt="Fix failing CI automation triggered on CI failure, using a fresh worktree per run on Opus 5.5 with cross-lab review enabled."
+              />
+            </figure>
+          </article>
+
+          <dl class="rest">
+            <div>
+              <dt>Worktrees and checkpoints</dt>
+              <dd>
+                Isolated git worktrees per thread with inline staging, commits, and PRs. Turn checkpoints
+                restore conversation and files together.
+              </dd>
+            </div>
+            <div>
+              <dt>Mid-task failover</dt>
+              <dd>
+                Hit a rate limit and switch harnesses mid-thread. Your conversation history, file changes, and
+                plan come along.
+              </dd>
+            </div>
+            <div>
+              <dt>Terminals, preview, and computer use</dt>
+              <dd>
+                Per-thread shells, an inspectable browser preview agents can drive, and opt-in computer use
+                with live per-agent cursors.
+              </dd>
+            </div>
+            <div>
+              <dt>Phone and web access</dt>
+              <dd>
+                Optional sign-in syncs desktop threads to the web app, with push notifications when an agent
+                finishes or needs approval.
+              </dd>
+            </div>
+            <div>
+              <dt>Shared Hub and import</dt>
+              <dd>
+                Manage MCP servers, skills, and project instructions across harnesses, and import existing
+                sessions from eight CLIs.
+              </dd>
+            </div>
+            <div>
+              <dt>Forks, <code>/btw</code>, and dictation</dt>
+              <dd>
+                Fork threads at any turn, ask <code>/btw</code> side questions, work in split panes, and
+                dictate offline with local Whisper.
+              </dd>
+            </div>
+          </dl>
+        </div>
+      </section>
+
+      <!-- The app's eleven themes. Picking one dresses this page and its pictures in it, the prism included. -->
+      <section class="band themes" aria-labelledby="themes-title">
+        <div class="wrap">
+          <div class="head">
+            <h2 class="title" id="themes-title">Eleven themes, dark and light</h2>
+            <p class="lede">
+              Each palette styles the chrome, accent, and syntax colors together. Pick one to preview it on
+              this page.
+            </p>
+          </div>
+          <div class="samples" role="radiogroup" aria-label="Theme" data-picker>
+            <button class="sample" role="radio" aria-checked="true" data-pick="cerium">
+              <span class="sample-pair" aria-hidden="true">
+                <span class="sample-glass" data-palette="cerium" data-theme="dark"
+                  ><i class="s-accent"></i><i class="s-k"></i><i class="s-f"></i><i class="s-s"></i
+                ></span>
+                <span class="sample-glass" data-palette="cerium" data-theme="light"
+                  ><i class="s-accent"></i><i class="s-k"></i><i class="s-f"></i><i class="s-s"></i
+                ></span>
+              </span>
+              <span class="sample-name">Cerium</span>
             </button>
-            <button role="radio" aria-checked="false" data-pick="amber" style="--bead: oklch(0.8 0.13 70)">
-              Amber
+            <button class="sample" role="radio" aria-checked="false" data-pick="ink">
+              <span class="sample-pair" aria-hidden="true">
+                <span class="sample-glass" data-palette="ink" data-theme="dark"
+                  ><i class="s-accent"></i><i class="s-k"></i><i class="s-f"></i><i class="s-s"></i
+                ></span>
+                <span class="sample-glass" data-palette="ink" data-theme="light"
+                  ><i class="s-accent"></i><i class="s-k"></i><i class="s-f"></i><i class="s-s"></i
+                ></span>
+              </span>
+              <span class="sample-name">Ink</span>
             </button>
-            <button
-              role="radio"
-              aria-checked="false"
-              data-pick="uranium"
-              style="--bead: oklch(0.89 0.19 123)"
-            >
-              Uranium
+            <button class="sample" role="radio" aria-checked="false" data-pick="paper">
+              <span class="sample-pair" aria-hidden="true">
+                <span class="sample-glass" data-palette="paper" data-theme="dark"
+                  ><i class="s-accent"></i><i class="s-k"></i><i class="s-f"></i><i class="s-s"></i
+                ></span>
+                <span class="sample-glass" data-palette="paper" data-theme="light"
+                  ><i class="s-accent"></i><i class="s-k"></i><i class="s-f"></i><i class="s-s"></i
+                ></span>
+              </span>
+              <span class="sample-name">Paper</span>
             </button>
-            <button
-              role="radio"
-              aria-checked="false"
-              data-pick="seaglass"
-              style="--bead: oklch(0.86 0.09 180)"
-            >
-              Sea glass
+            <button class="sample" role="radio" aria-checked="false" data-pick="dusk">
+              <span class="sample-pair" aria-hidden="true">
+                <span class="sample-glass" data-palette="dusk" data-theme="dark"
+                  ><i class="s-accent"></i><i class="s-k"></i><i class="s-f"></i><i class="s-s"></i
+                ></span>
+                <span class="sample-glass" data-palette="dusk" data-theme="light"
+                  ><i class="s-accent"></i><i class="s-k"></i><i class="s-f"></i><i class="s-s"></i
+                ></span>
+              </span>
+              <span class="sample-name">Dusk</span>
             </button>
-            <button role="radio" aria-checked="false" data-pick="cobalt" style="--bead: oklch(0.7 0.17 264)">
-              Cobalt
+            <button class="sample" role="radio" aria-checked="false" data-pick="blush">
+              <span class="sample-pair" aria-hidden="true">
+                <span class="sample-glass" data-palette="blush" data-theme="dark"
+                  ><i class="s-accent"></i><i class="s-k"></i><i class="s-f"></i><i class="s-s"></i
+                ></span>
+                <span class="sample-glass" data-palette="blush" data-theme="light"
+                  ><i class="s-accent"></i><i class="s-k"></i><i class="s-f"></i><i class="s-s"></i
+                ></span>
+              </span>
+              <span class="sample-name">Blush</span>
             </button>
-            <button
-              role="radio"
-              aria-checked="false"
-              data-pick="cranberry"
-              style="--bead: oklch(0.77 0.13 356)"
-            >
-              Cranberry
+            <button class="sample" role="radio" aria-checked="false" data-pick="ember">
+              <span class="sample-pair" aria-hidden="true">
+                <span class="sample-glass" data-palette="ember" data-theme="dark"
+                  ><i class="s-accent"></i><i class="s-k"></i><i class="s-f"></i><i class="s-s"></i
+                ></span>
+                <span class="sample-glass" data-palette="ember" data-theme="light"
+                  ><i class="s-accent"></i><i class="s-k"></i><i class="s-f"></i><i class="s-s"></i
+                ></span>
+              </span>
+              <span class="sample-name">Ember</span>
+            </button>
+            <button class="sample" role="radio" aria-checked="false" data-pick="moss">
+              <span class="sample-pair" aria-hidden="true">
+                <span class="sample-glass" data-palette="moss" data-theme="dark"
+                  ><i class="s-accent"></i><i class="s-k"></i><i class="s-f"></i><i class="s-s"></i
+                ></span>
+                <span class="sample-glass" data-palette="moss" data-theme="light"
+                  ><i class="s-accent"></i><i class="s-k"></i><i class="s-f"></i><i class="s-s"></i
+                ></span>
+              </span>
+              <span class="sample-name">Moss</span>
+            </button>
+            <button class="sample" role="radio" aria-checked="false" data-pick="phosphor">
+              <span class="sample-pair" aria-hidden="true">
+                <span class="sample-glass" data-palette="phosphor" data-theme="dark"
+                  ><i class="s-accent"></i><i class="s-k"></i><i class="s-f"></i><i class="s-s"></i
+                ></span>
+                <span class="sample-glass" data-palette="phosphor" data-theme="light"
+                  ><i class="s-accent"></i><i class="s-k"></i><i class="s-f"></i><i class="s-s"></i
+                ></span>
+              </span>
+              <span class="sample-name">Phosphor</span>
+            </button>
+            <button class="sample" role="radio" aria-checked="false" data-pick="lagoon">
+              <span class="sample-pair" aria-hidden="true">
+                <span class="sample-glass" data-palette="lagoon" data-theme="dark"
+                  ><i class="s-accent"></i><i class="s-k"></i><i class="s-f"></i><i class="s-s"></i
+                ></span>
+                <span class="sample-glass" data-palette="lagoon" data-theme="light"
+                  ><i class="s-accent"></i><i class="s-k"></i><i class="s-f"></i><i class="s-s"></i
+                ></span>
+              </span>
+              <span class="sample-name">Lagoon</span>
+            </button>
+            <button class="sample" role="radio" aria-checked="false" data-pick="midnight">
+              <span class="sample-pair" aria-hidden="true">
+                <span class="sample-glass" data-palette="midnight" data-theme="dark"
+                  ><i class="s-accent"></i><i class="s-k"></i><i class="s-f"></i><i class="s-s"></i
+                ></span>
+                <span class="sample-glass" data-palette="midnight" data-theme="light"
+                  ><i class="s-accent"></i><i class="s-k"></i><i class="s-f"></i><i class="s-s"></i
+                ></span>
+              </span>
+              <span class="sample-name">Midnight</span>
+            </button>
+            <button class="sample" role="radio" aria-checked="false" data-pick="neon">
+              <span class="sample-pair" aria-hidden="true">
+                <span class="sample-glass" data-palette="neon" data-theme="dark"
+                  ><i class="s-accent"></i><i class="s-k"></i><i class="s-f"></i><i class="s-s"></i
+                ></span>
+                <span class="sample-glass" data-palette="neon" data-theme="light"
+                  ><i class="s-accent"></i><i class="s-k"></i><i class="s-f"></i><i class="s-s"></i
+                ></span>
+              </span>
+              <span class="sample-name">Neon</span>
             </button>
           </div>
-        </div>
-        <div class="glass-stage">
-          <div class="glass-light" aria-hidden="true"></div>
-          <figure class="window glass-window" data-shots>
-            <template>
-              <img
-                loading="lazy"
-                data-shot="cerium"
-                src="./src/media/themes/cerium-dark.webp"
-                srcset="
-                  ./src/media/themes/cerium-dark-1600.webp 1600w,
-                  ./src/media/themes/cerium-dark.webp      3200w
-                "
-                sizes="92vw"
-                width="3200"
-                height="2000"
-                alt="Cerium in its clear Cerium theme"
+          <figure class="shot shot-window">
+            <picture>
+              <source
+                media="(max-width: 700px)"
+                srcset="./src/media/app/home-cerium-phone.webp"
+                width="1236"
+                height="2676"
+                data-shot="home"
+                data-phone
               />
               <img
-                data-shot="amber"
-                src="./src/media/themes/amber-dark.webp"
-                srcset="
-                  ./src/media/themes/amber-dark-1600.webp 1600w,
-                  ./src/media/themes/amber-dark.webp      3200w
-                "
-                sizes="92vw"
-                width="3200"
-                height="2000"
+                src="./src/media/app/home-cerium.webp"
+                width="2880"
+                height="1920"
                 loading="lazy"
-                alt="Cerium in the Amber theme"
+                data-shot="home"
+                data-shot-alt
+                alt="Cerium as it opens, in the Cerium theme: its threads on the left and a new thread asking what to work on."
               />
-              <img
-                data-shot="uranium"
-                src="./src/media/themes/uranium-dark.webp"
-                srcset="
-                  ./src/media/themes/uranium-dark-1600.webp 1600w,
-                  ./src/media/themes/uranium-dark.webp      3200w
-                "
-                sizes="92vw"
-                width="3200"
-                height="2000"
-                loading="lazy"
-                alt="Cerium in the Uranium theme"
-              />
-              <img
-                data-shot="seaglass"
-                src="./src/media/themes/seaglass-dark.webp"
-                srcset="
-                  ./src/media/themes/seaglass-dark-1600.webp 1600w,
-                  ./src/media/themes/seaglass-dark.webp      3200w
-                "
-                sizes="92vw"
-                width="3200"
-                height="2000"
-                loading="lazy"
-                alt="Cerium in the Sea glass theme"
-              />
-              <img
-                data-shot="cobalt"
-                src="./src/media/themes/cobalt-dark.webp"
-                srcset="
-                  ./src/media/themes/cobalt-dark-1600.webp 1600w,
-                  ./src/media/themes/cobalt-dark.webp      3200w
-                "
-                sizes="92vw"
-                width="3200"
-                height="2000"
-                loading="lazy"
-                alt="Cerium in the Cobalt theme"
-              />
-              <img
-                data-shot="cranberry"
-                src="./src/media/themes/cranberry-dark.webp"
-                srcset="
-                  ./src/media/themes/cranberry-dark-1600.webp 1600w,
-                  ./src/media/themes/cranberry-dark.webp      3200w
-                "
-                sizes="92vw"
-                width="3200"
-                height="2000"
-                loading="lazy"
-                alt="Cerium in the Cranberry theme"
-              />
-            </template>
-            <noscript>
-              <img
-                loading="lazy"
-                data-on
-                src="./src/media/themes/cerium-dark.webp"
-                srcset="
-                  ./src/media/themes/cerium-dark-1600.webp 1600w,
-                  ./src/media/themes/cerium-dark.webp      3200w
-                "
-                sizes="92vw"
-                width="3200"
-                height="2000"
-                alt="Cerium in its clear Cerium theme"
-              />
-            </noscript>
+            </picture>
           </figure>
+        </div>
+      </section>
+
+      <!-- Where things run and what leaves the machine. -->
+      <section class="band local" aria-labelledby="local-title">
+        <div class="wrap split">
+          <div class="split-copy">
+            <h2 class="title" id="local-title">Local-first architecture</h2>
+            <p class="lede">
+              Cerium runs no agent loop of its own and proxies nothing. It coordinates your local harnesses
+              over an injected MCP bus and writes every event to SQLite.
+            </p>
+            <dl class="facts">
+              <div>
+                <dt>No telemetry</dt>
+                <dd>Zero usage analytics. Scrubbed crash reports can be turned off in Settings.</dd>
+              </div>
+              <div>
+                <dt>Local SQLite log</dt>
+                <dd>Every thread and subagent transcript stays on disk.</dd>
+              </div>
+              <div>
+                <dt>Optional sign-in</dt>
+                <dd>
+                  Used only to sync threads to the web app and phone.
+                  <a class="link" href="/privacy/">Privacy policy</a>
+                </dd>
+              </div>
+            </dl>
+          </div>
+          <div
+            class="machine pane"
+            role="img"
+            aria-label="Cerium architecture: React UI connects to the Effect backend over WebSocket, the backend writes to a local SQLite event log and coordinates local harnesses over an MCP bus. Everything runs on your machine."
+          >
+            <p class="machine-label" aria-hidden="true">Your machine</p>
+            <div class="flow" aria-hidden="true">
+              <p class="node"><b>Cerium UI</b>React</p>
+              <p class="wire"><span>RPC over WebSocket</span></p>
+              <p class="node"><b>Cerium backend</b>Effect</p>
+              <p class="wire"></p>
+              <p class="node"><b>SQLite</b>event log</p>
+            </div>
+            <p class="bus" aria-hidden="true"><span>MCP bus: spawn, message, stop</span></p>
+            <ul class="machine-harnesses" aria-hidden="true">
+              <li>
+                <span class="tile m-claude"
+                  ><svg aria-hidden="true"><use href="/icons.svg#mark-claude" /></svg></span
+                ><span class="sr-only">Claude Code</span>
+              </li>
+              <li>
+                <span class="tile m-openai"
+                  ><svg aria-hidden="true"><use href="/icons.svg#mark-openai" /></svg></span
+                ><span class="sr-only">Codex</span>
+              </li>
+              <li>
+                <span class="tile m-cursor"
+                  ><svg aria-hidden="true"><use href="/icons.svg#mark-cursor" /></svg></span
+                ><span class="sr-only">Cursor</span>
+              </li>
+              <li>
+                <span class="tile m-opencode"
+                  ><svg aria-hidden="true"><use href="/icons.svg#mark-opencode" /></svg></span
+                ><span class="sr-only">OpenCode</span>
+              </li>
+              <li>
+                <span class="tile m-meta"
+                  ><svg aria-hidden="true"><use href="/icons.svg#mark-meta" /></svg></span
+                ><span class="sr-only">Muse Code</span>
+              </li>
+              <li>
+                <span class="tile m-antigravity"
+                  ><svg aria-hidden="true"><use href="/icons.svg#mark-antigravity" /></svg></span
+                ><span class="sr-only">Antigravity</span>
+              </li>
+              <li>
+                <span class="tile m-copilot"
+                  ><svg aria-hidden="true"><use href="/icons.svg#mark-copilot" /></svg></span
+                ><span class="sr-only">GitHub Copilot</span>
+              </li>
+              <li>
+                <span class="tile m-grok"
+                  ><svg aria-hidden="true"><use href="/icons.svg#mark-grok" /></svg></span
+                ><span class="sr-only">Grok Build</span>
+              </li>
+              <li>
+                <span class="tile m-devin"
+                  ><svg aria-hidden="true"><use href="/icons.svg#mark-devin" /></svg></span
+                ><span class="sr-only">Devin</span>
+              </li>
+            </ul>
+            <p class="machine-note" aria-hidden="true">Each harness connects directly to its own provider.</p>
+          </div>
         </div>
       </section>
 
       <!-- The close. -->
       <section class="close" aria-labelledby="close-title">
-        <p class="close-plans">
-          Real local harnesses on the subscriptions you already pay for. Each CLI handles its own sign-in;
-          Cerium never reads your keys.
-        </p>
-        <h2 class="close-word" id="close-title" aria-label="Cerium" data-fit>
-          <span aria-hidden="true"
-            >cer<span class="close-i">ı<i class="facet"></i></span>um</span
-          >
-        </h2>
-        <div class="close-actions">
-          <a class="button button-solid" href="/downloads/" data-download>
-            <svg aria-hidden="true" data-system-mark><use href="/icons.svg#mark-windows" /></svg>
-            <span data-download-label>Download for Windows</span>
-          </a>
-          <a class="button button-glass" href="/downloads/">All platforms</a>
+        <div class="wrap">
+          <h2 class="close-word" id="close-title" aria-label="Cerium" data-fit>
+            <span aria-hidden="true"
+              >cer<span class="close-i">ı<i class="facet"></i></span>um</span
+            >
+          </h2>
+          <div class="close-foot">
+            <p class="lede">Free and open source under Apache 2.0.</p>
+            <div class="close-actions">
+              <a class="button button-solid" href="/downloads/" data-download>
+                <svg aria-hidden="true" data-system-mark><use href="/icons.svg#mark-windows" /></svg>
+                <span data-download-label>Download for Windows</span>
+              </a>
+              <a class="button button-glass" href="/downloads/">All platforms</a>
+            </div>
+          </div>
         </div>
-        <p class="close-small">
-          Free, local-first, and open source (Apache 2.0). For Windows, macOS, and Linux.
-        </p>
       </section>
     </main>
 
     <footer class="foot">
-      <p>
-        Cerium is an independent project, not affiliated with or endorsed by Anthropic, OpenAI, Meta,
-        Anysphere, Anomaly, Google, GitHub, xAI, or Cognition. Open source under the
-        <a href="https://github.com/CeriumHQ/cerium/blob/main/LICENSE">Apache 2.0 license</a>.
-      </p>
-      <nav aria-label="Footer">
-        <a href="/downloads/">Downloads</a>
-        <a href="https://github.com/CeriumHQ/cerium/blob/main/CHANGELOG.md">Changelog</a>
-        <a href="https://github.com/CeriumHQ/cerium">GitHub</a>
-        <a href="/privacy/">Privacy</a>
-      </nav>
+      <div class="wrap foot-inner">
+        <div class="foot-about">
+          <a class="brand" href="/" aria-label="Cerium home">
+            <svg aria-hidden="true"><use href="/icons.svg#mark-cerium" /></svg>
+            <span>cerium</span>
+          </a>
+          <p>
+            Cerium is an independent project, not affiliated with or endorsed by Anthropic, OpenAI, Meta,
+            Anysphere, Anomaly, Google, GitHub, xAI, or Cognition.
+          </p>
+        </div>
+        <nav class="foot-links" aria-label="Footer">
+          <div>
+            <h2>Product</h2>
+            <ul>
+              <li><a href="/downloads/">Downloads</a></li>
+              <li><a href="/app/">Web app</a></li>
+              <li><a href="https://github.com/CeriumHQ/cerium/blob/main/CHANGELOG.md">Changelog</a></li>
+            </ul>
+          </div>
+          <div>
+            <h2>Source</h2>
+            <ul>
+              <li><a href="https://github.com/CeriumHQ/cerium">GitHub</a></li>
+              <li><a href="https://github.com/CeriumHQ/cerium/blob/main/LICENSE">Apache 2.0 license</a></li>
+              <li><a href="https://github.com/CeriumHQ/cerium/blob/main/SECURITY.md">Security</a></li>
+            </ul>
+          </div>
+          <div>
+            <h2>Legal</h2>
+            <ul>
+              <li><a href="/privacy/">Privacy</a></li>
+            </ul>
+          </div>
+        </nav>
+      </div>
     </footer>
   </body>
 </html>

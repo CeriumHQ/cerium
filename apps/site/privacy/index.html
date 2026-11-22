@@ -1,25 +1,40 @@
 <!doctype html>
-<html lang="en" data-palette="cerium">
+<html lang="en" data-palette="cerium" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Privacy — Cerium</title>
     <meta
       name="description"
-      content="How Cerium handles your data: local-first storage, optional sync, scrubbed crash reports, and zero analytics."
+      content="How Cerium handles your data: local SQLite storage, optional remote sync, scrubbed crash reports, and zero analytics."
     />
-    <meta name="theme-color" content="#121316" />
+    <meta name="theme-color" content="#1b1a18" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://cerium.nonlooped.xyz/privacy/" />
     <meta property="og:title" content="Privacy — Cerium" />
     <meta
       property="og:description"
-      content="How Cerium handles your data: local-first storage, optional sync, scrubbed crash reports, and zero analytics."
+      content="How Cerium handles your data: local SQLite storage, optional remote sync, scrubbed crash reports, and zero analytics."
     />
+    <meta property="og:site_name" content="Cerium" />
+    <meta property="og:image" content="https://cerium.nonlooped.xyz/og.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="Cerium's glass mark splitting one white beam into nine, one for each coding agent: Claude Code, Antigravity, Codex, Grok Build, Devin, Muse Code, GitHub Copilot, Cursor, and OpenCode."
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Privacy — Cerium" />
+    <meta
+      name="twitter:description"
+      content="How Cerium handles your data: local SQLite storage, optional remote sync, scrubbed crash reports, and zero analytics."
+    />
+    <meta name="twitter:image" content="https://cerium.nonlooped.xyz/og.jpg" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="canonical" href="https://cerium.nonlooped.xyz/privacy/" />
     <script>
-      // The glass picked on the home page, before the first paint (src/palette.ts).
+      // The theme picked on the home page, before the first paint (src/palette.ts).
       try {
         const saved = localStorage.getItem("cerium-site:palette");
         if (saved) document.documentElement.dataset.palette = saved;
@@ -34,15 +49,18 @@
         <span>cerium</span>
       </a>
       <nav aria-label="Site">
+        <a class="hide-narrow" href="/#thread">How it works</a>
+        <a class="hide-narrow" href="/#harnesses">Harnesses</a>
+        <a class="hide-narrow" href="https://github.com/CeriumHQ/cerium">GitHub</a>
         <a href="/app/">Web app</a>
         <a class="button button-solid" href="/downloads/">Download</a>
       </nav>
     </header>
 
-    <main class="policy">
+    <main class="policy wrap">
       <aside class="policy-side">
         <h1 class="display policy-title">Privacy</h1>
-        <p class="policy-date">Last updated 23 October 2026</p>
+        <p class="policy-date">Last updated October 23, 2026</p>
         <nav class="policy-toc" aria-label="On this page">
           <a href="#account">Optional account &amp; sync</a>
           <a href="#removing">Deleting your data</a>
@@ -53,100 +71,122 @@
 
       <article class="policy-body">
         <p class="policy-lead">
-          Cerium collects no telemetry or usage analytics. Your threads stay in a local SQLite database on
-          your machine, and each coding harness talks directly to its own provider as usual. Anonymous crash
-          reporting is enabled by default and can be turned off in Settings.
+          Cerium collects no telemetry or usage analytics. Threads stay in a local SQLite database on your
+          machine, and each harness connects directly to its own provider. Anonymous crash reporting is on by
+          default and can be turned off in Settings.
         </p>
-        <p>Below is everything Cerium stores or connects to outside your machine.</p>
+        <p>Everything Cerium stores or sends off your machine is listed below.</p>
 
         <h2 id="account">Optional account &amp; sync</h2>
         <p>
-          Signing in is completely optional. It exists so you can view and steer your desktop threads from
-          your phone or another machine. Authentication is handled by
-          <a href="https://clerk.com/legal/privacy">Clerk</a> (email and password, or Google, GitHub, or X),
-          which receives your name, email address, and profile picture. Cerium never sees your password.
+          Signing in is optional and only needed to view or steer desktop threads from your phone or another
+          device. <a href="https://clerk.com/legal/privacy">Clerk</a> handles authentication (email and
+          password, Google, GitHub, or X) and receives your name, email address, and profile picture. Cerium
+          never sees your password.
         </p>
-        <p>When you sign in, Cerium's relay at cerium.nonlooped.xyz stores the following for your account:</p>
+        <p>When signed in, the relay at cerium.nonlooped.xyz stores:</p>
         <ul>
           <li>Your name, email address, and profile picture from your sign-in provider</li>
           <li>
-            Connected device metadata: device name, platform, Cerium version, update channel, last-seen
-            timestamp, and a hash of the device key
+            Device metadata: name, platform, Cerium version, update channel, last-seen time, and a hash of the
+            device key
           </li>
           <li>
-            Synced thread copies from signed-in machines: messages, tool calls, and tool output (images
-            excluded)
+            Synced threads from signed-in machines: messages, tool calls, and tool outputs (images excluded)
           </li>
-          <li>Unsent message drafts and per-thread read positions</li>
+          <li>Unsent drafts and per-thread read positions</li>
           <li>Browser push subscriptions, if you enable notifications</li>
         </ul>
         <p>
-          When you control a machine remotely, the relay also proxies live traffic between devices. The relay
-          runs on <a href="https://www.cloudflare.com/privacypolicy/">Cloudflare</a>, which retains standard
-          request logs. Your data is never sold or shared for advertising.
+          During remote control, the relay proxies live traffic between your devices. It runs on
+          <a href="https://www.cloudflare.com/privacypolicy/">Cloudflare</a>, which keeps standard request
+          logs. Your data is never sold or shared for advertising.
         </p>
 
         <h2 id="removing">Deleting your data</h2>
         <p>
-          Signing out a machine (or removing it in Settings → Account) deletes all of its synced thread copies
-          from the relay. Deleting a thread deletes its synced copy immediately. To delete your entire
-          account, <a href="https://github.com/CeriumHQ/cerium/issues">open an issue on GitHub</a> from the
-          account you signed in with, or ask there for a private contact method.
+          Signing out a machine (or removing it in Settings → Account) deletes its synced threads from the
+          relay. Deleting a thread removes its synced copy immediately. To delete your entire account,
+          <a href="https://github.com/CeriumHQ/cerium/issues">open an issue on GitHub</a> from your signed-in
+          account, or ask there for a private contact.
         </p>
 
         <h2 id="reaching-out">Network requests</h2>
         <dl>
           <dt>Crash reports</dt>
           <dd>
-            When the desktop app hits an unexpected failure (a UI render error, a backend crash, an unexpected
-            harness exit, or a failed update), it sends an anonymized crash report to
-            <a href="https://sentry.io/privacy/">Sentry</a>. Reports include the error type, a scrubbed error
-            message (with all file paths, URLs, email addresses, IP addresses, and IDs stripped), the stack
-            trace inside Cerium's code, Cerium's version and update channel, and your OS and CPU architecture.
-            Reports never include your messages, files, folder or project names, thread titles, account
-            details, machine name, or memory contents, and Cerium's Sentry project does not store your IP
-            address. Turn this off anytime in Settings → General → Send crash reports.
+            On unexpected failures (UI render errors, backend crashes, unexpected harness exits, or failed
+            updates), the desktop app sends an anonymized report to
+            <a href="https://sentry.io/privacy/">Sentry</a>. Reports include the error type, a scrubbed
+            message (file paths, URLs, email addresses, IPs, and IDs removed), Cerium's stack trace, app
+            version, update channel, OS, and CPU architecture. Reports never include messages, files, folder
+            or project names, thread titles, account details, machine names, or memory contents, and Sentry
+            does not store your IP address. Disable anytime in Settings → General → Send crash reports.
           </dd>
           <dt>Updates</dt>
           <dd>
-            Cerium checks GitHub Releases at launch and every six hours for new versions, and downloads
-            updates only when you choose to install them. Opening Settings → Harnesses checks npm and GitHub
-            for the latest version of each installed CLI.
+            Cerium checks GitHub Releases on launch and every six hours, downloading updates only when you
+            choose to install them. Opening Settings → Harnesses checks npm and GitHub for newer CLI versions.
           </dd>
           <dt>Dictation</dt>
           <dd>
-            On first use, Cerium downloads the local speech runtime (from GitHub Releases, with Unpkg as
-            fallback) and your chosen Whisper model (from Hugging Face). Both are cached locally, and all
-            transcription runs on your machine.
+            On first use, Cerium downloads the local speech runtime (GitHub Releases, with Unpkg as fallback)
+            and your chosen Whisper model (Hugging Face). Both are cached locally; transcription runs entirely
+            on your machine.
           </dd>
           <dt>Artifacts</dt>
           <dd>
-            Interactive HTML artifacts generated by agents can load external scripts over HTTPS (for example,
-            charting libraries from cdn.jsdelivr.net), so viewing an artifact may fetch from those CDNs.
+            Interactive HTML artifacts generated by agents can load external HTTPS scripts (for example,
+            charting libraries from cdn.jsdelivr.net), which your client fetches when you view them.
           </dd>
         </dl>
 
         <h2 id="website">This website</h2>
         <p>
           This website runs no analytics, trackers, or ads. Signing in sets Clerk session cookies to keep you
-          authenticated. Cloudflare serves the site and retains standard request logs. The theme you choose on
-          the home page is saved locally in your browser only.
+          authenticated. Cloudflare serves the site and retains standard request logs. Your selected theme is
+          saved only in your browser.
         </p>
       </article>
     </main>
 
     <footer class="foot">
-      <p>
-        Cerium is an independent project, not affiliated with or endorsed by Anthropic, OpenAI, Meta,
-        Anysphere, Anomaly, Google, GitHub, xAI, or Cognition. Open source under the
-        <a href="https://github.com/CeriumHQ/cerium/blob/main/LICENSE">Apache 2.0 license</a>.
-      </p>
-      <nav aria-label="Footer">
-        <a href="/">Home</a>
-        <a href="/downloads/">Downloads</a>
-        <a href="https://github.com/CeriumHQ/cerium/blob/main/CHANGELOG.md">Changelog</a>
-        <a href="https://github.com/CeriumHQ/cerium">GitHub</a>
-      </nav>
+      <div class="wrap foot-inner">
+        <div class="foot-about">
+          <a class="brand" href="/" aria-label="Cerium home">
+            <svg aria-hidden="true"><use href="/icons.svg#mark-cerium" /></svg>
+            <span>cerium</span>
+          </a>
+          <p>
+            Cerium is an independent project, not affiliated with or endorsed by Anthropic, OpenAI, Meta,
+            Anysphere, Anomaly, Google, GitHub, xAI, or Cognition.
+          </p>
+        </div>
+        <nav class="foot-links" aria-label="Footer">
+          <div>
+            <h2>Product</h2>
+            <ul>
+              <li><a href="/downloads/">Downloads</a></li>
+              <li><a href="/app/">Web app</a></li>
+              <li><a href="https://github.com/CeriumHQ/cerium/blob/main/CHANGELOG.md">Changelog</a></li>
+            </ul>
+          </div>
+          <div>
+            <h2>Source</h2>
+            <ul>
+              <li><a href="https://github.com/CeriumHQ/cerium">GitHub</a></li>
+              <li><a href="https://github.com/CeriumHQ/cerium/blob/main/LICENSE">Apache 2.0 license</a></li>
+              <li><a href="https://github.com/CeriumHQ/cerium/blob/main/SECURITY.md">Security</a></li>
+            </ul>
+          </div>
+          <div>
+            <h2>Legal</h2>
+            <ul>
+              <li><a href="/privacy/">Privacy</a></li>
+            </ul>
+          </div>
+        </nav>
+      </div>
     </footer>
   </body>
 </html>

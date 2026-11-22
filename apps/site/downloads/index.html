@@ -1,27 +1,40 @@
 <!doctype html>
-<html lang="en" data-palette="cerium">
+<html lang="en" data-palette="cerium" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Download Cerium</title>
+    <title>Download Cerium for Windows, macOS, and Linux</title>
     <meta
       name="description"
-      content="Download Cerium for Windows 11 x64, macOS on Apple silicon, and Linux x64. Free, local-first, and open source under Apache 2.0."
+      content="Download Cerium for Windows 11 (x64), macOS (Apple silicon), and Linux (x64). Free, local-first, and open source under Apache 2.0."
     />
-    <meta name="theme-color" content="#121316" />
+    <meta name="theme-color" content="#1b1a18" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://cerium.nonlooped.xyz/downloads/" />
-    <meta property="og:title" content="Download Cerium" />
+    <meta property="og:title" content="Download Cerium for Windows, macOS, and Linux" />
     <meta
       property="og:description"
-      content="Download Cerium for Windows 11 x64, macOS on Apple silicon, and Linux x64. Free, local-first, and open source under Apache 2.0."
+      content="Download Cerium for Windows 11 (x64), macOS (Apple silicon), and Linux (x64). Free, local-first, and open source under Apache 2.0."
     />
-    <meta property="og:image" content="https://cerium.nonlooped.xyz/og-prism.png" />
+    <meta property="og:site_name" content="Cerium" />
+    <meta property="og:image" content="https://cerium.nonlooped.xyz/og.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="Cerium's glass mark splitting one white beam into nine, one for each coding agent: Claude Code, Antigravity, Codex, Grok Build, Devin, Muse Code, GitHub Copilot, Cursor, and OpenCode."
+    />
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Download Cerium for Windows, macOS, and Linux" />
+    <meta
+      name="twitter:description"
+      content="Download Cerium for Windows 11 (x64), macOS (Apple silicon), and Linux (x64). Free, local-first, and open source under Apache 2.0."
+    />
+    <meta name="twitter:image" content="https://cerium.nonlooped.xyz/og.jpg" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="canonical" href="https://cerium.nonlooped.xyz/downloads/" />
     <script>
-      // The glass picked on the home page, before the first paint (src/palette.ts).
+      // The theme picked on the home page, before the first paint (src/palette.ts).
       try {
         const saved = localStorage.getItem("cerium-site:palette");
         if (saved) document.documentElement.dataset.palette = saved;
@@ -36,155 +49,101 @@
         <span>cerium</span>
       </a>
       <nav aria-label="Site">
-        <a class="hide-narrow" href="/#team">How it works</a>
+        <a class="hide-narrow" href="/#thread">How it works</a>
+        <a class="hide-narrow" href="/#harnesses">Harnesses</a>
         <a class="hide-narrow" href="https://github.com/CeriumHQ/cerium">GitHub</a>
         <a href="/app/">Web app</a>
       </nav>
     </header>
 
-    <main class="get">
-      <section class="get-head" aria-labelledby="get-title">
-        <h1 class="display get-title" id="get-title">Get Cerium.</h1>
-        <div class="get-lead">
-          <p class="lede">
-            Free and open source under Apache 2.0. Cerium automatically detects the coding CLIs already
-            installed and signed in on your machine.
-          </p>
-          <a class="button button-solid" href="/download" data-download>
-            <svg aria-hidden="true" data-system-mark><use href="/icons.svg#mark-windows" /></svg>
-            <span data-download-label>Download for Windows</span>
-          </a>
-        </div>
+    <main class="page wrap">
+      <section class="page-head" aria-labelledby="get-title">
+        <h1 class="display page-title" id="get-title">Download Cerium</h1>
+        <p class="lede">
+          Free and open source under Apache 2.0. Detects any supported coding CLI you already have signed in.
+        </p>
       </section>
 
-      <!-- One beam splits three ways, a band to each system. -->
-      <div class="split" aria-hidden="true">
-        <svg viewBox="0 0 1200 160" preserveAspectRatio="none">
-          <defs>
-            <linearGradient id="band-in" gradientUnits="userSpaceOnUse" x1="0" y1="20" x2="600" y2="20">
-              <stop offset="0" stop-color="#fff" stop-opacity="0" />
-              <stop offset="1" stop-color="#fff" />
-            </linearGradient>
-            <linearGradient id="band-a" gradientUnits="userSpaceOnUse" x1="0" y1="20" x2="0" y2="160">
-              <stop offset="0" stop-color="var(--sp-cranberry)" />
-              <stop offset="1" stop-color="var(--sp-cranberry)" stop-opacity="0" />
-            </linearGradient>
-            <linearGradient id="band-b" gradientUnits="userSpaceOnUse" x1="0" y1="20" x2="0" y2="160">
-              <stop offset="0" stop-color="var(--sp-uranium)" />
-              <stop offset="1" stop-color="var(--sp-uranium)" stop-opacity="0" />
-            </linearGradient>
-            <linearGradient id="band-c" gradientUnits="userSpaceOnUse" x1="0" y1="20" x2="0" y2="160">
-              <stop offset="0" stop-color="var(--sp-cobalt)" />
-              <stop offset="1" stop-color="var(--sp-cobalt)" stop-opacity="0" />
-            </linearGradient>
-          </defs>
-          <path pathLength="1" class="split-in" d="M0 20 H600" stroke="url(#band-in)" />
-          <path
-            pathLength="1"
-            class="split-out"
-            d="M600 20 C 600 90, 200 70, 200 160"
-            stroke="url(#band-a)"
-          />
-          <path
-            pathLength="1"
-            class="split-out"
-            d="M600 20 C 600 90, 600 70, 600 160"
-            stroke="url(#band-b)"
-          />
-          <path
-            pathLength="1"
-            class="split-out"
-            d="M600 20 C 600 90, 1000 70, 1000 160"
-            stroke="url(#band-c)"
-          />
-        </svg>
-        <span class="split-facet"></span>
-      </div>
-
-      <section class="systems" aria-label="All builds">
-        <article class="system" data-system="windows" style="--band: var(--sp-cranberry)">
-          <header>
-            <svg aria-hidden="true"><use href="/icons.svg#mark-windows" /></svg>
-            <h2>Windows 11</h2>
-            <span>x64</span>
-          </header>
-          <ul>
-            <li>
-              <b>Installer</b>
-              <span class="builds">
-                <a href="/download" data-build
-                  >x64<svg aria-hidden="true"><use href="/icons.svg#arrow-down" /></svg
-                ></a>
-              </span>
-            </li>
-          </ul>
-        </article>
-
-        <article class="system" data-system="mac" style="--band: var(--sp-uranium)">
-          <header>
-            <svg aria-hidden="true"><use href="/icons.svg#mark-apple" /></svg>
-            <h2>macOS</h2>
-            <span>Apple silicon</span>
-          </header>
-          <ul>
-            <li>
-              <b>Disk image</b>
-              <span class="builds">
-                <a href="/download/mac" data-build
-                  >Apple silicon<svg aria-hidden="true"><use href="/icons.svg#arrow-down" /></svg
-                ></a>
-              </span>
-            </li>
-          </ul>
-        </article>
-
-        <article class="system" data-system="linux" style="--band: var(--sp-cobalt)">
-          <header>
-            <svg aria-hidden="true"><use href="/icons.svg#mark-linux" /></svg>
-            <h2>Linux</h2>
-            <span>x64</span>
-          </header>
-          <ul>
-            <li>
-              <b>AppImage</b>
-              <span class="builds">
-                <a href="/download/linux" data-build
-                  >x64<svg aria-hidden="true"><use href="/icons.svg#arrow-down" /></svg
-                ></a>
-              </span>
-            </li>
-          </ul>
-        </article>
-      </section>
-
-      <section class="elsewhere" aria-label="More options">
-        <a href="/app/">
-          <b>Phone &amp; web access</b>
-          <span>Sign in on the web app to follow and steer your desktop threads from anywhere.</span>
-        </a>
-        <a href="https://github.com/CeriumHQ/cerium/releases/latest">
-          <b>Release notes</b>
-          <span>See what shipped in the latest stable release on GitHub.</span>
-        </a>
-        <a href="https://github.com/CeriumHQ/cerium#build-from-source">
-          <b>Build from source</b>
-          <span>Clone the repo with Node 24+ and Bun 1.4+, then run <code>bun install</code>.</span>
-        </a>
+      <section aria-label="All builds">
+        <ul class="systems pane">
+          <li class="system" data-system="windows">
+            <svg class="system-mark" aria-hidden="true"><use href="/icons.svg#mark-windows" /></svg>
+            <h2 class="subtitle">Windows 11</h2>
+            <p class="system-arch">x64</p>
+            <p class="system-note">Unsigned build. Confirm Windows SmartScreen if prompted.</p>
+            <a class="button button-glass" href="/download" data-build>
+              <svg aria-hidden="true"><use href="/icons.svg#arrow-down" /></svg>Installer
+            </a>
+          </li>
+          <li class="system" data-system="mac">
+            <svg class="system-mark" aria-hidden="true"><use href="/icons.svg#mark-apple" /></svg>
+            <h2 class="subtitle">macOS</h2>
+            <p class="system-arch">Apple silicon</p>
+            <p class="system-note">
+              Unnotarized build. Open once, then allow in System Settings → Privacy &amp; Security.
+            </p>
+            <a class="button button-glass" href="/download/mac" data-build>
+              <svg aria-hidden="true"><use href="/icons.svg#arrow-down" /></svg>Disk image
+            </a>
+          </li>
+          <li class="system" data-system="linux">
+            <svg class="system-mark" aria-hidden="true"><use href="/icons.svg#mark-linux" /></svg>
+            <h2 class="subtitle">Linux</h2>
+            <p class="system-arch">x64</p>
+            <p class="system-note">
+              Requires FUSE 2: <code>libfuse2</code> (<code>libfuse2t64</code> on Ubuntu 24.04+).
+            </p>
+            <a class="button button-glass" href="/download/linux" data-build>
+              <svg aria-hidden="true"><use href="/icons.svg#arrow-down" /></svg>AppImage
+            </a>
+          </li>
+        </ul>
+        <p class="systems-note">
+          Latest stable release. Nightly builds from <code>main</code> are on
+          <a class="link" href="https://github.com/CeriumHQ/cerium/releases">GitHub Releases</a>. See the
+          <a class="link" href="https://github.com/CeriumHQ/cerium/releases/latest">release notes</a>, or
+          <a class="link" href="https://github.com/CeriumHQ/cerium#build-from-source">build from source</a>.
+        </p>
       </section>
     </main>
 
     <footer class="foot">
-      <p>
-        Cerium is an independent project, not affiliated with or endorsed by Anthropic, OpenAI, Meta,
-        Anysphere, Anomaly, Google, GitHub, xAI, or Cognition. Open source under the
-        <a href="https://github.com/CeriumHQ/cerium/blob/main/LICENSE">Apache 2.0 license</a>.
-      </p>
-      <nav aria-label="Footer">
-        <a href="/">Home</a>
-        <a href="https://github.com/CeriumHQ/cerium/blob/main/CHANGELOG.md">Changelog</a>
-        <a href="https://github.com/CeriumHQ/cerium">GitHub</a>
-        <a href="/privacy/">Privacy</a>
-      </nav>
+      <div class="wrap foot-inner">
+        <div class="foot-about">
+          <a class="brand" href="/" aria-label="Cerium home">
+            <svg aria-hidden="true"><use href="/icons.svg#mark-cerium" /></svg>
+            <span>cerium</span>
+          </a>
+          <p>
+            Cerium is an independent project, not affiliated with or endorsed by Anthropic, OpenAI, Meta,
+            Anysphere, Anomaly, Google, GitHub, xAI, or Cognition.
+          </p>
+        </div>
+        <nav class="foot-links" aria-label="Footer">
+          <div>
+            <h2>Product</h2>
+            <ul>
+              <li><a href="/downloads/">Downloads</a></li>
+              <li><a href="/app/">Web app</a></li>
+              <li><a href="https://github.com/CeriumHQ/cerium/blob/main/CHANGELOG.md">Changelog</a></li>
+            </ul>
+          </div>
+          <div>
+            <h2>Source</h2>
+            <ul>
+              <li><a href="https://github.com/CeriumHQ/cerium">GitHub</a></li>
+              <li><a href="https://github.com/CeriumHQ/cerium/blob/main/LICENSE">Apache 2.0 license</a></li>
+              <li><a href="https://github.com/CeriumHQ/cerium/blob/main/SECURITY.md">Security</a></li>
+            </ul>
+          </div>
+          <div>
+            <h2>Legal</h2>
+            <ul>
+              <li><a href="/privacy/">Privacy</a></li>
+            </ul>
+          </div>
+        </nav>
+      </div>
     </footer>
   </body>
 </html>

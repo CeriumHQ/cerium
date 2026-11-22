@@ -7,5 +7,9 @@
     "types": ["vite-plus/client", "node"]
   },
   "include": ["src", "scripts", "vite.config.ts"],
-  "references": [{ "path": "../../packages/browser" }]
+  "references": [
+    { "path": "../../packages/browser" },
+    { "path": "../../packages/protocol" },
+    { "path": "../../packages/store" }
+  ]
 }

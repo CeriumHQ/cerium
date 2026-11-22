@@ -1,0 +1,285 @@
+/*
+ * The few pieces of the app's interface the pages draw themselves, from the app's own tokens: a
+ * harness's mark on its tile, inline code, and one working artifact. Everything else of the app on
+ * these pages is a picture of it (scripts/shoot.ts).
+ */
+
+/* A harness, as the app names one: its mark in its own colour on a small raised tile. */
+.m-claude {
+  --mark: #d97757;
+}
+.m-openai {
+  --mark: #10a37f;
+}
+.m-cursor {
+  --mark: #e8e8ea;
+}
+.m-opencode {
+  --mark: #a8a29e;
+}
+.m-meta {
+  --mark: #0a7cff;
+}
+.m-antigravity {
+  --mark: #f0b43c;
+}
+.m-copilot {
+  --mark: #a371f7;
+}
+.m-grok {
+  --mark: #4fd0e0;
+}
+.m-devin {
+  --mark: #0294de;
+}
+
+.tile {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 1.375rem;
+  height: 1.375rem;
+  border-radius: 0.375rem;
+  background: var(--surface-raised);
+  box-shadow: inset 0 0 0 1px var(--line-subtle);
+  color: var(--mark, var(--fg-primary));
+}
+
+.tile svg {
+  width: 0.8125rem;
+  height: 0.8125rem;
+}
+
+.tile-lg {
+  width: 1.875rem;
+  height: 1.875rem;
+  border-radius: 0.5rem;
+}
+
+.tile-lg svg {
+  width: 1.0625rem;
+  height: 1.0625rem;
+}
+
+.roster code,
+.rest code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  padding: 1px 0.3125rem;
+  border-radius: 0.3125rem;
+  background: var(--surface-sunken);
+  box-shadow: inset 0 0 0 1px var(--line-subtle);
+}
+
+/* An artifact: a page an agent answered with. This one runs (artifact.ts). */
+.artifact {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+  padding: 1.125rem;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  transition: background-color 700ms var(--ease-out);
+}
+
+.artifact dl,
+.artifact dd,
+.artifact p {
+  margin: 0;
+}
+
+.knobs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.125rem;
+}
+
+.knobs label {
+  display: grid;
+  gap: 0.5rem;
+  color: var(--fg-secondary);
+  font-size: 0.75rem;
+}
+
+.knobs label span {
+  display: flex;
+  justify-content: space-between;
+}
+
+.knobs output {
+  color: var(--fg-primary);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.knobs input {
+  --fill: 50%;
+  appearance: none;
+  width: 100%;
+  height: 1rem;
+  margin: 0;
+  background: none;
+  cursor: grab;
+}
+
+.knobs input:active {
+  cursor: grabbing;
+}
+
+.knobs input::-webkit-slider-runnable-track {
+  height: 0.25rem;
+  border-radius: 2px;
+  background: linear-gradient(to right, var(--fg-primary) var(--fill), var(--line-strong) var(--fill));
+}
+
+.knobs input::-moz-range-track {
+  height: 0.25rem;
+  border-radius: 2px;
+  background: linear-gradient(to right, var(--fg-primary) var(--fill), var(--line-strong) var(--fill));
+}
+
+.knobs input::-webkit-slider-thumb {
+  appearance: none;
+  width: 0.875rem;
+  height: 0.875rem;
+  margin-top: -0.3125rem;
+  border-radius: 50%;
+  background: var(--fg-primary);
+  box-shadow: 0 1px 3px oklch(0 0 0 / 0.5);
+  transition: scale 150ms var(--ease-out);
+}
+
+.knobs input::-moz-range-thumb {
+  width: 0.875rem;
+  height: 0.875rem;
+  border: 0;
+  border-radius: 50%;
+  background: var(--fg-primary);
+  box-shadow: 0 1px 3px oklch(0 0 0 / 0.5);
+}
+
+.knobs input:hover::-webkit-slider-thumb {
+  scale: 1.15;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin: 0;
+}
+
+.stats div {
+  display: grid;
+  gap: 2px;
+  padding: 0.625rem 0.75rem;
+  border-radius: 0.625rem;
+  box-shadow: inset 0 0 0 1px var(--line-subtle);
+}
+
+.stats dt,
+.stats dd {
+  margin: 0;
+  color: var(--fg-tertiary);
+  font-size: 0.75rem;
+}
+
+.stats dd:first-of-type {
+  color: var(--fg-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.stats b {
+  color: var(--fg-primary);
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.stats .ok {
+  color: var(--status-success-text);
+}
+
+.stats .ok[data-over] {
+  color: var(--status-attention-text);
+}
+
+.chart {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 600 / 232;
+  overflow: visible;
+}
+
+.chart text {
+  fill: var(--fg-tertiary);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.chart .grid {
+  stroke: var(--line-subtle);
+}
+
+.chart .run {
+  fill: var(--series-1);
+}
+
+.chart .start {
+  fill: var(--series-2);
+}
+
+.chart .free {
+  stroke: var(--series-3);
+  stroke-dasharray: 3 3;
+}
+
+.chart .free-label {
+  fill: var(--series-3);
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  color: var(--fg-secondary);
+  font-size: 0.75rem;
+}
+
+.legend span {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.legend span::before {
+  content: "";
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 2px;
+  background: var(--series-1);
+}
+
+.legend .l-start::before {
+  background: var(--series-2);
+}
+
+.legend .l-free::before {
+  background: var(--series-3);
+}
+
+@media (max-width: 520px) {
+  .knobs {
+    gap: 0.75rem;
+  }
+  .stats {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .stats div {
+    grid-template-columns: 1fr auto;
+    align-items: baseline;
+  }
+  .stats dd:last-child {
+    display: none;
+  }
+}
