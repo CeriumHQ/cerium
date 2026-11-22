@@ -191,7 +191,13 @@ export const readAntigravityUsage = Effect.fn("AntigravityAdapter.usage")(functi
     file: executable,
     args: ["--settings", settingsFile],
     cwd: dir,
-    env: { ...process.env, NO_OPEN_BROWSER: "1" },
+    env: {
+      ...process.env,
+      NO_OPEN_BROWSER: "1",
+      // In the desktop backend, process.execPath is Electron's helper. The statusLine hook
+      // needs its Node entry point to run capture.mjs.
+      ...(process.versions["electron"] ? { ELECTRON_RUN_AS_NODE: "1" } : {}),
+    },
     replyCpr: true,
     startErrorMessage: "Couldn't start Antigravity CLI",
   });
