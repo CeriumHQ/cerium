@@ -1,4 +1,4 @@
-import { deviceHandlers } from "@cerium/account";
+import { Account, deviceHandlers } from "@cerium/account";
 import { newestArtifacts } from "@cerium/artifacts";
 import { BrowserHost } from "@cerium/bus";
 import { Computer } from "@cerium/computer";
@@ -49,6 +49,8 @@ import { OfferedModels } from "./catalog.ts";
 import { Repositories, type RepositoryError } from "./clone.ts";
 import { watchComputerUse } from "./computerUse.ts";
 import { continuations } from "./continuation.ts";
+import { parentPort } from "./shell.ts";
+import { runDesktopUpdate, watchDesktopUpdates } from "./desktopUpdates.ts";
 import { Drafts } from "./drafts.ts";
 import { EffortRouter } from "./effortRouter.ts";
 import { fileDiffOf, Files, resolveInside, type FilesError } from "./files.ts";
@@ -137,6 +139,7 @@ const listedArtifacts = (messages: ReadonlyArray<AgentEvent>): Array<ListedArtif
 /** What this machine serves its own UI and, through the relay, other devices. */
 export const Handlers = MachineRpcs.toLayer(
   Effect.gen(function* () {
+    const account = yield* Account;
     const orchestrator = yield* Orchestrator;
     const adapters = yield* Adapters;
     const settings = yield* UserSettings;
@@ -214,6 +217,9 @@ export const Handlers = MachineRpcs.toLayer(
     });
 
     return MachineRpcs.of({
+      WatchDesktopUpdates: () => watchDesktopUpdates(parentPort),
+      RunDesktopUpdate: ({ deviceId, command }) =>
+        runDesktopUpdate(account.changes, parentPort, deviceId, command),
       SourceControl: ({ threadId, command, refreshCheckout }) =>
         sourceControl.run(threadId, command, refreshCheckout).pipe(Effect.mapError(refuse)),
       RelatedWorkThreads: ({ url }) => sourceControl.related(url).pipe(Effect.mapError(refuse)),

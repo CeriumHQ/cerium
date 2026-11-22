@@ -1,3 +1,4 @@
+import type { UpdateChannel, Updates } from "@cerium/rpc";
 import type {
   PreviewElement,
   PreviewInspectorState,
@@ -285,35 +286,7 @@ export interface UiCrashReport {
   readonly stack?: string;
 }
 
-export type UpdateChannel = "stable" | "nightly";
-
-/** Mirrors the shell's own type in apps/desktop/src/updater.ts. */
-export type UpdateStatus =
-  /** A development build: only the installed app updates. */
-  | { readonly kind: "unsupported" }
-  | { readonly kind: "checking" }
-  | { readonly kind: "current"; readonly checkedAt: number }
-  | { readonly kind: "available"; readonly version: string }
-  | { readonly kind: "downloading"; readonly version: string; readonly percent: number }
-  | { readonly kind: "ready"; readonly version: string }
-  /** Cerium is closing to restart into the downloaded update. */
-  | { readonly kind: "installing"; readonly version: string }
-  /** The releases couldn't be read: `offline`, or `unpublished` when the channel has none to read. */
-  | { readonly kind: "unreachable"; readonly reason: "offline" | "unpublished"; readonly checkedAt: number }
-  /** The download failed, or with `stage: "install"` the helper that installs it couldn't start. */
-  | { readonly kind: "failed"; readonly version: string; readonly stage?: "install" };
-
-export interface Updates {
-  readonly channel: UpdateChannel;
-  /** The running build's version and channel. */
-  readonly version: string;
-  readonly buildChannel: UpdateChannel;
-  readonly status: UpdateStatus;
-  /** This build can't install updates itself: downloading one opens it in the browser. */
-  readonly manual: boolean;
-  /** An update downloads as soon as a check finds it; off, each waits for the user to start it. */
-  readonly autoDownload: boolean;
-}
+export type { UpdateChannel, UpdateStatus, Updates } from "@cerium/rpc";
 
 /** What asking to restart into the update did: `working` when agents would stop and it wasn't forced. */
 export type InstallResult = "started" | "working" | "unavailable";

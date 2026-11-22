@@ -8,6 +8,8 @@ import { AsyncResult } from "effect/reactivity";
 import { ArrowDown, ArrowUpRight, CircleAlert, RefreshCw, RotateCw } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { WEB } from "../../backend/target.ts";
+import { RemoteUpdateSettings } from "./RemoteUpdateSettings.tsx";
 import { accountAtom } from "../../backend/atoms.ts";
 import { machineAtom } from "../../backend/machine.ts";
 import {
@@ -204,6 +206,18 @@ export function DiscordSettings() {
 
 /** The installed version, the updater, and where it takes its releases from. */
 export function UpdateSettings() {
+  const machine = useAtomValue(machineAtom);
+  if (machine) return <RemoteUpdateSettings key={machine.id} machine={machine} />;
+  if (WEB)
+    return (
+      <SettingsPage title="Updates">
+        <SettingsNote>Connect to a computer to check for updates.</SettingsNote>
+      </SettingsPage>
+    );
+  return <LocalUpdateSettings />;
+}
+
+function LocalUpdateSettings() {
   const updates = useUpdates();
   return (
     <SettingsPage title="Updates">

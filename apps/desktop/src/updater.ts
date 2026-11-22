@@ -1,3 +1,4 @@
+import type { RemoteUpdates, UpdateChannel, UpdateCommand, UpdateStatus, Updates } from "@cerium/rpc";
 import { app, BrowserWindow, net, shell } from "electron";
 import electronUpdater, { type BaseUpdater, type UpdateInfo } from "electron-updater";
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -32,38 +33,6 @@ import {
 // restarted for it.
 
 const { autoUpdater } = electronUpdater;
-
-export type UpdateChannel = "stable" | "nightly";
-
-export type UpdateStatus =
-  /** A development build: only the installed app updates. */
-  | { readonly kind: "unsupported" }
-  | { readonly kind: "checking" }
-  | { readonly kind: "current"; readonly checkedAt: number }
-  | { readonly kind: "available"; readonly version: string }
-  | { readonly kind: "downloading"; readonly version: string; readonly percent: number }
-  | { readonly kind: "ready"; readonly version: string }
-  /** Cerium is closing to restart into the downloaded update. */
-  | { readonly kind: "installing"; readonly version: string }
-  /** The releases couldn't be read: `offline`, or `unpublished` when the channel has none to read. */
-  | { readonly kind: "unreachable"; readonly reason: "offline" | "unpublished"; readonly checkedAt: number }
-  /** The download failed, or with `stage: "install"` the helper that installs it couldn't start. */
-  | { readonly kind: "failed"; readonly version: string; readonly stage?: "install" };
-
-export interface Updates {
-  readonly channel: UpdateChannel;
-  /** The running build's version and channel. */
-  readonly version: string;
-  readonly buildChannel: UpdateChannel;
-  readonly status: UpdateStatus;
-  /**
-   * This installation can't be replaced (a Mac app on a read-only volume, macUpdates.ts):
-   * downloading one opens its disk image in the browser.
-   */
-  readonly manual: boolean;
-  /** An update downloads as soon as a check finds it; off, each waits for the user to start it. */
-  readonly autoDownload: boolean;
-}
 
 /** What asking to restart into the update did: `working` when agents would stop and it wasn't forced. */
 export type InstallResult = "started" | "working" | "unavailable";
@@ -127,6 +96,7 @@ const windows = process.platform === "win32";
 export interface UpdaterHost {
   /** Whether agents are working on this computer, which restarting would stop. */
   readonly working: () => boolean;
+  readonly changed: (updates: RemoteUpdates) => void;
   /** Stops the backend, its finalizers run; quitting waits for the same stop. */
   readonly stopBackend: () => Promise<void>;
 }
@@ -184,6 +154,7 @@ export const startUpdater = (host: UpdaterHost) => {
         })
       : Promise.resolve();
 
+  let restart: RemoteUpdates["restart"] = "idle";
   const snapshot = (): Updates => ({
     channel,
     version: app.getVersion(),
@@ -195,6 +166,7 @@ export const startUpdater = (host: UpdaterHost) => {
   const set = (next: UpdateStatus) => {
     status = next;
     const updates = snapshot();
+    host.changed({ ...updates, restart });
     for (const window of BrowserWindow.getAllWindows()) window.webContents.send("cerium:updates", updates);
   };
 
@@ -293,12 +265,17 @@ export const startUpdater = (host: UpdaterHost) => {
         await autoUpdater.downloadUpdate();
       }
       set({ kind: "ready", version });
+      if (restart === "requested") restartIfIdle();
     } catch (error) {
       log("error")(error);
+      const requested = restart === "requested";
+      restart = "idle";
       const lostNetwork = offline(error);
       if (!lostNetwork) reportUpdateFailure("download", error);
       set(
-        origin === "background" && lostNetwork ? { kind: "available", version } : { kind: "failed", version },
+        origin === "background" && !requested && lostNetwork
+          ? { kind: "available", version }
+          : { kind: "failed", version },
       );
     }
   };
@@ -327,8 +304,47 @@ export const startUpdater = (host: UpdaterHost) => {
     return macInstalling;
   };
 
+  /**
+   * Restarts into the downloaded update, unless agents are working and the user hasn't said to
+   * stop them. On Windows Cerium stops first, its window saying so, and the installer runs once it
+   * has (installOnExit). On macOS Squirrel or the ad hoc build's helper puts the new app in the old
+   * one's place, and on Linux the new AppImage or package; then the new build starts.
+   */
+  const install = (anyway: boolean): InstallResult => {
+    if (status.kind !== "ready") return "unavailable";
+    if (!anyway && host.working()) return "working";
+    restart = "idle";
+    set({ kind: "installing", version: status.version });
+    if (windows) void host.stopBackend().then(() => app.quit());
+    else if (adHocMac)
+      void installMac(true).then(
+        () => app.quit(),
+        () => undefined,
+      );
+    else autoUpdater.quitAndInstall(true, true);
+    return "started";
+  };
+  const restartIfIdle = () => {
+    restart = "idle";
+    if (install(false) === "working") {
+      restart = "working";
+      set(status);
+    }
+  };
+
   return {
     updates: snapshot,
+    remote: (command: UpdateCommand | null): RemoteUpdates => {
+      if (command?.kind === "check") void check();
+      if (command?.kind === "apply" && !manual && "version" in status && command.version === status.version) {
+        if (status.kind === "ready") restartIfIdle();
+        else if (status.kind === "downloading" || status.kind === "available" || status.kind === "failed") {
+          restart = "requested";
+          void download("user");
+        }
+      }
+      return { ...snapshot(), restart };
+    },
     check: async (): Promise<Updates> => {
       await check();
       return snapshot();
@@ -352,25 +368,7 @@ export const startUpdater = (host: UpdaterHost) => {
       return snapshot();
     },
     download: () => download("user"),
-    /**
-     * Restarts into the downloaded update, unless agents are working and the user hasn't said to
-     * stop them. On Windows Cerium stops first, its window saying so, and the installer runs once it
-     * has (installOnExit). On macOS Squirrel or the ad hoc build's helper puts the new app in the old
-     * one's place, and on Linux the new AppImage or package; then the new build starts.
-     */
-    install: (anyway: boolean): InstallResult => {
-      if (status.kind !== "ready") return "unavailable";
-      if (!anyway && host.working()) return "working";
-      set({ kind: "installing", version: status.version });
-      if (windows) void host.stopBackend().then(() => app.quit());
-      else if (adHocMac)
-        void installMac(true).then(
-          () => app.quit(),
-          () => undefined,
-        );
-      else autoUpdater.quitAndInstall(true, true);
-      return "started";
-    },
+    install,
     /**
      * Runs the downloaded update's installer once the backend has stopped. The ad hoc Mac helper
      * waits for this process to exit; Windows shows its installer, restarting Cerium when requested.

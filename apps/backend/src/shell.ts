@@ -3,6 +3,7 @@
 
 export interface ParentPort {
   postMessage(message: unknown): void;
+  off(event: "message", listener: (event: { readonly data: unknown }) => void): void;
   on(event: "message", listener: (event: { readonly data: unknown }) => void): void;
 }
 

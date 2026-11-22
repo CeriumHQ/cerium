@@ -67,6 +67,7 @@ import {
 import { Schema } from "effect";
 import { Rpc, RpcGroup, RpcMessage } from "effect/rpc";
 
+import { RemoteUpdates, UpdateCommand } from "./updates.ts";
 import { BrowserHostRpcs } from "./browser.ts";
 import { CeriumError } from "./error.ts";
 import { FileBytes, FileDiff, FileListing, FilePreview, FileStatuses, FilesChanged } from "./files.ts";
@@ -97,6 +98,7 @@ export * from "./pushes.ts";
 export * from "./reviews.ts";
 export * from "./scripts.ts";
 export * from "./terminal.ts";
+export * from "./updates.ts";
 
 // The contract between the UI and the backend, served over a localhost WebSocket. Payloads and
 // results are protocol schemas, so both sides validate them. Lists of threads and events skip what
@@ -113,7 +115,8 @@ export const PER_FILE_TURN_REVERT_RPC_VERSION = 55;
 export const HUB_INSTRUCTIONS_RPC_VERSION = 56;
 /** Settings' `disabledProviders`: the harnesses the user turned off. */
 export const DISABLED_PROVIDERS_RPC_VERSION = 57;
-export const RPC_VERSION = DISABLED_PROVIDERS_RPC_VERSION;
+export const REMOTE_UPDATES_RPC_VERSION = 58;
+export const RPC_VERSION = REMOTE_UPDATES_RPC_VERSION;
 export const SCOPED_EVENTS_RPC_VERSION = 50;
 
 /** Status readers send the provider ids their schema can decode. */
@@ -217,6 +220,11 @@ export type ThreadMatch = typeof ThreadMatch.Type;
  * projects, harnesses and settings.
  */
 export const MachineRpcs = RpcGroup.make(
+  Rpc.make("WatchDesktopUpdates", { success: Schema.NullOr(RemoteUpdates), stream: true }),
+  Rpc.make("RunDesktopUpdate", {
+    payload: { deviceId: DeviceId, command: UpdateCommand },
+    error: CeriumError,
+  }),
   Rpc.make("SourceControl", {
     payload: {
       threadId: ThreadId,

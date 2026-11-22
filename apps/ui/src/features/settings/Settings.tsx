@@ -66,7 +66,7 @@ const page = (
   offered = true,
 ): ReadonlyArray<Page> => (offered ? [{ id, label, description, icon }] : []);
 
-// The desktop's own pages (starting at login, dictation, updates, Discord) are left out of a browser,
+// The desktop's own pages (starting at login, dictation, Discord) are left out of a browser,
 // which has none of them; notifications are a browser's push, or the desktop shell's own.
 const desktop = !WEB;
 
@@ -91,7 +91,7 @@ const groups: ReadonlyArray<{ readonly label: string; readonly pages: ReadonlyAr
         "Updates",
         "Version and channel",
         settingsGlyphs.updates,
-        desktop && shellBridge()?.updates !== undefined,
+        WEB || shellBridge()?.updates !== undefined,
       ),
     ],
   },

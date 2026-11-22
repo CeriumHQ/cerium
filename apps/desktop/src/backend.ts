@@ -1,3 +1,5 @@
+import { ShellUpdateRequest, type RemoteUpdates, type UpdateCommand } from "@cerium/rpc";
+import { Schema } from "effect";
 import { app, utilityProcess, type UtilityProcess } from "electron";
 import { createWriteStream, mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -37,6 +39,8 @@ const STOP_TIMEOUT_MS = 5_000;
 /** A backend that ran this long restarts at once after it stops; one failing sooner backs off. */
 const HEALTHY_RUN_MS = 60_000;
 
+const isUpdateRequest = Schema.is(ShellUpdateRequest);
+
 const isConnection = (message: unknown): message is BackendConnection =>
   typeof message === "object" &&
   message !== null &&
@@ -44,7 +48,10 @@ const isConnection = (message: unknown): message is BackendConnection =>
   typeof (message as { token?: unknown }).token === "string";
 
 /** Starts the backend with `initial` (shellPath.ts), restarting it whenever it stops. */
-export const startBackend = (initial: NodeJS.ProcessEnv) => {
+export const startBackend = (
+  initial: NodeJS.ProcessEnv,
+  update: (command: UpdateCommand | null) => RemoteUpdates,
+) => {
   let env = initial;
   const logs = app.getPath("logs");
   mkdirSync(logs, { recursive: true });
@@ -89,6 +96,10 @@ export const startBackend = (initial: NodeJS.ProcessEnv) => {
     backend.stdout?.on("data", tail.write);
     backend.stderr?.on("data", tail.write);
     backend.on("message", (message: unknown) => {
+      if (isUpdateRequest(message)) {
+        backend.postMessage({ type: "desktopUpdateState", updates: update(message.command) });
+        return;
+      }
       if (isVaultRequest(message)) {
         void answerVault(message).then((reply) => backend.postMessage(reply));
         return;
@@ -150,6 +161,7 @@ export const startBackend = (initial: NodeJS.ProcessEnv) => {
 
   return {
     connection: connectionOf,
+    publishUpdate: (updates: RemoteUpdates) => child?.postMessage({ type: "desktopUpdateState", updates }),
     /** Why the backend last stopped, while none listens since. */
     failure: (): BackendFailure | undefined => failure,
     /** Calls back whenever the backend stops on a failure, or listens again after one; returns how to stop. */

@@ -846,9 +846,9 @@ const SHELL_PATH_FILE = "shell-path.txt";
  * after the first goes ahead on the PATH the shell gave last time, and a PATH it gives differently
  * now reaches the running backend once it's there.
  */
-const launchBackend = async () => {
+const launchBackend = async (update: ReturnType<typeof startUpdater>["remote"]) => {
   if (process.platform === "win32") {
-    backend = startBackend(process.env);
+    backend = startBackend(process.env, update);
     return;
   }
   const env = mac
@@ -863,10 +863,10 @@ const launchBackend = async () => {
     return path;
   });
   if (remembered === undefined) {
-    backend = startBackend(withShellPath(env, await asked));
+    backend = startBackend(withShellPath(env, await asked), update);
     return;
   }
-  const started = startBackend(withShellPath(env, remembered));
+  const started = startBackend(withShellPath(env, remembered), update);
   backend = started;
   void asked.then((path) => {
     if (path !== undefined && path !== remembered) started.setPath(withShellPath(env, path)["PATH"] ?? path);
@@ -889,8 +889,13 @@ const activityConnection = async (): Promise<BackendConnection> => {
 
 let heardPresence = false;
 void app.whenReady().then(() => {
+  updater = startUpdater({
+    working: background.working,
+    stopBackend,
+    changed: (state) => backend?.publishUpdate(state),
+  });
   if (devUrl === undefined) {
-    backendStarting = launchBackend();
+    backendStarting = launchBackend(updater.remote);
     void backendStarting.then(() =>
       backend?.onFailure((failure) => {
         if (failure !== undefined) background.setWorking(false);
@@ -899,7 +904,6 @@ void app.whenReady().then(() => {
       }),
     );
   }
-  updater = startUpdater({ working: background.working, stopBackend });
   attention = watchAttention((attended) => mainWindow?.webContents.send("cerium:attended", attended));
   // A Mac shutting down would stop the update helper partway too (installOnExit).
   if (mac) {
