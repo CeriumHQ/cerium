@@ -234,4 +234,34 @@ describe("the notifier", () => {
       ]);
     }).pipe(Effect.scoped),
   );
+
+  it.effect("tells a question as needing the user, with its first question on one line", () =>
+    Effect.gen(function* () {
+      const { sent, state, emit, wait } = yield* machine();
+      state.agents = [agent("lead", "running")];
+      state.awaiting = true;
+      const question = (text: string) => ({
+        question: text,
+        options: [],
+        multiSelect: false,
+        allowOther: true,
+      });
+      yield* emit("lead", {
+        _tag: "QuestionAsked",
+        requestId: "q1",
+        questions: [question("Which **database**\nshould I use?"), question("And the port?")],
+      });
+      yield* wait(5);
+      yield* emit("lead", { _tag: "QuestionAsked", requestId: "q2", questions: [question("```\n```")] });
+      yield* wait(5);
+      const told = (detail: string): DeviceMessage => ({
+        _tag: "Notify",
+        threadId: thread.id,
+        title: "Fix the login redirect",
+        kind: "needsYou",
+        detail,
+      });
+      assert.deepStrictEqual(sent, [told("Which database should I use?"), told("Waiting for your answer")]);
+    }).pipe(Effect.scoped),
+  );
 });

@@ -5,6 +5,7 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { subscribePush, unsubscribePush } from "../backend/atoms.ts";
 import { WEB } from "../backend/target.ts";
 import { onLaunchRequest } from "../features/launch/launchRequests.ts";
+import { isListed, needsYou, type ThreadSummary } from "../features/threads/model.ts";
 import { OPEN_MESSAGE, OPEN_PARAMS } from "./serviceWorker.ts";
 
 // Push notifications on this browser: its service worker, its
@@ -145,18 +146,37 @@ export function useRenewPush(account: AccountState) {
   }, [online, on]);
 }
 
-/** A tapped notification's thread, and which tap: tapping one again opens it again. */
-interface Tapped {
+/** A tapped notification's thread and the machine it's on, and which tap: tapping one again opens it again. */
+export interface Tapped {
   readonly threadId: string;
+  /** The machine the thread is on; none from a desktop's own notifications, which are its own. */
+  readonly machine?: string;
   readonly tap: number;
 }
 
 let taps = 0;
 
-/** The thread of the notification whose tap opened Cerium, from the address. */
+/** The address Cerium opened at, before `useNotificationOpens` tidies it. */
+const launchQuery = new URLSearchParams(typeof location === "undefined" ? "" : location.search);
+
+/** The thread of the notification whose tap opened Cerium, from the address until it's tidied. */
 const tappedAtLaunch = (): Tapped | undefined => {
-  const threadId = new URLSearchParams(location.search).get(OPEN_PARAMS.thread);
-  return threadId ? { threadId, tap: ++taps } : undefined;
+  const query = new URLSearchParams(location.search);
+  const threadId = query.get(OPEN_PARAMS.thread);
+  const machine = query.get(OPEN_PARAMS.machine);
+  return threadId ? { threadId, ...(machine ? { machine } : {}), tap: ++taps } : undefined;
+};
+
+/** The machine of the notification whose tap opened Cerium: the web client drives it first. */
+export const tappedMachine = (): string | undefined =>
+  launchQuery.get(OPEN_PARAMS.thread) ? (launchQuery.get(OPEN_PARAMS.machine) ?? undefined) : undefined;
+
+/** What the service worker posts an open window when one of its notifications is tapped. */
+export const tappedFromMessage = (data: unknown): Omit<Tapped, "tap"> | undefined => {
+  if (typeof data !== "object" || data === null) return undefined;
+  const { type, threadId, machine } = data as { type?: unknown; threadId?: unknown; machine?: unknown };
+  if (type !== OPEN_MESSAGE || typeof threadId !== "string" || threadId === "") return undefined;
+  return typeof machine === "string" && machine !== "" ? { threadId, machine } : { threadId };
 };
 
 /**
@@ -166,20 +186,21 @@ const tappedAtLaunch = (): Tapped | undefined => {
  * Cerium starts, so a tap waits for its thread.
  */
 export function useNotificationOpens<T>(
-  find: (threadId: string) => T | undefined,
+  find: (tapped: Omit<Tapped, "tap">) => T | undefined,
   open: (thread: T) => void,
 ) {
   const [tapped, setTapped] = useState(tappedAtLaunch);
   const opened = useRef(0);
   const onOpen = useEffectEvent(open);
-  const found = tapped === undefined ? undefined : find(tapped.threadId);
+  const found = tapped === undefined ? undefined : find(tapped);
   useEffect(() => {
     if (tapped === undefined || found === undefined || opened.current === tapped.tap) return;
     opened.current = tapped.tap;
     onOpen(found);
   }, [tapped, found]);
   useEffect(() => {
-    if (new URLSearchParams(location.search).has(OPEN_PARAMS.thread))
+    const query = new URLSearchParams(location.search);
+    if (query.has(OPEN_PARAMS.thread) || query.has(OPEN_PARAMS.machine))
       history.replaceState(history.state, "", location.pathname);
     // The desktop's own notifications come through its shell (desktop/notifications.ts), and so do
     // `cerium://thread/<id>` links.
@@ -192,12 +213,34 @@ export function useNotificationOpens<T>(
     }
     if (!WEB || !("serviceWorker" in navigator)) return;
     const listener = (event: MessageEvent) => {
-      const data = event.data as { type?: unknown; threadId?: unknown } | null;
-      if (data?.type === OPEN_MESSAGE && typeof data.threadId === "string")
-        setTapped({ threadId: data.threadId, tap: ++taps });
+      const thread = tappedFromMessage(event.data);
+      if (thread !== undefined) setTapped({ ...thread, tap: ++taps });
     };
     navigator.serviceWorker.addEventListener("message", listener);
     navigator.serviceWorker.startMessages();
     return () => navigator.serviceWorker.removeEventListener("message", listener);
   }, []);
+}
+
+/** What the Home Screen app's icon is badged with: the threads waiting on the user or unread. */
+export const badgeCount = (threads: ReadonlyArray<ThreadSummary>): number =>
+  threads.filter((thread) => isListed(thread) && (needsYou(thread) || thread.unread)).length;
+
+interface Badging {
+  setAppBadge?(count?: number): Promise<void>;
+  clearAppBadge?(): Promise<void>;
+}
+
+/**
+ * Keeps the installed web app's icon badged with `count` once `known`, where the browser badges apps.
+ * The service worker badges it as notifications arrive while Cerium is closed; this corrects it once
+ * Cerium knows the threads.
+ */
+export function useAppBadge(count: number, known: boolean) {
+  useEffect(() => {
+    if (!WEB || !known) return;
+    const badging = navigator as Badging;
+    const done = count > 0 ? badging.setAppBadge?.(count) : badging.clearAppBadge?.();
+    void done?.catch(() => undefined);
+  }, [count, known]);
 }

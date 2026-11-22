@@ -15,6 +15,7 @@ import {
   Pencil,
   Pin,
   PinOff,
+  RefreshCw,
   SquarePen,
   Trash2,
   Undo2,
@@ -64,7 +65,7 @@ import { CopyLinkMenuItem } from "../launch/CopyLink.tsx";
 import { ExportMenuItems } from "../export/ExportItems.tsx";
 import { DraftRow, type DraftActions } from "./DraftRow.tsx";
 import { EmptyList } from "./EmptyList.tsx";
-import { InboxCard, type CardAction } from "./InboxCard.tsx";
+import { InboxCard, type CardAction, type CardSwipe } from "./InboxCard.tsx";
 import { inboxFocusAfterRemoval, inboxNavigationTarget } from "./inboxNavigation.ts";
 import {
   archivedWork,
@@ -90,6 +91,7 @@ import { ProjectBadge } from "./ProjectBadge.tsx";
 import { type RenameThread } from "./Rename.tsx";
 import { RunScoreboard } from "./RunScoreboard.tsx";
 import { summarizeBulk, type BulkPlan } from "./bulk.ts";
+import { haptic } from "./SwipeableCard.tsx";
 import type { RowControls } from "./ThreadRow.tsx";
 
 const SCOPE_KEY = "cerium:inboxScope";
@@ -100,6 +102,19 @@ const FRESH = 2 * 60_000;
 /** How long an action note stays at the foot of the list. */
 const NOTE_FOR = 6_000;
 const NO_PICKS: ReadonlyArray<string> = [];
+/** How long the undo pill a swipe leaves stays. */
+const UNDO_FOR = 4_000;
+/** How far the list is pulled down before letting go refreshes it. */
+const PULL_ARM = 64;
+/** Where the list waits, pulled down, while it refreshes. */
+const PULL_HOLD = 44;
+
+/** A swipe's action: `act` resolves whether it worked, and only then does the pill offer `undo`. */
+export interface SwipeCommit {
+  readonly message: "Archived" | "Moved to Later" | "Back in Inbox";
+  readonly act: () => Promise<boolean>;
+  readonly undo: () => void;
+}
 
 interface BulkMove {
   readonly box: InboxBox;
@@ -156,6 +171,8 @@ interface InboxProps {
   readonly onDelete: (threadId: string) => Promise<boolean>;
   /** Opens a thread in a window of its own; absent where there are no such windows. */
   readonly onOpenWindow: ((threadId: string) => void) | undefined;
+  /** Pulling the list down from its top runs it: reloading threads and retrying the connection. */
+  readonly onRefresh?: (() => void | Promise<void>) | undefined;
 }
 
 /**
@@ -182,6 +199,7 @@ export function Inbox({
   onContinue,
   onDelete,
   onOpenWindow,
+  onRefresh,
 }: InboxProps) {
   const now = useNowPast(threads.map((thread) => thread.laterUntil));
   // The list chosen is remembered, so it stays put when the sidebar mounts again, as it does across
@@ -358,6 +376,21 @@ export function Inbox({
     onDelete,
     onOpenWindow,
   });
+  // A swipe's action leaves a pill to undo it, one at a time: a newer swipe takes its place.
+  const [swipeUndo, setSwipeUndo] = useState<{ readonly message: string; readonly undo: () => void }>();
+  const [onSwipe] = useState(() => (commit: SwipeCommit) => {
+    void commit.act().then(
+      (done) => {
+        if (done) setSwipeUndo({ message: commit.message, undo: commit.undo });
+      },
+      () => undefined,
+    );
+  });
+  useEffect(() => {
+    if (swipeUndo === undefined) return;
+    const timer = setTimeout(() => setSwipeUndo(undefined), UNDO_FOR);
+    return () => clearTimeout(timer);
+  }, [swipeUndo]);
   // Built from each prop rather than the rest of them, so it keeps its identity while only the drafts
   // change, as they do with every key typed into a new thread's first line: the lists' rows, all of
   // the Archive's among them, then don't render again.
@@ -366,6 +399,7 @@ export function Inbox({
     ...actions,
     scope: project?.folder,
     onScope: chooseScope,
+    onSwipe,
   };
 
   // Bulk picking, in the showing list's order so Shift click ticks a run of it. The pick drops
@@ -429,7 +463,7 @@ export function Inbox({
     <Tabs.Root
       value={box}
       onValueChange={(value) => chooseBox(value as InboxBox)}
-      className="flex min-h-0 flex-1 flex-col"
+      className="relative flex min-h-0 flex-1 flex-col"
     >
       <div className="flex items-center gap-1 px-2 pb-2.5">
         <Tabs.List
@@ -566,6 +600,7 @@ export function Inbox({
         keeping={keeping}
         now={now}
         picked={box === "inbox" ? picked : NO_PICKS}
+        onRefresh={onRefresh}
         onToggle={togglePicked}
         setAll={setPicked}
         {...rowProps}
@@ -589,6 +624,7 @@ export function Inbox({
         keeping={keeping}
         now={now}
         picked={box === "later" ? picked : NO_PICKS}
+        onRefresh={onRefresh}
         onToggle={togglePicked}
         setAll={setPicked}
         {...rowProps}
@@ -604,11 +640,19 @@ export function Inbox({
         keeping={keeping}
         now={now}
         picked={box === "archive" ? picked : NO_PICKS}
+        onRefresh={onRefresh}
         onToggle={togglePicked}
         setAll={setPicked}
         {...rowProps}
       />
       {comparisonNote}
+      <UndoPill
+        undo={swipeUndo}
+        onUndo={() => {
+          swipeUndo?.undo();
+          setSwipeUndo(undefined);
+        }}
+      />
     </Tabs.Root>
   );
 }
@@ -647,6 +691,7 @@ function BoxPanel({
   bar,
   panelRef,
   handlers,
+  onRefresh,
   children,
 }: {
   value: InboxBox;
@@ -656,17 +701,34 @@ function BoxPanel({
   bar?: ReactNode;
   panelRef?: RefObject<HTMLDivElement | null>;
   handlers?: Pick<ComponentProps<typeof Tabs.Panel>, "onKeyDown" | "onFocusCapture" | "onBlurCapture">;
+  onRefresh?: (() => void | Promise<void>) | undefined;
   children: ReactNode;
 }) {
+  const { viewport, content, indicator, refreshing } = usePullToRefresh(onRefresh);
   return (
     <Tabs.Panel
       value={value}
       ref={panelRef}
       {...handlers}
-      className="flex min-h-0 flex-1 flex-col pt-0 outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus-ring"
+      className="relative flex min-h-0 flex-1 flex-col pt-0 outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus-ring"
     >
-      <ScrollArea className="flex-1">
-        <nav aria-label={label} className="px-2 pb-3">
+      {onRefresh === undefined ? null : (
+        <output
+          ref={indicator}
+          aria-label="Refresh threads"
+          aria-busy={refreshing}
+          className="pointer-events-none absolute top-0 left-1/2 z-10 -ml-4 grid size-8 place-items-center opacity-0"
+        >
+          <RefreshCw
+            size={16}
+            strokeWidth={1.75}
+            aria-hidden
+            className={`text-fg-tertiary ${refreshing ? "animate-spin motion-reduce:animate-none" : ""}`}
+          />
+        </output>
+      )}
+      <ScrollArea className="flex-1" viewportRef={viewport}>
+        <nav ref={content} aria-label={label} className="px-2 pb-3">
           <ul className="flex flex-col gap-0.5">{children}</ul>
           {typeof empty === "string" ? (
             <p className="px-2 py-12 text-center text-meta text-fg-tertiary max-md:text-[14px]">{empty}</p>
@@ -789,6 +851,135 @@ function ArchiveUndo({
   );
 }
 
+/** What a swipe did, floating above the bottom rail with a way to take it back. */
+function UndoPill({ undo, onUndo }: { undo: { readonly message: string } | undefined; onUndo: () => void }) {
+  const pill = useRef<HTMLDivElement>(null);
+  const phase = usePresence(undo !== undefined, pill, { appear: true });
+  const shown = useRetained(undo, undo !== undefined);
+  if (phase === "gone" || shown === undefined) return null;
+  return (
+    <div className="pointer-events-none absolute inset-x-0 bottom-3 z-20 flex justify-center px-3">
+      <div
+        ref={pill}
+        data-phase={phase}
+        inert={phase === "leaving"}
+        className="pointer-events-auto flex h-10 items-center gap-2 rounded-full bg-surface-overlay pr-1 pl-4 text-[14px] text-fg-primary shadow-overlay backdrop-blur-2xl transition-[opacity,translate] duration-200 ease-out-soft starting:translate-y-2 starting:opacity-0 data-[phase=leaving]:translate-y-2 data-[phase=leaving]:opacity-0 data-[phase=leaving]:duration-150 data-[phase=leaving]:ease-in-soft motion-reduce:translate-y-0!"
+      >
+        <output>{shown.message}</output>
+        <Button
+          onClick={onUndo}
+          className="h-8 rounded-full px-3 font-medium text-fg-secondary transition-colors duration-150 hover:text-fg-primary active:bg-surface-active"
+        >
+          Undo
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/** Moves the pulled list and turns its arrow by how far it is pulled; `settle` eases it there. */
+function drawPull(list: HTMLElement | null, mark: HTMLElement | null, distance: number, settle: boolean) {
+  const transition =
+    settle && !matchMedia("(prefers-reduced-motion: reduce)").matches ? "250ms var(--ease-out-soft)" : "0ms";
+  if (list) {
+    list.style.transition = `translate ${transition}`;
+    list.style.translate = distance === 0 ? "" : `0 ${distance}px`;
+  }
+  if (mark) {
+    const progress = Math.min(distance / PULL_ARM, 1);
+    mark.style.transition = `opacity ${transition}, transform ${transition}`;
+    mark.style.opacity = String(progress);
+    mark.style.transform = `translateY(${distance / 2 - 12}px) rotate(${progress * 270}deg)`;
+  }
+}
+
+/**
+ * Pulling a list down from its top refreshes it: the list follows at half the finger's travel, a
+ * turning arrow arms at `PULL_ARM` with a tick, and letting go spins it until `onRefresh` settles.
+ */
+function usePullToRefresh(onRefresh: (() => void | Promise<void>) | undefined) {
+  const viewport = useRef<HTMLDivElement>(null);
+  const content = useRef<HTMLElement>(null);
+  const indicator = useRef<HTMLOutputElement>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const busy = useRef(false);
+  const draw = (distance: number, settle: boolean) =>
+    drawPull(content.current, indicator.current, distance, settle);
+  const refresh = useEffectEvent(() => {
+    if (onRefresh === undefined || busy.current) return;
+    busy.current = true;
+    setRefreshing(true);
+    draw(PULL_HOLD, true);
+    // A refresh that settles at once still spins long enough to be seen.
+    const shown = new Promise((resolve) => setTimeout(resolve, 400));
+    void Promise.all([Promise.resolve().then(onRefresh), shown])
+      .catch(() => undefined)
+      .finally(() => {
+        busy.current = false;
+        setRefreshing(false);
+        draw(0, true);
+      });
+  });
+  const enabled = onRefresh !== undefined;
+  useEffect(() => {
+    const element = viewport.current;
+    const list = content.current;
+    const mark = indicator.current;
+    if (!enabled || element === null) return;
+    let start: { x: number; y: number } | undefined;
+    let pulling = false;
+    let armed = false;
+    const onStart = (event: TouchEvent) => {
+      const touch = event.touches[0];
+      start =
+        event.touches.length === 1 && touch && element.scrollTop <= 0 && !busy.current
+          ? { x: touch.clientX, y: touch.clientY }
+          : undefined;
+      pulling = false;
+      armed = false;
+    };
+    const onMove = (event: TouchEvent) => {
+      const touch = event.touches[0];
+      if (start === undefined || touch === undefined) return;
+      const dx = touch.clientX - start.x;
+      const dy = touch.clientY - start.y;
+      if (!pulling) {
+        if (dy > 10 && dy > 1.5 * Math.abs(dx) && element.scrollTop <= 0) pulling = true;
+        else {
+          if (Math.abs(dx) > 10 || dy < -10) start = undefined;
+          return;
+        }
+      }
+      if (event.cancelable) event.preventDefault();
+      const distance = Math.max(0, dy - 10) * 0.5;
+      const nowArmed = distance >= PULL_ARM;
+      if (nowArmed && !armed) haptic(8);
+      armed = nowArmed;
+      drawPull(list, mark, distance, false);
+    };
+    const onEnd = (event: TouchEvent) => {
+      if (pulling) {
+        if (armed && event.type === "touchend") refresh();
+        else drawPull(list, mark, 0, true);
+      }
+      start = undefined;
+      pulling = false;
+      armed = false;
+    };
+    element.addEventListener("touchstart", onStart, { passive: true });
+    element.addEventListener("touchmove", onMove, { passive: false });
+    element.addEventListener("touchend", onEnd);
+    element.addEventListener("touchcancel", onEnd);
+    return () => {
+      element.removeEventListener("touchstart", onStart);
+      element.removeEventListener("touchmove", onMove);
+      element.removeEventListener("touchend", onEnd);
+      element.removeEventListener("touchcancel", onEnd);
+    };
+  }, [enabled]);
+  return { viewport, content, indicator, refreshing };
+}
+
 /** The time now, moving on by itself when the next of `times` passes, so put-off threads come back. */
 function useNowPast(times: ReadonlyArray<number | undefined>): number {
   const [now, setNow] = useState(Date.now);
@@ -855,9 +1046,11 @@ function useArchiveNote(
 
 type RowProps = Omit<
   InboxProps,
-  "threads" | "drafts" | "draftActions" | "archived" | "open" | "onArchive" | "onKeepRun"
+  "threads" | "drafts" | "draftActions" | "archived" | "open" | "onArchive" | "onKeepRun" | "onRefresh"
 > & {
   readonly onArchive: (threadId: string, undoTitle?: string) => Promise<boolean>;
+  /** Runs an action a swipe committed, and offers to undo it once it worked. */
+  readonly onSwipe: (commit: SwipeCommit) => void;
   /** The folder the lists are scoped to, if any. */
   readonly scope: string | undefined;
   readonly onScope: (folder: string) => void;
@@ -925,6 +1118,7 @@ function ThreadPanel({
   picked,
   onToggle,
   setAll,
+  onRefresh,
   ...rowProps
 }: {
   entries: ReadonlyArray<InboxEntry>;
@@ -940,6 +1134,7 @@ function ThreadPanel({
   picked: ReadonlyArray<string>;
   onToggle: (threadId: string, mode: SelectMode) => void;
   setAll: (threadIds: ReadonlyArray<string>, on: boolean) => void;
+  onRefresh: (() => void | Promise<void>) | undefined;
 } & RowProps) {
   // A card that moves glides to its new place; one that comes grows into the list and one that goes
   // (archived, put off) folds out of it, so the cards around it close up smoothly.
@@ -1029,7 +1224,15 @@ function ThreadPanel({
     ),
   );
   return (
-    <BoxPanel value={box} label={label} empty={empty} bar={bar} panelRef={panel} handlers={handlers}>
+    <BoxPanel
+      value={box}
+      label={label}
+      empty={empty}
+      bar={bar}
+      panelRef={panel}
+      handlers={handlers}
+      onRefresh={onRefresh}
+    >
       {rows.slice(0, shown).map(({ key, item: entry, present }) => (
         <li key={key} ref={glide(key)} data-inbox-entry={key}>
           <Reveal appear={arrived(key)} onGone={() => release(key)}>
@@ -1296,6 +1499,7 @@ function InboxRowCard({
   onOpenWindow,
   scope,
   onScope,
+  onSwipe,
 }: InboxRowProps) {
   const { folder, project } = thread;
   const pins = useAtomValue(pinnedAtom);
@@ -1322,6 +1526,44 @@ function InboxRowCard({
     quick.push({ icon: Archive, label: "Archive", key: "e", run: archive });
   }
   if (back && here) quick.push({ icon: Undo2, label: "Back to Inbox", key: "u", run: back });
+
+  // Swipes are shortcuts to what the menu offers; each leaves a pill to undo it.
+  let primary: CardSwipe["primary"];
+  if (here && box === "inbox" && canArchive(thread)) {
+    primary = {
+      kind: "done",
+      run: () =>
+        onSwipe({
+          message: "Archived",
+          act: () => onArchive(thread.id),
+          undo: () => void onRestore(thread.id),
+        }),
+    };
+  } else if (here && back) {
+    const until = thread.laterUntil;
+    primary = {
+      kind: "inbox",
+      run: () =>
+        onSwipe({
+          message: "Back in Inbox",
+          act: back,
+          undo: () => void (box === "archive" ? onArchive(thread.id) : onLater?.(thread.id, until)),
+        }),
+    };
+  }
+  const swipe: CardSwipe = {
+    ...(primary ? { primary } : {}),
+    ...(putOff && onLater
+      ? {
+          later: () =>
+            onSwipe({
+              message: "Moved to Later",
+              act: () => onLater(thread.id, laterTime(Date.now())),
+              undo: () => void onLater(thread.id, undefined),
+            }),
+        }
+      : {}),
+  };
 
   const menu = ({ rename, remove }: RowControls) => (
     <>
@@ -1414,6 +1656,7 @@ function InboxRowCard({
       {...(putOff ? { onLater: putOff } : {})}
       onDelete={onDelete}
       menu={menu}
+      {...(here ? { swipe } : {})}
       selection={{ active: selecting, checked, mixed: false, onToggle: (mode) => onToggle(thread.id, mode) }}
     />
   );

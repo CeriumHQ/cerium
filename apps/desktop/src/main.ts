@@ -17,7 +17,14 @@ import {
 import { existsSync } from "node:fs";
 import { dirname, isAbsolute, join, normalize } from "node:path";
 
-import { backgroundMode, HIDDEN_FLAG, setStartAtLogin, startAtLogin } from "./background.ts";
+import {
+  backgroundMode,
+  HIDDEN_FLAG,
+  isKeepAwake,
+  setStartAtLogin,
+  startAtLogin,
+  watchAttention,
+} from "./background.ts";
 import { startBackend, type BackendConnection } from "./backend.ts";
 import { watchBackendActivity } from "./backendActivity.ts";
 import { asCrashReport } from "./crashReport.ts";
@@ -140,6 +147,7 @@ const background = backgroundMode({
   ),
   window: () => mainWindow,
   show: showMainWindow,
+  onKeepAwakeChange: (mode) => mainWindow?.webContents.send("cerium:keep-awake", mode),
 });
 
 /** Where the threads open in windows of their own are remembered, so they come back next start. */
@@ -567,6 +575,16 @@ ipcMain.handle("cerium:set-start-at-login", (_event, enabled: unknown) =>
   typeof enabled === "boolean" ? setStartAtLogin(enabled) : startAtLogin(),
 );
 
+/** When a signed-in machine is kept from sleeping, so the user's other devices can reach it (background.ts). */
+ipcMain.handle("cerium:keep-awake", () => background.keepAwake());
+ipcMain.handle("cerium:set-keep-awake", (_event, mode: unknown) =>
+  isKeepAwake(mode) ? background.setKeepAwake(mode) : background.keepAwake(),
+);
+
+/** Whether the user is at Cerium: a window of it has focus and they're active (background.ts). */
+let attention: ReturnType<typeof watchAttention> | undefined;
+ipcMain.handle("cerium:attended", () => attention?.attended() ?? true);
+
 /**
  * What the user asked Cerium to open, by the command (`cerium .`) or a link (`cerium://thread/<id>`):
  * the page takes it once it has said it listens (`cerium:launch-ready`), and until then, or while it
@@ -882,6 +900,7 @@ void app.whenReady().then(() => {
     );
   }
   updater = startUpdater({ working: background.working, stopBackend });
+  attention = watchAttention((attended) => mainWindow?.webContents.send("cerium:attended", attended));
   // A Mac shutting down would stop the update helper partway too (installOnExit).
   if (mac) {
     powerMonitor.on("shutdown", () => {

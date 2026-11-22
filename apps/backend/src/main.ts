@@ -2,6 +2,7 @@
 //
 //   node apps/backend/src/main.ts [--data-dir=<dir>] [--connection-file=<path>] [--migrations-dir=<dir>]
 //                                 [--relay-url=<url>] [--channel=<stable|nightly|dev>] [--app-version=<v>]
+//                                 [--sign-in] [--status]
 //
 // --data-dir         where the database and chat folders live (default: ~/.cerium)
 // --connection-file  where to write { url, token } for the UI; used in development, removed on exit
@@ -9,6 +10,8 @@
 // --relay-url        the Cerium relay this machine signs in to (default: Cerium's own)
 // --channel          the build this is, which the account's devices list shows (default: dev)
 // --app-version      this build's version, shown the same way (default: dev)
+// --sign-in          run on its own: sign this machine in, printing the page to confirm at (src/headless.ts)
+// --status           say how this machine's saved sign-in stands, and exit
 //
 // The packaged app runs this bundled in an Electron utility process (apps/desktop/src/backend.ts),
 // which receives { url, token } over its parent port, or what stopped it (src/failure.ts), and sends
@@ -28,6 +31,14 @@ import { DEFAULT_RELAY_URL } from "@cerium/account";
 import { thisInstallation, thisMachine } from "./device.ts";
 import { backendFailed, messageChain, type BackendFailed } from "./failure.ts";
 import { forgetGitRepository } from "./gitRepositoryVariables.ts";
+import {
+  headlessFlags,
+  headlessHandoff,
+  readSavedSignIn,
+  savedStatus,
+  terminalLines,
+  watchAccount,
+} from "./headless.ts";
 import { crashReport, reportLogger } from "./reports.ts";
 import { backendLayer } from "./layers.ts";
 import { RPC_PATH } from "./rpc.ts";
@@ -45,6 +56,19 @@ const channelFlag = flag("channel");
 const channel: Channel = channelFlag === "stable" || channelFlag === "nightly" ? channelFlag : "dev";
 const appVersion = flag("app-version") ?? "dev";
 const token = randomBytes(32).toString("hex");
+const device = thisMachine(channel, appVersion);
+const headless = headlessFlags(process.argv);
+const vaultFile = join(dataDirectory, "account.json");
+
+if (headless.status) {
+  const status = savedStatus(shell === undefined ? readSavedSignIn(vaultFile) : undefined, {
+    relayUrl,
+    deviceName: device.name,
+  });
+  process.stdout.write(`${status.text}\nData: ${dataDirectory}\n`);
+  process.exit(status.signedIn ? 0 : 1);
+}
+
 mkdirSync(dataDirectory, { recursive: true });
 
 // Each project's git, and the harnesses' and terminals' started here, finds its repository from its
@@ -96,23 +120,40 @@ const Announce = Layer.effectDiscard(
   }),
 );
 
+/** The port the sign-in page hands its code to, while this machine signs in on its own. */
+let signInPort: number | undefined;
+
 const options = {
   dataDirectory,
   token,
   ...(migrationsFolder === undefined ? {} : { migrationsFolder }),
   account: {
     relayUrl,
-    device: thisMachine(channel, appVersion),
+    device,
     installation: thisInstallation(dataDirectory),
+    // On its own, the address the sign-in page lands on can be pasted into the terminal instead.
+    ...(shell === undefined && process.stdin.isTTY
+      ? { handoff: headlessHandoff(terminalLines, (port) => (signInPort = port)) }
+      : {}),
   },
-  vault: shell === undefined ? fileVault(join(dataDirectory, "account.json")) : shellVault(shell),
+  vault: shell === undefined ? fileVault(vaultFile) : shellVault(shell),
   effortRouterKey:
     shell === undefined
       ? fileEffortRouterKey(join(dataDirectory, "effort-router.json"))
       : shellEffortRouterKey(shell),
 };
 
-Layer.launch(Announce.pipe(Layer.provideMerge(backendLayer(options)))).pipe(
+/** On its own, the terminal says how the account stands, and signs in with `--sign-in`. */
+const Headless =
+  shell === undefined
+    ? watchAccount({
+        signIn: headless.signIn,
+        describe: { deviceName: device.name, paste: process.stdin.isTTY === true },
+        port: () => signInPort,
+      })
+    : Layer.empty;
+
+Layer.launch(Layer.mergeAll(Announce, Headless).pipe(Layer.provideMerge(backendLayer(options)))).pipe(
   Effect.provide(Reports),
   // The shell shows the user why the backend stopped, and reports it; runMain still logs the whole cause.
   Effect.tapCause((cause) =>

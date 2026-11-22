@@ -38,6 +38,8 @@ import { type ThreadSummary } from "../features/threads/model.ts";
 import { type HarnessIndicator } from "../features/threads/Sidebar.tsx";
 import { isNonThreadKey } from "../features/tabs/tabKinds.ts";
 import { useMatchingBuild } from "../web/builds.ts";
+import { cachedThreads, cachedThreadsOf, useThreadsCache } from "../web/cache.ts";
+import { tappedMachine } from "../web/push.ts";
 import { useLaunched } from "./launch.ts";
 import type { AppMode } from "./mode.ts";
 import { useBackendFailure } from "../features/crash/BackendFailureNotice.tsx";
@@ -47,6 +49,8 @@ import type { DrivenMachine } from "../backend/machine.ts";
 import type { SoloThread } from "./threadWindow.ts";
 
 const noEvents = Atom.make(AsyncResult.success<Array<AgentEvent>>([]));
+/** One value for no threads, so a render without the relay's can tell it from one with them. */
+const noThreads: AccountThreads = { threads: [], read: [] };
 
 export function useWorkspaceThreads({
   driven,
@@ -87,16 +91,30 @@ export function useWorkspaceThreads({
   const account = AsyncResult.getOrElse(accountResult, (): AccountState => ({
     _tag: "SignedOut",
   }));
-  const accountThreads = AsyncResult.getOrElse(useAtomValue(accountThreadsAtom), (): AccountThreads => ({
-    threads: [],
-    read: [],
-  }));
+  const relayThreads = AsyncResult.getOrElse(useAtomValue(accountThreadsAtom), () => noThreads);
+  // The web client shows the threads it kept last time until the relay's arrive: the atom's first
+  // value is its empty stand-in, and anything after it, or anything at all, is the relay's.
+  const [standIn] = useState(relayThreads);
+  const heard = relayThreads !== standIn || standIn.threads.length > 0 || standIn.read.length > 0;
+  const [kept] = useState(() => (WEB ? cachedThreads() : undefined));
+  const cached = heard ? undefined : cachedThreadsOf(kept, account);
+  const accountThreads = cached?.threads ?? relayThreads;
+  useThreadsCache({
+    enabled: WEB,
+    account,
+    accountKnown: AsyncResult.isSuccess(accountResult),
+    heard,
+    threads: relayThreads,
+  });
   // Every thread of the account: the driven machine's live, the others' from the cloud copy.
   const devices = account._tag === "SignedIn" ? account.devices : [];
   const thisComputer = account._tag === "SignedIn" ? account.deviceId : undefined;
   const drivenId = driven?.id ?? thisComputer;
   const deviceOf = (id: string) => devices.find((device) => device.id === id);
-  const nameOf = (id: string) => deviceOf(id)?.name ?? "another computer";
+  const nameOf = (id: string) =>
+    deviceOf(id)?.name ??
+    cachedThreadsOf(kept, account)?.devices.find((device) => device.id === id)?.name ??
+    "another computer";
   // Until the driven machine answers, or while it can't, its threads read from the copy too.
   const elsewhere = accountThreads.threads.filter(
     (each) =>
@@ -221,22 +239,29 @@ export function useWorkspaceThreads({
       : account.devices.find((device) => device.id === driven.id);
   // The web client runs the build of the desktop it drives, and takes the open thread there.
   useMatchingBuild(drivenDevice, isNewDraftKey(active) || isNonThreadKey(active) ? undefined : active);
-  // The web client always drives one of the account's desktops: the one it drove last,
-  // else the first that can be reached, once one can.
+  // The web client always drives one of the account's desktops: the one a tapped notification is
+  // about, else the one it drove last, else the first that can be reached, once one can.
   const reachable = devices.filter(
     (device) => device.kind === "desktop" && reachOf(device).kind === "reachable",
   );
-  const toDrive = WEB && driven === undefined ? machineToDrive(reachable) : undefined;
+  const tapped = tappedMachine();
+  const tappedDevice = reachable.find((device) => device.id === tapped);
+  const toDrive =
+    WEB && driven === undefined
+      ? tappedDevice
+        ? { id: tappedDevice.id, name: tappedDevice.name }
+        : machineToDrive(reachable)
+      : undefined;
   const driveChosen = useEffectEvent(() => {
     if (toDrive !== undefined) driveMachine(registry, toDrive);
   });
   useEffect(() => driveChosen(), [toDrive?.id]);
   // The window shows once it has its threads, or has no machine to list them from yet; one that
-  // can't be reached shows its notice instead.
+  // can't be reached shows its notice instead. The web client shows as soon as it knows the
+  // account: its threads, kept from last time or the cloud copy's, show while the machine connects.
   useLaunched(
     connection === "unreachable" ||
-      (AsyncResult.isSuccess(accountResult) &&
-        (AsyncResult.isSuccess(threadsResult) || (WEB && driven === undefined && toDrive === undefined))),
+      (AsyncResult.isSuccess(accountResult) && (WEB || AsyncResult.isSuccess(threadsResult))),
   );
   // A thread's own window closes once its thread is gone, deleted from here or from the main window.
   const soloGone =

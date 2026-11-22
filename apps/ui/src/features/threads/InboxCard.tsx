@@ -1,5 +1,15 @@
 import { Button } from "@base-ui/react/button";
-import { CheckSquare, ChevronDown, Clock, Ellipsis, Monitor, Pin, type LucideIcon } from "lucide-react";
+import {
+  Check,
+  CheckSquare,
+  ChevronDown,
+  Clock,
+  Ellipsis,
+  Inbox,
+  Monitor,
+  Pin,
+  type LucideIcon,
+} from "lucide-react";
 import { useState, type CSSProperties, type ReactNode } from "react";
 
 import {
@@ -16,9 +26,11 @@ import { paneDrag, THREAD_DRAG_TYPE } from "../split/drag.ts";
 import { SelectBox, type SelectMode } from "./BulkBar.tsx";
 import { DeleteThreadDialog } from "./Delete.tsx";
 import { LaterDateDialog, LaterMenuItems } from "./LaterMenu.tsx";
+import { LaterSheet } from "./LaterSheet.tsx";
 import { needsYou, type ThreadSummary } from "./model.ts";
 import { TitleField, useRename, type RenameThread } from "./Rename.tsx";
 import { ProviderStack, ThreadMark } from "./StatusIndicator.tsx";
+import { SwipeableCard, type SwipeAction } from "./SwipeableCard.tsx";
 import type { RowControls } from "./ThreadRow.tsx";
 
 /** A one-click action on a card, shown on hover in place of its time; `key` runs it from the keyboard. */
@@ -28,6 +40,15 @@ export interface CardAction {
   /** A letter that runs it while the card has focus. */
   readonly key?: string;
   readonly run: () => void;
+}
+
+/**
+ * What touch swipes do: right runs `primary` (Done archives, Inbox brings the thread back), left
+ * reveals Later and More. Every one of them is in the card's menu too.
+ */
+export interface CardSwipe {
+  readonly primary?: { readonly kind: "done" | "inbox"; readonly run: () => void };
+  readonly later?: () => void;
 }
 
 export interface InboxCardProps {
@@ -44,6 +65,8 @@ export interface InboxCardProps {
   readonly menu?: (controls: RowControls) => ReactNode;
   readonly onLater?: (until: number) => void;
   readonly onDelete?: (threadId: string) => void;
+  /** Touch swipes on the card; none leaves it to the menu alone. */
+  readonly swipe?: CardSwipe;
   /**
    * Bulk picking: whether the card is picked (`mixed` for a run with some threads picked), and
    * how a click picks it. Ctrl or ⌘ ticks instead of opening; Shift ticks a run of the list.
@@ -85,10 +108,13 @@ export function InboxCard({
   onDelete,
   group,
   selection,
+  swipe,
 }: InboxCardProps) {
   const [deleting, setDeleting] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [customLater, setCustomLater] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [laterSheet, setLaterSheet] = useState(false);
   const { editing, start, finish, title, row } = useRename(thread, onRename);
   const unread = thread.unread && !selected;
   const status =
@@ -113,11 +139,38 @@ export function InboxCard({
       </>
     );
   // The card fades out as an action takes it to another list, and back if the action fails.
-  const run = (action: CardAction) => {
+  const run = (action: Pick<CardAction, "run">) => {
     setLeaving(true);
     action.run();
     setTimeout(() => setLeaving(false), 1500);
   };
+  const primary = swipe?.primary;
+  const later = swipe?.later;
+  const leadingSwipe: SwipeAction | undefined =
+    primary === undefined
+      ? undefined
+      : primary.kind === "done"
+        ? { label: "Done", icon: Check, tone: "success", leaves: true, run: () => run(primary) }
+        : { label: "Inbox", icon: Inbox, tone: "accent", leaves: true, run: () => run(primary) };
+  const trailingSwipe: Array<SwipeAction> = [];
+  if (later)
+    trailingSwipe.push({
+      label: "Later",
+      icon: Clock,
+      tone: "accent",
+      leaves: true,
+      run: () => run({ run: later }),
+      // A tap offers Later's choices; a full swipe takes the default.
+      ...(onLater ? { tap: () => setLaterSheet(true) } : {}),
+    });
+  if (swipe && menuItems !== undefined)
+    trailingSwipe.push({
+      label: "More",
+      icon: Ellipsis,
+      tone: "neutral",
+      leaves: false,
+      run: () => setMenuOpen(true),
+    });
   // Room the quick actions and the menu button take at the right end on hover.
   const room = (actions.length + (menuItems === undefined ? 0 : 1)) * 24;
 
@@ -239,53 +292,67 @@ export function InboxCard({
 
   return (
     <>
+      {onLater && later ? (
+        <LaterSheet
+          open={laterSheet}
+          onOpenChange={setLaterSheet}
+          onPick={(until) => run({ run: () => onLater(until) })}
+          onCustom={() => setCustomLater(true)}
+        />
+      ) : null}
       {onLater && customLater ? (
         <LaterDateDialog onPick={onLater} onClose={() => setCustomLater(false)} />
       ) : null}
-      <div className="group/row relative">
-        {menuItems === undefined ? button : <ContextMenuArea menu={menuItems}>{button}</ContextMenuArea>}
-        {selection ? (
-          <SelectBox
-            visible={selection.active}
-            returnFocus={() => row.current?.focus({ preventScroll: true })}
-            checked={selection.active && selection.checked}
-            mixed={selection.active && selection.mixed}
-            label={group ? `Select these ${group.count} threads` : `Select “${title}”`}
-            onChange={() => selection.onToggle("toggle")}
-            className="left-2 top-1/2 -translate-y-1/2"
-          />
-        ) : null}
-        <div className="absolute top-1.5 right-1.5 flex items-center gap-0.5 opacity-0 transition-opacity duration-150 group-has-[[data-popup-open]]/row:opacity-100 focus-within:opacity-100 md:group-hover/row:opacity-100 max-md:top-2 pointer-coarse:opacity-100">
-          {actions.map((action) => (
-            <Tooltip
-              key={action.label}
-              label={action.label}
-              {...(action.key ? { shortcut: action.key.toUpperCase() } : {})}
-            >
-              <Button
-                aria-label={`${action.label}: “${title}”`}
-                onClick={() => run(action)}
-                className="grid size-5.5 place-items-center rounded-md text-fg-tertiary transition-colors hover:bg-surface-active hover:text-fg-primary pointer-coarse:hidden"
+      <SwipeableCard
+        leading={leadingSwipe}
+        trailing={trailingSwipe}
+        disabled={selection?.active === true || deleting}
+      >
+        <div className="group/row relative">
+          {menuItems === undefined ? button : <ContextMenuArea menu={menuItems}>{button}</ContextMenuArea>}
+          {selection ? (
+            <SelectBox
+              visible={selection.active}
+              returnFocus={() => row.current?.focus({ preventScroll: true })}
+              checked={selection.active && selection.checked}
+              mixed={selection.active && selection.mixed}
+              label={group ? `Select these ${group.count} threads` : `Select “${title}”`}
+              onChange={() => selection.onToggle("toggle")}
+              className="left-2 top-1/2 -translate-y-1/2"
+            />
+          ) : null}
+          <div className="absolute top-1.5 right-1.5 flex items-center gap-0.5 opacity-0 transition-opacity duration-150 group-has-[[data-popup-open]]/row:opacity-100 focus-within:opacity-100 md:group-hover/row:opacity-100 max-md:top-2 pointer-coarse:opacity-100">
+            {actions.map((action) => (
+              <Tooltip
+                key={action.label}
+                label={action.label}
+                {...(action.key ? { shortcut: action.key.toUpperCase() } : {})}
               >
-                <action.icon size={13} strokeWidth={1.75} />
-              </Button>
-            </Tooltip>
-          ))}
-          {menuItems === undefined ? null : (
-            <MenuRoot>
-              <MenuTrigger>
                 <Button
-                  aria-label={`More actions for “${title}”`}
-                  className="grid size-5.5 place-items-center rounded-md text-fg-tertiary transition-colors hover:bg-surface-active hover:text-fg-primary data-popup-open:bg-surface-active data-popup-open:text-fg-primary max-md:size-9 pointer-coarse:size-9"
+                  aria-label={`${action.label}: “${title}”`}
+                  onClick={() => run(action)}
+                  className="grid size-5.5 place-items-center rounded-md text-fg-tertiary transition-colors hover:bg-surface-active hover:text-fg-primary pointer-coarse:hidden"
                 >
-                  <Ellipsis size={14} strokeWidth={1.75} />
+                  <action.icon size={13} strokeWidth={1.75} />
                 </Button>
-              </MenuTrigger>
-              <MenuPopup>{menuItems}</MenuPopup>
-            </MenuRoot>
-          )}
+              </Tooltip>
+            ))}
+            {menuItems === undefined ? null : (
+              <MenuRoot open={menuOpen} onOpenChange={setMenuOpen}>
+                <MenuTrigger>
+                  <Button
+                    aria-label={`More actions for “${title}”`}
+                    className="grid size-5.5 place-items-center rounded-md text-fg-tertiary transition-colors hover:bg-surface-active hover:text-fg-primary data-popup-open:bg-surface-active data-popup-open:text-fg-primary max-md:size-9 pointer-coarse:size-9"
+                  >
+                    <Ellipsis size={14} strokeWidth={1.75} />
+                  </Button>
+                </MenuTrigger>
+                <MenuPopup>{menuItems}</MenuPopup>
+              </MenuRoot>
+            )}
+          </div>
         </div>
-      </div>
+      </SwipeableCard>
       {onDelete ? (
         <DeleteThreadDialog
           thread={thread}

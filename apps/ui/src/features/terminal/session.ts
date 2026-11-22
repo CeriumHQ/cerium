@@ -8,6 +8,7 @@ import { currentBinding, matchesBinding } from "../../lib/shortcuts.ts";
 import { lastText, OUTPUT_TAIL_CHARS, OUTPUT_TAIL_LINES } from "../composer/agentFix.ts";
 import { openLocally } from "../preview/model.ts";
 import { isOpenableLink } from "../transcript/menus.ts";
+import { arrowSequence, type Arrow } from "./keys.ts";
 import { readTheme } from "./theme.ts";
 
 // One terminal's emulator on this side: xterm.js, kept for as long as the terminal is in use rather
@@ -44,6 +45,8 @@ const FONT_SIZE = 13.5;
 const SCROLLBACK = 5_000;
 /** The least time between two fits while the terminal's container is resized. */
 const FIT_MS = 80;
+/** How long the visible part of the page holds still before a phone's keyboard counts as settled. */
+const KEYBOARD_SETTLE_MS = 120;
 
 export interface Size {
   readonly cols: number;
@@ -119,6 +122,9 @@ export class TerminalSession {
   /** The font is loaded: the emulator measures its cells with it, so it opens only then. */
   #fontLoaded = false;
   readonly #font: Promise<unknown>;
+  readonly #onInput: (data: string) => void;
+  /** Rewrites what's typed before the shell gets it: the key bar's latched Ctrl. */
+  #inputFilter: ((data: string) => string) | undefined;
 
   constructor(options: SessionOptions) {
     this.host = document.createElement("div");
@@ -149,9 +155,8 @@ export class TerminalSession {
         if (isOpenableLink(uri)) window.open(uri, "_blank", "noopener,noreferrer");
       }),
     );
-    this.terminal.onData((data) => {
-      if (!this.#ended) options.onInput(data);
-    });
+    this.#onInput = options.onInput;
+    this.terminal.onData((data) => this.#send(data));
     this.terminal.onResize(({ cols, rows }) => options.onSize({ cols, rows }));
     this.terminal.attachCustomKeyEventHandler((event) => this.#keyHandled(event));
 
@@ -241,11 +246,27 @@ export class TerminalSession {
         refit();
       }, FIT_MS);
     };
-    const observer = new ResizeObserver(refit);
+    // A phone's keyboard sliding in or out resizes the container every frame: the shell is fitted
+    // once, after the visible part of the page has held still for KEYBOARD_SETTLE_MS.
+    let moving: ReturnType<typeof setTimeout> | undefined;
+    const viewport = matchMedia("(pointer: coarse)").matches ? window.visualViewport : null;
+    const onViewport = () => {
+      clearTimeout(moving);
+      moving = setTimeout(() => {
+        moving = undefined;
+        refit();
+      }, KEYBOARD_SETTLE_MS);
+    };
+    viewport?.addEventListener("resize", onViewport);
+    const observer = new ResizeObserver(() => {
+      if (moving === undefined) refit();
+    });
     observer.observe(container);
     return () => {
       observer.disconnect();
+      viewport?.removeEventListener("resize", onViewport);
       clearTimeout(pause);
+      clearTimeout(moving);
       this.host.remove();
     };
   }
@@ -329,6 +350,36 @@ export class TerminalSession {
 
   focus() {
     if (!this.#disposed) this.terminal.focus();
+  }
+
+  /** Lets go of the cursor, which puts a phone's keyboard away. */
+  blur() {
+    if (!this.#disposed) this.terminal.blur();
+  }
+
+  #send(data: string) {
+    if (this.#ended || this.#disposed) return;
+    this.#onInput(this.#inputFilter === undefined ? data : this.#inputFilter(data));
+  }
+
+  /** Sends keys to the shell as typed ones, raw: an escape, a tab, an arrow's sequence. */
+  input(data: string) {
+    if (this.#ended || this.#disposed) return;
+    this.terminal.scrollToBottom();
+    this.#send(data);
+  }
+
+  /** Sends an arrow key, in the form the shell asked for (application cursor keys or not). */
+  arrow(direction: Arrow) {
+    this.input(arrowSequence(direction, this.terminal.modes.applicationCursorKeysMode));
+  }
+
+  /** Rewrites everything typed until the returned function is called. */
+  filterInput(filter: (data: string) => string): () => void {
+    this.#inputFilter = filter;
+    return () => {
+      if (this.#inputFilter === filter) this.#inputFilter = undefined;
+    };
   }
 
   hasFocus(): boolean {

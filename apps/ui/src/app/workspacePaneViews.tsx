@@ -20,7 +20,7 @@ import { CommitFileView } from "../features/git/history/CommitFileView.tsx";
 import { ProviderLogo } from "../components/ProviderLogo.tsx";
 import { CrashGuard } from "../features/crash/CrashGuard.tsx";
 import { PaneCrash } from "../features/crash/CrashViews.tsx";
-import { ThreadPane, type ThreadPaneActions } from "./ThreadPane.tsx";
+import { ThreadPane, type ThreadPaneActions, type ThreadPaneCloud } from "./ThreadPane.tsx";
 
 import type { DrivenMachine } from "../backend/machine.ts";
 import type { SoloThread } from "./threadWindow.ts";
@@ -49,6 +49,8 @@ export function workspacePaneViews({
   paneActions,
   slashCommands,
   notices,
+  aboveComposer,
+  onOpenConnection,
 }: {
   readonly driven: DrivenMachine | undefined;
   readonly solo: SoloThread | undefined;
@@ -63,6 +65,10 @@ export function workspacePaneViews({
   readonly paneActions: ThreadPaneActions;
   readonly slashCommands: ReadonlyArray<PaletteCommand>;
   readonly notices: ReactNode;
+  /** Over the open thread's message box, such as the pill to the next thread waiting. */
+  readonly aboveComposer?: ReactNode;
+  /** Opens what the window knows of the open thread's connection, from its box's machine chip. */
+  readonly onOpenConnection?: (() => void) | undefined;
 }) {
   const { current, mode, openDraft, defaultFolder } = sessionState;
   const { resolve, drivenId, nameOf, deviceOf, available, models, projectOf } = threads;
@@ -71,27 +77,36 @@ export function workspacePaneViews({
   const { inspectedAgent, setInspectedAgent } = panels;
   const { openTask, openCapturedTask } = places;
   const { terminal, setupRun, issuesOk, openGitHubIn, openerIn } = tools;
-  /** Where a thread can't take messages here, what shows in place of its message box. */
+  /**
+   * Where a thread can't take messages here, what shows in place of its message box: only where
+   * nothing sent could ever arrive. A machine that's only away keeps the box, whose messages wait.
+   */
   const barFor = ({ cloud, loading }: ReturnType<typeof resolve>, lead: boolean): ReactNode => {
     if (WEB && driven === undefined && !cloud) return <NoComputerBar />;
     if (loading) return <LoadingThreadBar />;
     if (cloud === undefined) return undefined;
     const device = deviceOf(cloud.machine);
-    /** The thread's machine is the one the window drives, and it hasn't answered yet. */
-    const connecting =
-      cloud.machine === drivenId && device !== undefined && reachOf(device).kind === "reachable";
-    if (connecting && lead) return undefined;
-    return (
-      <CloudThreadBar
-        machine={nameOf(cloud.machine)}
-        reach={device ? reachOf(device) : { kind: "offline", presence: "Not connected" }}
-        connecting={cloud.machine === drivenId}
-        onOpen={() => {
-          if (device) openOn(device, cloud.overview.thread.id);
-        }}
-        onStartNew={startNew}
-      />
-    );
+    if (device !== undefined && reachOf(device).kind === "outdated") {
+      return <CloudThreadBar machine={nameOf(cloud.machine)} onStartNew={startNew} />;
+    }
+    return lead ? undefined : <LoadingThreadBar />;
+  };
+  /** A thread read from the cloud copy, with how its machine stands. */
+  const cloudOf = (cloud: NonNullable<ReturnType<typeof resolve>["cloud"]>): ThreadPaneCloud => {
+    const device = deviceOf(cloud.machine);
+    const reachable = device !== undefined && reachOf(device).kind === "reachable";
+    const own = cloud.machine === drivenId;
+    return {
+      machine: cloud.machine,
+      name: nameOf(cloud.machine),
+      overview: cloud.overview,
+      driven: own,
+      state: own ? (reachable ? "reconnecting" : "offline") : "cloud",
+      // Another machine that answers: driving it opens the thread there, and its messages go.
+      ...(device !== undefined && !own && reachable
+        ? { onOpen: () => openOn(device, cloud.overview.thread.id) }
+        : {}),
+    };
   };
   /** A pane showing the thread, or the thread not started yet, `key`. */
   const threadPane = (key: string, focused: boolean) => {
@@ -108,15 +123,7 @@ export function workspacePaneViews({
         onAddTask={openCapturedTask}
         mode={mode}
         selected={resolved.listed}
-        cloud={
-          resolved.cloud
-            ? {
-                machine: resolved.cloud.machine,
-                name: nameOf(resolved.cloud.machine),
-                overview: resolved.cloud.overview,
-              }
-            : undefined
-        }
+        cloud={resolved.cloud ? cloudOf(resolved.cloud) : undefined}
         loading={resolved.loading}
         draftKey={isNewDraftKey(key) ? key : opened ? openDraft : key}
         folder={defaultFolder}
@@ -124,7 +131,7 @@ export function workspacePaneViews({
         worktrees={worktreesOk}
         bar={barFor(resolved, lead)}
         // The window's notices and its terminal go with the open thread.
-        {...(opened ? { notices, drawer: terminal.drawer } : {})}
+        {...(opened ? { notices, drawer: terminal.drawer, aboveComposer, onOpenConnection } : {})}
         {...(opened && setupRun !== undefined ? { setup: setupRun } : {})}
         {...(previewPane === undefined ? {} : { preview: previewPane })}
         focused={focused}

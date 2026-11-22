@@ -8,6 +8,9 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Added
 
+- Remote access gains desktop keep-awake modes in Settings → General → Remote access and the tray menu (while agents work, while plugged in, or always), and the standalone backend adds `--sign-in` and `--status` for running headless on a server or Mac mini.
+- Offline and reconnecting threads keep a live composer that queues messages on your device, lets you edit, retry or drop them, and flushes them in order as soon as the computer reconnects.
+- Mobile and phone-width windows gain a unified Thread sheet (connection status and manual retry, computer switching, workspace details, project run and actions, panels grid, and agents), a cross-thread "Needs you" triage capsule, sheet and next-thread pill, a terminal accessory key bar (`esc`, `tab`, sticky/locked `ctrl`, `^C`, repeating arrows, paste sheet, and shell symbols), inbox swipe actions with undo and pull-to-refresh, a mobile diff mode (line wrap, single gutter, floating hunk navigator, and gutter drag-pick), and PWA share-target support.
 - GitHub Copilot gains local session import, forks, side questions, compaction, todos, background task controls, and Hub support. Muse gains native forks and Hub support. The composer lists skills for Copilot, Muse, and Cursor. Cursor can toggle MCP servers per project, Codex can stop individual background commands, and OpenCode gains side questions and background job tracking with shell cancellation.
 
 - Nightly builds show a small superscript NIGHTLY beside the Cerium brand in the desktop titlebar only. Hovering the mark shows the exact build version.
@@ -16,6 +19,8 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Changed
 
+- The web app caches its shell and versioned assets in the service worker, opens straight from cached account threads without blocking on the remote tunnel, stays on the current build whenever the driven computer speaks a compatible RPC version, routes notification taps to the right computer and thread, and updates the Home Screen app badge.
+- Agent questions now send phone push notifications, desktop presence factors in window focus, lock/sleep state and two minutes of system idle time so stepping away from your desk no longer silences phone alerts, and web image attachments use cellular-friendly compression with HEIC/HEIF decoding where supported.
 - The transcript's work trail reads more directly. Opening "Worked" shows the steps at once when there is one run of calls, instead of a second line repeating the count. A file the agent read shows as code under its path, highlighted for its language with the line numbers in a gutter; a fetch or search no longer repeats what its row already says; and a command that failed marks its exit code in red. A reply's table is as wide as what it holds rather than stretched across the column, and its copy button sits beside it instead of over the last heading.
 
 - The workspace, message composer, and settings Hub now use smaller modules for navigation, message controls, MCP servers, and skills.

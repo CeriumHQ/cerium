@@ -1,90 +1,25 @@
 import { Button } from "../../components/ui/Button.tsx";
-import { Monitor, MonitorOff, MonitorUp, RefreshCw, SquarePen } from "lucide-react";
+import { MonitorOff, MonitorUp, RefreshCw, SquarePen } from "lucide-react";
 import type { ReactNode } from "react";
 
-import type { Reach } from "../account/model.ts";
-
 /**
- * Where the message box would be, for a thread on another machine read from the cloud copy.
- * Continuing it takes that machine, so the bar says why it can't be reached, or offers to open the
- * thread there once it can.
+ * Where the message box would be, for a thread read from the cloud copy of a machine whose Cerium is
+ * too old to drive: nothing sent from here could ever reach it, so the bar says why and offers a new
+ * thread instead. A machine that's only away keeps the box, whose messages wait for it.
  */
-export function CloudThreadBar({
-  machine,
-  reach,
-  connecting = false,
-  onOpen,
-  onStartNew,
-}: {
-  machine: string;
-  reach: Reach;
-  /** The window drives that machine already and is waiting for it to answer. */
-  connecting?: boolean;
-  /** Drives the thread's machine and opens the thread there. */
-  onOpen: () => void;
-  onStartNew: () => void;
-}) {
-  const Icon = reach.kind === "reachable" ? Monitor : reach.kind === "outdated" ? MonitorUp : MonitorOff;
-  const name = <span className="font-medium text-fg-primary">{machine}</span>;
-  if (connecting && reach.kind === "reachable") {
-    return (
-      <Bar>
-        <RefreshCw size={14} strokeWidth={1.75} className="shrink-0 animate-spin text-fg-tertiary" />
-        <p className="min-w-0 flex-1 py-1.5 text-body text-fg-secondary max-md:py-0 max-md:text-[14px]">
-          Connecting to {name}…
-        </p>
-      </Bar>
-    );
-  }
+export function CloudThreadBar({ machine, onStartNew }: { machine: string; onStartNew: () => void }) {
   return (
     <Bar>
-      <Icon size={14} strokeWidth={1.75} className="shrink-0 text-fg-tertiary" />
+      <MonitorUp size={14} strokeWidth={1.75} className="shrink-0 text-fg-tertiary" />
       <p className="min-w-0 flex-1 text-body text-fg-secondary max-md:text-[14px] max-md:leading-snug">
-        {reach.kind === "reachable" ? (
-          <>{name} is back online.</>
-        ) : reach.kind === "outdated" ? (
-          <>Read-only here. Update Cerium on {name} to continue it.</>
-        ) : (
-          <>
-            {name} is offline ({reach.presence.toLowerCase()}). Read-only until it's back.
-          </>
-        )}
+        Read-only here. Update Cerium on <span className="font-medium text-fg-primary">{machine}</span> to
+        continue it.
       </p>
-      <Button
-        tone="primary"
-        onClick={reach.kind === "reachable" ? onOpen : onStartNew}
-        className="max-w-[45%] max-md:w-full max-md:max-w-none"
-      >
-        {reach.kind === "reachable" ? (
-          <>
-            <Monitor size={13} strokeWidth={2} className="shrink-0" />
-            <span className="truncate">Open on {machine}</span>
-          </>
-        ) : (
-          <>
-            <SquarePen size={13} strokeWidth={2} className="shrink-0" />
-            New thread
-          </>
-        )}
+      <Button tone="primary" onClick={onStartNew} className="max-w-[45%] max-md:w-full max-md:max-w-none">
+        <SquarePen size={13} strokeWidth={2} className="shrink-0" />
+        New thread
       </Button>
     </Bar>
-  );
-}
-
-/**
- * Above the message box while the thread's machine hasn't answered yet: the draft stays and takes
- * writing, and sending waits for the machine.
- */
-export function ConnectingNote({ machine }: { machine: string }) {
-  return (
-    <div className="pointer-events-none mx-auto mb-2 flex max-w-[46.2rem] justify-center">
-      <p className="flex items-center gap-2 rounded-full border border-line-subtle bg-surface-raised px-3 py-1 text-meta text-fg-secondary backdrop-blur-2xl max-md:text-[13px]">
-        <RefreshCw size={12} strokeWidth={1.75} className="shrink-0 animate-spin text-fg-tertiary" />
-        <span>
-          Connecting to <span className="font-medium text-fg-primary">{machine}</span>. Sending waits for it.
-        </span>
-      </p>
-    </div>
   );
 }
 
@@ -120,7 +55,7 @@ export function NoComputerBar() {
     <Bar>
       <MonitorOff size={14} strokeWidth={1.75} className="shrink-0 text-fg-tertiary" />
       <p className="min-w-0 flex-1 py-1.5 text-body text-fg-secondary max-md:py-0 max-md:text-[14px] max-md:leading-snug">
-        None of your computers is online. Their threads stay readable; open Cerium on one to continue.
+        None of your computers are online. Open Cerium on one to start a new thread.
       </p>
     </Bar>
   );

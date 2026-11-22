@@ -12,6 +12,7 @@ import { WhatsNewHost } from "../features/whatsnew/WhatsNewHost.tsx";
 import { ImportDialogHost } from "../features/imports/ImportDialog.tsx";
 import { Reveal } from "../components/Reveal.tsx";
 import { BackendFailureNotice } from "../features/crash/BackendFailureNotice.tsx";
+import { useCompact } from "./compact.ts";
 import { Notice, NoticeSwap } from "./Notice.tsx";
 
 import type { DrivenMachine } from "../backend/machine.ts";
@@ -32,34 +33,40 @@ export function WorkspaceNotices({
 }) {
   const registry = useContext(RegistryContext);
   const { connection, drivenDevice, backendFailure, threadsResult } = threads;
+  // A phone says how the line stands in its bar and the thread's sheet, leaving the transcript its room.
+  const compact = useCompact();
   /** The notices over the open thread's conversation, each dropping in and folding back up. */
   return (
     <>
       <Reveal shift={-6} className="shrink-0" carry inertWhileEntering>
         {connection === "unreachable" && driven !== undefined ? (
-          <NoticeSwap kind="remote">
-            <UnreachableNotice
-              machine={driven.name}
-              presence={drivenDevice && !drivenDevice.online ? presenceLabel(drivenDevice) : undefined}
-              onBack={WEB ? undefined : () => driveMachine(registry, undefined)}
-            />
-          </NoticeSwap>
+          compact ? null : (
+            <NoticeSwap kind="remote">
+              <UnreachableNotice
+                machine={driven.name}
+                presence={drivenDevice && !drivenDevice.online ? presenceLabel(drivenDevice) : undefined}
+                onBack={WEB ? undefined : () => driveMachine(registry, undefined)}
+              />
+            </NoticeSwap>
+          )
         ) : backendFailure !== undefined && driven === undefined ? (
           <NoticeSwap kind="crash">
             <BackendFailureNotice failure={backendFailure} />
           </NoticeSwap>
         ) : connection === "unreachable" && !WEB ? (
-          <NoticeSwap kind="reconnecting">
-            <Notice tone="attention">
-              Reconnecting to Cerium's backend…
-              {import.meta.env.DEV ? (
-                <>
-                  {" "}
-                  Start it with <code>bun run dev</code>.
-                </>
-              ) : null}
-            </Notice>
-          </NoticeSwap>
+          compact ? null : (
+            <NoticeSwap kind="reconnecting">
+              <Notice tone="attention">
+                Reconnecting to Cerium's backend…
+                {import.meta.env.DEV ? (
+                  <>
+                    {" "}
+                    Start it with <code>bun run dev</code>.
+                  </>
+                ) : null}
+              </Notice>
+            </NoticeSwap>
+          )
         ) : AsyncResult.isFailure(threadsResult) ? (
           <NoticeSwap kind="threads">
             <Notice tone="error" clamp>

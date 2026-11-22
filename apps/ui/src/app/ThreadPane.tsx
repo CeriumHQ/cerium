@@ -30,6 +30,8 @@ import {
   summaryEventsAtom,
   threadEventsAtom,
 } from "../backend/atoms.ts";
+import { connectionAtom, reconnectNow } from "../backend/client.ts";
+import { machineAtom } from "../backend/machine.ts";
 import { leadOf, modelLabel, toAgentSummaries, toThreadSummary } from "../backend/view.ts";
 import { KeptViews, useKeptHidden, useKeptResult } from "../components/KeptViews.tsx";
 import { Reveal } from "../components/Reveal.tsx";
@@ -45,13 +47,25 @@ import {
 import {
   Composer,
   type ComposerCommands,
+  type ComposerOutbox,
   type OutgoingMessage,
   type ThreadSetup,
 } from "../features/composer/Composer.tsx";
 import { sentPrompts } from "../features/composer/promptHistory.ts";
 import type { AskSide } from "../features/composer/SideQuestion.tsx";
 import type { Followup } from "../features/composer/followup.ts";
+import { segmentsOf } from "../features/composer/draft.ts";
 import { draftStartAtom } from "../features/composer/drafts.ts";
+import {
+  cancelMessage,
+  outboxMachine,
+  outboxReady,
+  queueMessage,
+  restoreToDraft,
+  retryMessage,
+  shouldQueue,
+  useOutboxFlush,
+} from "../features/composer/outbox.ts";
 import { useMessageBoxHandle, type MessageBox } from "../features/composer/messageBox.ts";
 import type { PaletteCommand } from "../features/palette/palette.ts";
 import type { HandoffChoice, ModelSwitch } from "../features/composer/models.ts";
@@ -63,10 +77,9 @@ import { PaneCrash } from "../features/crash/CrashViews.tsx";
 import { DEFAULT_LIMIT_POLICY } from "../features/settings/limitPolicy.ts";
 import { PreviewDock } from "../features/preview/PreviewDock.tsx";
 import { SetupGuessNotice } from "../features/terminal/SetupGuessNotice.tsx";
-import { ConnectingNote } from "../features/threads/CloudThread.tsx";
 import { ActivityLine } from "../features/composer/ActivityLine.tsx";
 import { liveActivity } from "../features/composer/activity.ts";
-import type { Queue } from "../features/composer/QueueTray.tsx";
+import { outboxMessages, type Queue } from "../features/composer/QueueTray.tsx";
 import type { Background } from "../features/composer/BackgroundTray.tsx";
 import { ComputerTray } from "../features/composer/ComputerTray.tsx";
 import {
@@ -95,6 +108,38 @@ const noEvents = Atom.make(AsyncResult.success<Array<AgentEvent>>([]));
  * once: enough for the threads Ctrl and a digit open.
  */
 const KEPT_THREADS = 2;
+
+/** How long the line to the machine may be down before the box says so and turns to queueing. */
+const RECONNECT_GRACE_MS = 2_000;
+
+/** Whether `on` has held for `delay`: a line back within a moment changes nothing on screen. */
+function useHeld(on: boolean, delay: number): boolean {
+  const [late, setLate] = useState(false);
+  if (!on && late) setLate(false);
+  useEffect(() => {
+    if (!on) return;
+    const timer = setTimeout(() => setLate(true), delay);
+    return () => clearTimeout(timer);
+  }, [on, delay]);
+  return on && late;
+}
+
+/** Another machine's thread, read from the cloud copy while that machine can't be reached. */
+export interface ThreadPaneCloud {
+  /** Its machine's id. */
+  readonly machine: string;
+  readonly name: string;
+  readonly overview: ThreadOverview;
+  /** Its machine is the one the window drives, which hasn't answered yet. */
+  readonly driven: boolean;
+  /**
+   * How its machine stands: being reached again, away, or another machine's whose copy this is. Each
+   * keeps the box, whose messages wait on this device until the machine takes them.
+   */
+  readonly state: ComposerOutbox["state"];
+  /** Drives its machine, which answers, and opens the thread there. */
+  readonly onOpen?: (() => void) | undefined;
+}
 
 /** What the window does for any of its thread panes. */
 export interface ThreadPaneActions {
@@ -221,9 +266,7 @@ export interface ThreadPaneProps {
   /** The thread, live from the machine the window drives. */
   readonly selected: ThreadOverview | undefined;
   /** Another machine's thread, read from the cloud copy while that machine can't be reached. */
-  readonly cloud:
-    | { readonly machine: string; readonly name: string; readonly overview: ThreadOverview }
-    | undefined;
+  readonly cloud: ThreadPaneCloud | undefined;
   /** The thread isn't listed yet because the list hasn't loaded: it holds its place. */
   readonly loading: boolean;
   /** The draft the message box writes when there is no thread yet. */
@@ -238,6 +281,10 @@ export interface ThreadPaneProps {
   readonly bar?: ReactNode;
   /** Notices over the conversation. */
   readonly notices?: ReactNode;
+  /** Above the message box, over its approvals: such as the pill to the next thread waiting. */
+  readonly aboveComposer?: ReactNode;
+  /** Opens what the window knows of the thread's connection, from the box's machine chip. */
+  readonly onOpenConnection?: (() => void) | undefined;
   /** The thread's terminal drawer, docked under it. */
   readonly drawer?: ReactNode;
   /** The project's setup while it runs in one of the thread's terminals, which `onShow` opens. */
@@ -294,6 +341,8 @@ export function ThreadPane({
   worktrees,
   bar,
   notices,
+  aboveComposer,
+  onOpenConnection,
   drawer,
   setup,
   preview,
@@ -350,10 +399,6 @@ export function ThreadPane({
   // An ended lead picks the thread back up on the user's next message.
   const leadEnded = lead?.state === "stopped" || lead?.state === "failed" ? lead.state : undefined;
   const { attempt, restore, fork, turnFiles, handOff, askSide, suggestFollowup } = actions;
-  const onAskSide: AskSide | undefined =
-    cloud || bar != null || !askSide || !lead
-      ? undefined
-      : (question, earlier) => askSide(lead.id, question, earlier);
   /** Whether two of the lead's model ids name the same model. */
   const sameModel = (a: string, b: string) =>
     a === b ||
@@ -380,17 +425,62 @@ export function ThreadPane({
             taskFromMessage(text, viewed.thread.id, viewed.thread.worktree?.project ?? viewed.thread.cwd),
           );
   const leadActivity = leadRunning ? "running" : leadEnded ? "ended" : "idle";
+
+  // A thread whose machine can't be reached keeps its box: what the user sends waits on this device,
+  // in order, and goes once the machine is back and the thread live again.
+  const connection = useAtomValue(connectionAtom);
+  const driven = useAtomValue(machineAtom);
+  const lineDown = selected !== undefined && shouldQueue(connection);
+  const reconnecting = useHeld(lineDown, RECONNECT_GRACE_MS);
+  /** How the box queues, for a thread with a lead whose machine is away; none while it's live. */
+  const outboxState: ComposerOutbox["state"] | undefined =
+    viewed === undefined || lead === undefined
+      ? undefined
+      : cloud
+        ? cloud.state
+        : reconnecting
+          ? "reconnecting"
+          : undefined;
+  /** Nothing that needs the machine now (approvals, answers, stop, handoff) can go from here. */
+  const away = cloud !== undefined || outboxState !== undefined;
+  /** The machine a message waits for: the driven one, or the cloud copy's own. */
+  const outboxTarget = cloud && !cloud.driven ? cloud.machine : outboxMachine(driven);
+  const machineName = cloud?.name ?? driven?.name;
+  const outboxEntries = useOutboxFlush({
+    machine: outboxTarget,
+    threadId: viewed?.thread.id,
+    ready: selected !== undefined && outboxReady(connection, lead?.id),
+    send: (message) => (lead ? actions.send(lead.id, message) : Promise.resolve(false)),
+  });
+  const kept = outboxMessages(outboxEntries);
+  const held = cloud
+    ? cloud.state === "reconnecting"
+      ? "reconnecting"
+      : "offline"
+    : lineDown
+      ? "reconnecting"
+      : undefined;
+  /** Tries the machine again: drives another machine that answers, else the driven one's line. */
+  const retryNow = cloud && !cloud.driven ? cloud.onOpen : reconnectNow;
+
+  const onAskSide: AskSide | undefined =
+    away || bar != null || !askSide || !lead
+      ? undefined
+      : (question, earlier) => askSide(lead.id, question, earlier);
   // Messages waiting behind a running turn, or for an ended lead, wait in the message box, where they
-  // can be taken back. A thread read from the cloud copy can't touch them: that takes its machine.
+  // can be taken back. A thread whose machine is away can't touch them: that takes its machine. Those
+  // kept on this device follow them, and can always be taken back.
   const { withdraw, steer } = actions;
-  const onSteer = lead && !cloud && steer ? () => void attempt(steer(lead.id)) : undefined;
+  const onSteer =
+    lead && !away && steer && kept.length === 0 ? () => void attempt(steer(lead.id)) : undefined;
+  const machineQueued = lead !== undefined && holdsQueue(queued, leadActivity);
   const queue: Queue | undefined =
-    lead && holdsQueue(queued, leadActivity)
+    viewed && lead && (machineQueued || kept.length > 0)
       ? {
-          messages: queued.messages,
+          messages: [...(machineQueued ? queued.messages : []), ...kept],
           ended: leadActivity === "ended",
           onSteer,
-          ...(cloud || !withdraw
+          ...(away || !withdraw
             ? {}
             : {
                 onWithdraw: async (messageId: string) => {
@@ -398,12 +488,17 @@ export function ThreadPane({
                   return (await attempt(taken)) && (await taken);
                 },
               }),
+          ...(held ? { held, onRetryNow: retryNow } : {}),
+          machine: machineName,
+          onRetryItem: (id) => retryMessage(registry, id),
+          onRestore: (id) => restoreToDraft(registry, id, viewed.thread.id),
+          onRemove: (id) => cancelMessage(registry, id),
         }
       : undefined;
   // What the message box needs to suggest a follow-up after a turn the lead finishes while the thread
   // is in view. A thread read from the cloud copy can't ask: that takes its machine.
   const followup: Followup | undefined =
-    focused && !cloud && suggestFollowup && viewed && lead
+    focused && !away && suggestFollowup && viewed && lead
       ? {
           agentId: lead.id,
           ready:
@@ -444,7 +539,7 @@ export function ThreadPane({
         })),
       ),
     ],
-    ...(cloud || !stopBackground
+    ...(away || !stopBackground
       ? {}
       : {
           onStop: (agentId: string, taskId: string) =>
@@ -535,14 +630,15 @@ export function ThreadPane({
                       }}
                       childAgent={(childId) => agents.find((agent) => agent.id === childId)}
                       // A thread read from the cloud copy offers no agent actions: they take its machine.
-                      agentActions={cloud ? {} : actions.agentActions}
+                      agentActions={away ? {} : actions.agentActions}
+                      // Approvals and answers never wait on this device: each needs the machine now.
                       onAnswerPermission={(requestId, decision, scope) =>
-                        cloud
+                        away
                           ? Promise.resolve(false)
                           : attempt(actions.respond(lead.id, requestId, decision, scope))
                       }
                       onAnswerQuestion={(requestId, response) =>
-                        cloud ? Promise.resolve(false) : actions.answerQuestion(lead.id, requestId, response)
+                        away ? Promise.resolve(false) : actions.answerQuestion(lead.id, requestId, response)
                       }
                       // A thread read from the cloud copy can't go back: that takes its machine.
                       {...(cloud || !actions.edit
@@ -605,11 +701,20 @@ export function ThreadPane({
           {child
             ? null
             : (bar ?? (
-                // While the open thread's machine is still connecting, the box keeps its draft and takes
-                // writing; sending waits until the machine answers.
+                // While the thread's machine can't be reached, the box keeps taking messages, which
+                // wait on this device until it can.
                 <Composer
                   draftKey={viewed && lead ? viewed.thread.id : draftKey}
-                  connecting={cloud !== undefined}
+                  connecting={cloud !== undefined && outboxState === undefined}
+                  outbox={
+                    outboxState === undefined
+                      ? undefined
+                      : {
+                          state: outboxState,
+                          machine: machineName,
+                          onOpenConnection: onOpenConnection ?? retryNow,
+                        }
+                  }
                   inputRef={input}
                   messageBox={boxRef}
                   commands={composer}
@@ -630,13 +735,13 @@ export function ThreadPane({
                           folder: viewed.thread.cwd,
                           worktree: viewed.thread.worktree,
                           ...(leadEnded ? { ended: leadEnded } : {}),
-                          // A thread read from the cloud copy can't be switched: it takes its machine.
-                          ...(cloud
+                          // A thread whose machine is away can't be switched: it takes its machine.
+                          ...(away
                             ? {}
                             : { onSwitch: (choice) => attempt(actions.switchLead(lead.id, choice)) }),
                           context: agents.find((agent) => agent.id === lead.id)?.context,
-                          ...(cloud ? {} : { onCompact: () => void attempt(actions.compact(lead.id)) }),
-                          ...(cloud || actions.setOnLimit === undefined
+                          ...(away ? {} : { onCompact: () => void attempt(actions.compact(lead.id)) }),
+                          ...(away || actions.setOnLimit === undefined
                             ? {}
                             : {
                                 onLimit: {
@@ -650,7 +755,7 @@ export function ThreadPane({
                               }),
                           ...(followup ? { followup } : {}),
                           ...(onAskSide ? { onAskSide } : {}),
-                          ...(cloud || handOff === undefined
+                          ...(away || handOff === undefined
                             ? {}
                             : {
                                 handoff: {
@@ -677,7 +782,7 @@ export function ThreadPane({
                           workspaceControls: actions.sourceControlEnabled,
                         }
                   }
-                  running={leadRunning && cloud === undefined}
+                  running={leadRunning && !away}
                   activity={
                     leadRunning && lead ? (
                       <LeadActivity events={eventsAtom} lead={lead.id} sameModel={sameModel} />
@@ -690,10 +795,10 @@ export function ThreadPane({
                     viewed && cloud === undefined ? <ComputerTray threadId={viewed.thread.id} /> : undefined
                   }
                   above={
-                    cloud ? (
-                      <ConnectingNote machine={cloud.name} />
-                    ) : (
-                      <>
+                    <>
+                      {aboveComposer}
+                      {/* Approvals and questions wait on the machine, never on this device. */}
+                      <div inert={away} className={away ? "opacity-50" : "contents"}>
                         <ApprovalTray
                           agents={agents}
                           onAnswer={actions.answerApproval}
@@ -701,16 +806,26 @@ export function ThreadPane({
                           onAnswerQuestion={actions.answerQuestion}
                           onFocusComposer={() => input.current?.focus({ preventScroll: true })}
                         />
-                        {viewed && actions.confirmsSetup ? (
-                          <SetupGuessNotice thread={viewed.thread} attempt={actions.attempt} />
-                        ) : null}
-                      </>
-                    )
+                      </div>
+                      {viewed && !away && actions.confirmsSetup ? (
+                        <SetupGuessNotice thread={viewed.thread} attempt={actions.attempt} />
+                      ) : null}
+                    </>
                   }
                   onHeight={setComposerHeight}
                   onSend={(message, setups, taskId) => {
                     // Writing to a thread keeps its tab: it's no longer only a preview.
                     if (viewed) actions.keep(viewed.thread.id);
+                    // Its machine away, or messages already waiting here, it waits behind them.
+                    if (viewed && lead && (cloud || shouldQueue(connection) || kept.length > 0)) {
+                      queueMessage(
+                        registry,
+                        { machine: outboxTarget, threadId: viewed.thread.id },
+                        message,
+                        segmentsOf(message.text, message.mentions),
+                      );
+                      return Promise.resolve(true);
+                    }
                     return attempt(
                       selected && lead
                         ? actions.send(lead.id, message)

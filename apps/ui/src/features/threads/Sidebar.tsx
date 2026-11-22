@@ -76,6 +76,8 @@ interface SidebarProps {
   /** The command palette: opened by its button here and by Ctrl K, which the window listens for. */
   readonly searchOpen: boolean;
   readonly onSearchOpenChange: (open: boolean) => void;
+  /** Pulling the inbox down from its top runs it: reloading threads and retrying the connection. */
+  readonly onRefresh?: () => void | Promise<void>;
 }
 
 export interface HarnessIndicator {
@@ -109,6 +111,7 @@ export function Sidebar({
   onOpenWindow,
   searchOpen,
   onSearchOpenChange,
+  onRefresh,
 }: SidebarProps) {
   const modeThreads = threads.filter((thread) => thread.mode === mode && isListed(thread));
   // Read here rather than by the window, so writing a draft's first line re-renders only the list.
@@ -185,6 +188,7 @@ export function Sidebar({
           onContinue={onContinue}
           onDelete={onDelete}
           onOpenWindow={onOpenWindow}
+          onRefresh={onRefresh}
         />
       ) : (
         <ChatList

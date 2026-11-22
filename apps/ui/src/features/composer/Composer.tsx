@@ -1,5 +1,6 @@
+import { Button } from "@base-ui/react/button";
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
-import { Paperclip } from "lucide-react";
+import { Cloud, Monitor, Paperclip } from "lucide-react";
 import {
   useEffect,
   useEffectEvent,
@@ -65,12 +66,24 @@ export type { ComposerCommands, ComposerTarget, OutgoingMessage, ThreadSetup } f
 const isDictationKey = (event: KeyboardEvent<HTMLDivElement>, binding: string, mac: boolean) =>
   matchesBinding(event, binding, mac);
 
+/** The thread's machine can't take messages now: what's sent waits on this device until it can. */
+export interface ComposerOutbox {
+  /** Its machine is being reached again, can't be, or the thread is the cloud copy of another's. */
+  readonly state: "reconnecting" | "offline" | "cloud";
+  /** The name of the machine the messages wait for. */
+  readonly machine?: string | undefined;
+  /** Opens what the window knows of the connection; absent where nothing does. */
+  readonly onOpenConnection?: (() => void) | undefined;
+}
+
 interface ComposerProps {
   readonly target: ComposerTarget;
   /** Which draft the box shows: each thread, and each thread not started yet, keeps its own. */
   readonly draftKey: string;
   /** The thread's machine hasn't answered yet: the box takes writing, and sending waits for it. */
   readonly connecting?: boolean;
+  /** Sending queues instead: the thread's machine can't be reached, so stopping a turn can't either. */
+  readonly outbox?: ComposerOutbox | undefined;
   /** The message box, for callers that move focus to it. */
   readonly inputRef?: RefObject<HTMLDivElement | null>;
   /** Filled with what others can put into the box; null while it takes no messages. */
@@ -122,11 +135,12 @@ export function Composer({
   target,
   draftKey,
   connecting = false,
+  outbox,
   inputRef,
   messageBox,
   commands,
   promptHistory,
-  running,
+  running: turnRunning,
   onSend,
   onStop,
   above,
@@ -140,6 +154,9 @@ export function Composer({
   slashCommands = [],
   seat,
 }: ComposerProps) {
+  const queueing = outbox !== undefined;
+  // No turn can be stopped on a machine that can't be reached.
+  const running = turnRunning && !queueing;
   const setDrafts = useAtomSet(draftsAtom);
   const machine = useAtomValue(machineAtom);
   /** Bumped when the box itself replaces a draft (sent, or given back), so the editor shows it. */
@@ -239,7 +256,8 @@ export function Composer({
       filling: filling !== undefined,
       start,
       input,
-      running,
+      // A queued message doesn't fly to the transcript: it lands in the tray.
+      running: running || queueing,
       queue,
       onSend,
       onSteer,
@@ -529,6 +547,9 @@ export function Composer({
       }
     />
   );
+  // Where the messages wait to go, for a thread whose machine is away rather than coming back.
+  const targetChip =
+    outbox !== undefined && outbox.state !== "reconnecting" ? <TargetChip outbox={outbox} /> : null;
   const actions = useComposerActions({
     inline,
     oneLine,
@@ -540,10 +561,12 @@ export function Composer({
     touch,
     sendKey,
     blockedAccess: start.blockedAccess,
+    queueing,
     onSend: () => send(),
     onStop,
     children: (
       <>
+        {inline ? targetChip : null}
         {!oneLine || modelsOpen
           ? target.kind === "new"
             ? startModelChip({ target, start, open: modelsOpen, onOpenChange: setModelsOpen })
@@ -567,19 +590,23 @@ export function Composer({
 
   const placeholder = listening
     ? "Listening…"
-    : running
-      ? "Queue a follow-up"
-      : resumes
-        ? thread?.ended === "failed"
-          ? "Send a message to try again"
-          : "Send a message to pick this thread back up"
-        : target.kind === "new"
-          ? starting.length > 1
-            ? `Message ${starting.length} models at once`
-            : target.mode === "chat"
-              ? "Ask anything"
-              : "Describe the task"
-          : `Message ${threadShown?.label}`;
+    : outbox
+      ? outbox.machine
+        ? `Queue a message for ${outbox.machine}`
+        : "Queue a message"
+      : running
+        ? "Queue a follow-up"
+        : resumes
+          ? thread?.ended === "failed"
+            ? "Send a message to try again"
+            : "Send a message to pick this thread back up"
+          : target.kind === "new"
+            ? starting.length > 1
+              ? `Message ${starting.length} models at once`
+              : target.mode === "chat"
+                ? "Ask anything"
+                : "Describe the task"
+            : `Message ${threadShown?.label}`;
 
   const openModels = () => {
     if (!isNew && !lead.threadPicker) return false;
@@ -760,6 +787,7 @@ export function Composer({
                   run writes itself out after the paperclip. */}
               <div className="flex min-h-8 min-w-0 flex-1 flex-wrap content-center items-center gap-0.5">
                 {attachButton}
+                {targetChip}
                 {newPlace}
               </div>
               {actions}
@@ -768,5 +796,28 @@ export function Composer({
         </div>
       </div>
     </div>
+  );
+}
+
+/** The machine a queued message goes to, in the box's action row; it opens the connection's details. */
+function TargetChip({ outbox }: { readonly outbox: ComposerOutbox }) {
+  const { machine, state, onOpenConnection } = outbox;
+  return (
+    <Button
+      aria-label={machine ? `${machine}, connection details` : "Connection details"}
+      onClick={onOpenConnection}
+      disabled={onOpenConnection === undefined}
+      className="relative flex h-7 min-w-0 shrink items-center gap-1.5 rounded-full bg-surface-hover px-2 text-[13px] text-fg-secondary transition-colors hover:text-fg-primary pointer-coarse:before:absolute pointer-coarse:before:inset-x-0 pointer-coarse:before:-inset-y-1.5"
+    >
+      <Monitor size={12} strokeWidth={1.75} className="shrink-0" />
+      {machine ? <span className="max-w-[40vw] min-w-0 truncate">{machine}</span> : null}
+      <span aria-hidden className="grid size-3 shrink-0 place-items-center">
+        {state === "cloud" ? (
+          <Cloud size={11} strokeWidth={1.75} className="text-fg-tertiary" />
+        ) : (
+          <span className="size-1.5 rounded-full ring-1 ring-fg-disabled" />
+        )}
+      </span>
+    </Button>
   );
 }

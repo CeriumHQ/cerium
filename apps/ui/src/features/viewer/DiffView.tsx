@@ -1,7 +1,15 @@
 import type { DiffHunk } from "@cerium/rpc";
 import { Button } from "../../components/ui/Button.tsx";
-import { Check, ChevronsUpDown, Plus } from "lucide-react";
-import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
+import { ArrowDown, ArrowUp, Check, ChevronsUpDown, MessageSquare, Plus, WrapText } from "lucide-react";
+import {
+  Fragment,
+  useEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+  type RefObject,
+} from "react";
 
 import { useCompact } from "../../app/compact.ts";
 import type { DraftCommentFile } from "../composer/draft.ts";
@@ -66,7 +74,7 @@ function Gap({
   const band = lines === 0 ? "" : "border-y border-line-subtle bg-surface-hover";
   return (
     <div
-      className={`flex items-center text-meta text-fg-tertiary select-none ${band} ${children === undefined ? "h-7" : "h-8 pr-1.5"}`}
+      className={`flex items-center text-meta text-fg-tertiary select-none ${band} ${children === undefined ? "h-7" : "h-8 pr-1.5 pointer-coarse:h-11 pointer-coarse:pr-2 pointer-coarse:[&_button]:h-9"}`}
     >
       {lines === 0 ? null : onExpand ? (
         <button
@@ -154,10 +162,202 @@ export interface DiffCommenting {
     readonly file: DraftCommentFile;
     readonly text: string;
   }) => void;
+  /**
+   * The comments waiting in the draft and how to show them, for the phone's hunk navigator; without,
+   * it counts the runs of marked lines in this diff and its button goes to the next one.
+   */
+  readonly tray?: { readonly count: number; readonly open: () => void } | undefined;
+}
+
+/** Hunk starts the navigator scrolls to sit this far under the top of the view. */
+const HUNK_MARGIN = 12;
+
+/**
+ * The hunk to go to from `position`, the point in the diff just under the top of the view: the first
+ * that starts below it, or the last that starts above it. `offsets` are where each hunk starts.
+ */
+export const hunkTarget = (
+  offsets: ReadonlyArray<number>,
+  position: number,
+  direction: "previous" | "next",
+): number | undefined => {
+  const slack = 2;
+  const found =
+    direction === "next"
+      ? offsets.findIndex((offset) => offset > position + slack)
+      : offsets.findLastIndex((offset) => offset < position - slack);
+  return found === -1 ? undefined : found;
+};
+
+/** The hunk each run of lines a waiting comment covers starts in, first to last. */
+export const commentRuns = (
+  hunks: ReadonlyArray<{ readonly lines: ReadonlyArray<NumberedLine> }>,
+  marked: ReadonlySet<number>,
+): ReadonlyArray<number> =>
+  hunks.flatMap((hunk, at) =>
+    hunk.lines.flatMap((line, index) => {
+      const covered = (each: NumberedLine | undefined) =>
+        each !== undefined && marked.has(each.new ?? each.old ?? 0);
+      return covered(line) && !covered(hunk.lines[index - 1]) ? [at] : [];
+    }),
+  );
+
+/** Where each hunk starts within the scrolling diff. */
+const hunkOffsets = (scroller: HTMLElement): ReadonlyArray<number> => {
+  const top = scroller.getBoundingClientRect().top - scroller.scrollTop;
+  return [...scroller.querySelectorAll("[data-hunk-start]")].map(
+    (marker) => marker.getBoundingClientRect().top - top,
+  );
+};
+
+/**
+ * On a phone, the capsule floating at the foot of the diff: the previous and next hunk, the waiting
+ * comments, and whether long lines wrap. It drops away as the diff is scrolled down, to read, and
+ * comes back as it's scrolled up.
+ */
+function HunkNavigator({
+  scroller,
+  comments,
+  commentHunks,
+  onComments,
+  wrap,
+  onWrap,
+}: {
+  scroller: RefObject<HTMLDivElement | null>;
+  comments: number;
+  /** The hunks the comments' runs start in, to go to when there's no tray to open. */
+  commentHunks: ReadonlyArray<number>;
+  onComments: (() => void) | undefined;
+  wrap: boolean;
+  onWrap: () => void;
+}) {
+  const [hidden, setHidden] = useState(false);
+  const [can, setCan] = useState({ previous: false, next: false });
+  useEffect(() => {
+    const element = scroller.current;
+    if (element === null) return;
+    let last = element.scrollTop;
+    let frame = 0;
+    const update = () => {
+      frame = 0;
+      const top = element.scrollTop;
+      const atEnd = top + element.clientHeight >= element.scrollHeight - 1;
+      if (atEnd || top < 40) setHidden(false);
+      else if (Math.abs(top - last) > 4) setHidden(top > last);
+      if (Math.abs(top - last) > 4) last = top;
+      const offsets = hunkOffsets(element);
+      const previous = hunkTarget(offsets, top + HUNK_MARGIN, "previous") !== undefined;
+      const next = !atEnd && hunkTarget(offsets, top + HUNK_MARGIN, "next") !== undefined;
+      setCan((was) => (was.previous === previous && was.next === next ? was : { previous, next }));
+    };
+    const schedule = () => {
+      if (frame === 0) frame = requestAnimationFrame(update);
+    };
+    update();
+    element.addEventListener("scroll", schedule, { passive: true });
+    const observer = new ResizeObserver(schedule);
+    observer.observe(element);
+    if (element.firstElementChild !== null) observer.observe(element.firstElementChild);
+    return () => {
+      element.removeEventListener("scroll", schedule);
+      observer.disconnect();
+      cancelAnimationFrame(frame);
+    };
+  }, [scroller]);
+
+  const goTo = (target: (offsets: ReadonlyArray<number>, position: number) => number | undefined) => {
+    const element = scroller.current;
+    if (element === null) return;
+    const offsets = hunkOffsets(element);
+    const index = target(offsets, element.scrollTop + HUNK_MARGIN);
+    const offset = index === undefined ? undefined : offsets[index];
+    if (offset === undefined) return;
+    element.scrollTo({
+      top: offset - HUNK_MARGIN,
+      behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth",
+    });
+  };
+  const nextComment = (offsets: ReadonlyArray<number>, position: number) =>
+    commentHunks.find((hunk) => (offsets[hunk] ?? 0) > position + 2) ?? commentHunks[0];
+
+  const buttonClass =
+    "flex size-10 shrink-0 items-center justify-center rounded-full text-fg-secondary outline-none transition-colors select-none active:bg-surface-active focus-visible:ring-2 focus-visible:ring-focus-ring disabled:opacity-40";
+  return (
+    <div
+      data-hunk-navigator=""
+      className={`absolute bottom-[max(env(safe-area-inset-bottom),0.75rem)] left-1/2 z-10 flex h-11 -translate-x-1/2 items-center rounded-full bg-surface-overlay px-0.5 font-sans text-[13px] shadow-overlay backdrop-blur-2xl transition-[translate,opacity] duration-200 ease-out-soft ${
+        hidden
+          ? "pointer-events-none translate-y-[calc(100%+1rem)] opacity-0 motion-reduce:translate-y-0"
+          : ""
+      }`}
+    >
+      <button
+        type="button"
+        aria-label="Previous change"
+        disabled={!can.previous}
+        onClick={() => goTo((offsets, position) => hunkTarget(offsets, position, "previous"))}
+        className={buttonClass}
+      >
+        <ArrowUp size={16} strokeWidth={2} aria-hidden />
+      </button>
+      <button
+        type="button"
+        aria-label="Next change"
+        disabled={!can.next}
+        onClick={() => goTo((offsets, position) => hunkTarget(offsets, position, "next"))}
+        className={buttonClass}
+      >
+        <ArrowDown size={16} strokeWidth={2} aria-hidden />
+      </button>
+      <span aria-hidden="true" className="mx-1 h-5 w-px bg-line-subtle" />
+      {comments > 0 ? (
+        <>
+          <button
+            type="button"
+            aria-label="Comments"
+            onClick={onComments ?? (() => goTo(nextComment))}
+            className={`${buttonClass} w-auto gap-1.5 px-3 tabular-nums`}
+          >
+            <MessageSquare size={15} strokeWidth={1.75} aria-hidden />
+            {comments}
+          </button>
+          <span aria-hidden="true" className="mx-1 h-5 w-px bg-line-subtle" />
+        </>
+      ) : null}
+      <button
+        type="button"
+        aria-label="Wrap lines"
+        aria-pressed={wrap}
+        onClick={onWrap}
+        className={`${buttonClass} ${wrap ? "text-accent-text" : ""}`}
+      >
+        <WrapText size={16} strokeWidth={1.75} aria-hidden />
+      </button>
+    </div>
+  );
+}
+
+/** Dragging a finger down the comment boxes: the line it started on, and the one it's over. */
+interface GutterDrag {
+  readonly onDown: (id: string, event: ReactPointerEvent<HTMLButtonElement>) => void;
+  readonly onMove: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  readonly onEnd: () => void;
+  /** Whether the click that ends a drag is the drag's, not a tap of its own. */
+  readonly swallowClick: () => boolean;
 }
 
 /** The box beside a line that comments on it, or marks a run already picked. */
-function CommentPlus({ picked, onPick }: { picked: boolean; onPick: (extend: boolean) => void }) {
+function CommentPlus({
+  id,
+  picked,
+  onPick,
+  drag,
+}: {
+  id: string;
+  picked: boolean;
+  onPick: (extend: boolean) => void;
+  drag: GutterDrag;
+}) {
   return (
     <button
       type="button"
@@ -167,9 +367,16 @@ function CommentPlus({ picked, onPick }: { picked: boolean; onPick: (extend: boo
       onMouseDown={(event) => {
         if (event.shiftKey) event.preventDefault();
       }}
-      onClick={(event) => onPick(event.shiftKey)}
-      // A finger can't hover for it, so on a touch screen it rests in sight, a little wider to hit.
-      className={`grid w-5 shrink-0 cursor-default place-items-center self-stretch text-fg-tertiary outline-none select-none transition-opacity duration-100 focus-visible:opacity-100 pointer-coarse:w-8 ${
+      onPointerDown={(event) => drag.onDown(id, event)}
+      onPointerMove={drag.onMove}
+      onPointerUp={drag.onEnd}
+      onPointerCancel={drag.onEnd}
+      onClick={(event) => {
+        if (!drag.swallowClick()) onPick(event.shiftKey);
+      }}
+      // A finger can't hover for it, so on a touch screen it rests in sight, a little wider to hit,
+      // and dragging down the boxes takes the lines it passes rather than scrolling.
+      className={`grid w-5 shrink-0 cursor-default place-items-center self-stretch text-fg-tertiary outline-none select-none transition-opacity duration-100 focus-visible:opacity-100 pointer-coarse:w-8 pointer-coarse:touch-none ${
         picked ? "opacity-100" : "opacity-0 group-hover/line:opacity-100 pointer-coarse:opacity-60"
       }`}
     >
@@ -227,7 +434,7 @@ function CommentBox({
         className="block max-h-40 min-h-12 w-full resize-none rounded-lg border border-line-subtle bg-surface-raised px-2.5 py-2 text-body outline-none [field-sizing:content] placeholder:text-fg-tertiary focus:border-line-strong"
       />
       <div className="flex items-center justify-end gap-1">
-        <Button tone="quiet" size="sm" onClick={onClose} className="pointer-coarse:h-9">
+        <Button tone="quiet" size="sm" onClick={onClose} className="pointer-coarse:h-10">
           Cancel
         </Button>
         <Button
@@ -235,7 +442,7 @@ function CommentBox({
           size="sm"
           onClick={() => onAdd(text)}
           disabled={text.trim() === ""}
-          className="pointer-coarse:h-9"
+          className="pointer-coarse:h-10"
         >
           Add comment
         </Button>
@@ -341,6 +548,7 @@ function Cell({
   ranges,
   tokens,
   gutter,
+  numberClass = number,
   wrap = false,
   mark,
   pick,
@@ -350,6 +558,8 @@ function Cell({
   ranges: ReadonlyArray<Range>;
   tokens: Parameters<typeof pieces>[1];
   gutter: string;
+  /** How the line's number is set: smaller in a phone's single gutter. */
+  numberClass?: string;
   /** Long lines wrap rather than run past the side's edge, as each side of a split diff does. */
   wrap?: boolean;
   /** The box that comments on the line, before its pick on a side of a split diff. */
@@ -365,11 +575,11 @@ function Cell({
       {mark}
       {pick}
       {lineNumber === undefined || line.kind === "removed" ? (
-        <span style={{ width: gutter }} className={number} aria-hidden="true">
+        <span style={{ width: gutter }} className={numberClass} aria-hidden="true">
           {lineNumber}
         </span>
       ) : (
-        <LineNumber line={lineNumber} style={{ width: gutter }} className={number} />
+        <LineNumber line={lineNumber} style={{ width: gutter }} className={numberClass} />
       )}
       <span className={`w-4 shrink-0 select-none ${markerTint[line.kind]}`} aria-hidden="true">
         {marker[line.kind]}
@@ -423,9 +633,17 @@ export function DiffView({
 }) {
   // Two columns won't fit a phone, and the switch for them is hidden there, so a layout saved on a
   // wider window stays that window's: the phone shows the one column.
-  const layout: DiffLayout = useCompact() ? "unified" : chosen;
+  const compact = useCompact();
+  const layout: DiffLayout = compact ? "unified" : chosen;
   // A finger has no Shift to extend a run with, so while one is open its next tap extends it.
   const touch = useCoarsePointer();
+  // A phone's screen is too narrow to scroll a line sideways for: there long lines wrap unless the
+  // user turns that off.
+  const [wrapChosen, setWrapChosen] = useState<boolean>();
+  const wrap = !scroll || (compact && (wrapChosen ?? true));
+  /** The phone's diff: one gutter, its own scrolling, and the hunk navigator over it. */
+  const navigable = compact && scroll;
+  const scroller = useRef<HTMLDivElement>(null);
   /** The box for a hunk's line, a spacer for an unchanged one; nothing while lines can't be picked. */
   const pickOf = (hunk: number, index: number, line: NumberedLine) =>
     picking === undefined ? undefined : line.kind === "context" ? (
@@ -485,11 +703,46 @@ export function DiffView({
       setRun({ ids: new Set([id]), anchor: id });
     }
   };
+  // A finger dragged down the comment boxes takes every line from the one it started on to the one
+  // it's over, with a tick on a phone that can give one at each new line.
+  const dragging = useRef<{ readonly start: string; last: string; moved: boolean }>(undefined);
+  const dragged = useRef(false);
+  const drag: GutterDrag = {
+    onDown: (id, event) => {
+      dragged.current = false;
+      if (commenting === undefined || event.pointerType === "mouse") return;
+      dragging.current = { start: id, last: id, moved: false };
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+    },
+    onMove: (event) => {
+      const current = dragging.current;
+      if (current === undefined) return;
+      const over = document
+        .elementFromPoint(event.clientX, event.clientY)
+        ?.closest<HTMLElement>("[data-run-id]")?.dataset["runId"];
+      if (over === undefined || over === current.last) return;
+      current.last = over;
+      current.moved = true;
+      setRun({ ids: new Set(linesBetween(hunks, current.start, over)), anchor: current.start });
+      navigator.vibrate?.(5);
+    },
+    onEnd: () => {
+      if (dragging.current?.moved) dragged.current = true;
+      dragging.current = undefined;
+    },
+    swallowClick: () => {
+      const swallow = dragged.current;
+      dragged.current = false;
+      return swallow;
+    },
+  };
   const plusOf = (hunk: number, index: number) =>
     commenting === undefined ? undefined : (
       <CommentPlus
+        id={runId(hunk, index)}
         picked={run !== undefined && run.ids.has(runId(hunk, index))}
         onPick={(extend) => pickRun(hunk, index, extend)}
+        drag={drag}
       />
     );
   /** A line a waiting comment covers, marked down its edge at half the pick's strength. */
@@ -540,20 +793,27 @@ export function DiffView({
 
   const last = hunks.at(-1);
   const widest = last === undefined ? 1 : Math.max(last.oldStart, last.newStart) + last.lines.length;
-  const gutter = `calc(${String(widest).length}ch + 1rem)`;
+  const gutter = navigable
+    ? `max(2.25rem, calc(${String(widest).length}ch + 0.5rem))`
+    : `calc(${String(widest).length}ch + 1rem)`;
+  const numberClass = navigable
+    ? "shrink-0 px-1 text-right text-[11px] text-fg-tertiary tabular-nums select-none"
+    : number;
+  const runs = navigable && commenting !== undefined ? commentRuns(numbered.hunks, commenting.marked) : [];
 
-  return (
+  const diff = (
     <div
-      ref={root}
-      className={`font-mono text-meta leading-[1.6] select-text [container-type:inline-size] ${scroll ? "scroll-thin h-full overflow-auto pb-3" : ""}`}
+      ref={scroller}
+      className={`font-mono select-text [container-type:inline-size] ${navigable ? "text-[12px] leading-[1.55]" : "text-meta leading-[1.6]"} ${scroll ? `scroll-thin h-full overflow-auto ${navigable ? "pb-16" : "pb-3"}` : ""}`}
     >
-      <div className={layout === "split" || !scroll ? "min-w-full" : "w-max min-w-full"}>
+      <div className={layout === "split" || wrap ? "min-w-full" : "w-max min-w-full"}>
         {numbered.hunks.map((hunk, hunkIndex) => {
           const changed = ranges[hunkIndex]!;
           const indexOf = new Map(hunk.lines.map((line, index) => [line, index]));
           const actions = picking?.hunkActions(hunkIndex);
           return (
             <Fragment key={hunkIndex}>
+              <div data-hunk-start="" aria-hidden="true" />
               {actions !== undefined && actions !== null ? (
                 <Gap lines={hunk.gapBefore} onExpand={onExpand}>
                   {actions}
@@ -580,20 +840,25 @@ export function DiffView({
                               return (
                                 <Fragment key={index}>
                                   <div
+                                    data-run-id={runId(hunkIndex, index)}
                                     className={`group/line flex ${tint[line.kind]} ${edgeOf(hunkIndex, index, line)} ${markOf(line)}`}
                                   >
                                     {plusOf(hunkIndex, index)}
                                     {pickOf(hunkIndex, index, line)}
-                                    <span style={{ width: gutter }} className={number} aria-hidden="true">
-                                      {line.old}
-                                    </span>
+                                    {/* The phone's one gutter shows the new number, and the old one only on a removed line. */}
+                                    {navigable ? null : (
+                                      <span style={{ width: gutter }} className={number} aria-hidden="true">
+                                        {line.old}
+                                      </span>
+                                    )}
                                     <Cell
                                       line={line}
-                                      number={line.new}
+                                      number={navigable && line.kind === "removed" ? line.old : line.new}
                                       ranges={changed.get(index) ?? []}
                                       tokens={tokensOf(line, line.kind === "removed" ? "old" : "new")}
                                       gutter={gutter}
-                                      wrap={!scroll}
+                                      numberClass={numberClass}
+                                      wrap={wrap}
                                     />
                                   </div>
                                   {after?.(line)}
@@ -622,6 +887,9 @@ export function DiffView({
                               <Fragment key={first + offset}>
                                 <div className="grid grid-cols-2 divide-x divide-line-subtle">
                                   <div
+                                    data-run-id={
+                                      row.left ? runId(hunkIndex, indexOf.get(row.left)!) : undefined
+                                    }
                                     className={`flex min-w-0 ${row.left ? `${edgeOf(hunkIndex, indexOf.get(row.left)!, row.left)} ${markOf(row.left)}` : ""}`}
                                   >
                                     <Cell
@@ -640,6 +908,11 @@ export function DiffView({
                                     />
                                   </div>
                                   <div
+                                    data-run-id={
+                                      row.right && row.right.kind !== "context"
+                                        ? runId(hunkIndex, indexOf.get(row.right)!)
+                                        : undefined
+                                    }
                                     className={`flex min-w-0 ${row.right && row.right.kind !== "context" ? `${edgeOf(hunkIndex, indexOf.get(row.right)!, row.right)} ${markOf(row.right)}` : ""}`}
                                   >
                                     <Cell
@@ -685,6 +958,22 @@ export function DiffView({
           );
         })}
       </div>
+    </div>
+  );
+
+  return (
+    <div ref={root} className={navigable ? "relative h-full min-h-0" : scroll ? "h-full" : undefined}>
+      {diff}
+      {navigable ? (
+        <HunkNavigator
+          scroller={scroller}
+          comments={commenting?.tray?.count ?? runs.length}
+          commentHunks={runs}
+          onComments={commenting?.tray?.open}
+          wrap={wrap}
+          onWrap={() => setWrapChosen(!wrap)}
+        />
+      ) : null}
     </div>
   );
 }

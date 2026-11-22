@@ -16,6 +16,7 @@ import {
   shellBridge,
   type CliState,
   type CrashReportsState,
+  type KeepAwake,
   type StartAtLogin,
   type UpdateChannel,
   type Updates,
@@ -65,6 +66,8 @@ export function GeneralSettings() {
   const openChromiumNotices = shellBridge()?.openChromiumNotices;
   // Closing the window keeps a signed-in Cerium in the tray, which a start at login opens to.
   const startup = account?._tag === "SignedIn" && shellBridge()?.startAtLogin !== undefined;
+  // Only a signed-in computer is reached by the user's other devices.
+  const awake = account?._tag === "SignedIn" && shellBridge()?.keepAwake !== undefined;
   return (
     <SettingsPage
       title="General"
@@ -78,6 +81,13 @@ export function GeneralSettings() {
         <SettingsSection title="Startup">
           <SettingsList>
             <StartAtLoginRow />
+          </SettingsList>
+        </SettingsSection>
+      ) : null}
+      {awake ? (
+        <SettingsSection title="Remote access">
+          <SettingsList>
+            <KeepAwakeRow />
           </SettingsList>
         </SettingsSection>
       ) : null}
@@ -415,6 +425,66 @@ function StartAtLoginRow() {
           disabled={state?.available !== true}
           labelledBy={labelledBy}
         />
+      )}
+    />
+  );
+}
+
+const keepAwakeModes: ReadonlyArray<KeepAwake> = ["working", "ac", "always"];
+const keepAwakeLabel: Record<KeepAwake, string> = {
+  working: "While agents work",
+  ac: "While plugged in",
+  always: "Always",
+};
+
+/**
+ * When this computer is kept from sleeping (apps/desktop/src/background.ts), which the tray's menu
+ * switches too; it always stays awake while agents work.
+ */
+function KeepAwakeRow() {
+  const bridge = shellBridge();
+  const [mode, setMode] = useState<KeepAwake>();
+  const [error, setError] = useState<string>();
+
+  useEffect(() => {
+    void bridge?.keepAwake?.().then(setMode, () => undefined);
+    return bridge?.onKeepAwakeChange?.(setMode);
+  }, [bridge]);
+
+  const change = (next: KeepAwake) => {
+    const previous = mode;
+    setError(undefined);
+    setMode(next);
+    void bridge?.setKeepAwake?.(next).then(setMode, () => {
+      setMode(previous);
+      setError("Couldn't change that. Try again.");
+    });
+  };
+
+  return (
+    <SettingsRow
+      label="Keep awake"
+      hint="Stops this computer from sleeping so your other devices can reach it."
+      error={error}
+      className="pr-2.5"
+      control={() => (
+        <SelectRoot
+          value={mode ?? "working"}
+          onValueChange={(next) => {
+            const picked = keepAwakeModes.find((each) => each === next);
+            if (picked) change(picked);
+          }}
+          disabled={mode === undefined}
+        >
+          <SelectTrigger label="Keep awake">{keepAwakeLabel[mode ?? "working"]}</SelectTrigger>
+          <SelectPopup>
+            {keepAwakeModes.map((each) => (
+              <SelectItem key={each} value={each}>
+                {keepAwakeLabel[each]}
+              </SelectItem>
+            ))}
+          </SelectPopup>
+        </SelectRoot>
       )}
     />
   );

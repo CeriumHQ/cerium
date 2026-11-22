@@ -10,11 +10,11 @@ import {
   type TunnelMessage,
 } from "@cerium/protocol";
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Exit, Fiber, PubSub, SubscriptionRef } from "effect";
+import { Duration, Effect, Exit, Fiber, PubSub, SubscriptionRef } from "effect";
 import { TestClock } from "effect/testing";
 
 import type { Account, RelayEvent } from "../src/account.ts";
-import { openTunnel } from "../src/tunnel.ts";
+import { HELLO_WITHIN, openTunnel, RELAY_WITHIN } from "../src/tunnel.ts";
 
 const desk = "desk" as DeviceId;
 const channel = "channel" as ChannelId;
@@ -101,9 +101,28 @@ describe("a tunnel with a hello", () => {
         const { account, sent } = yield* fakeAccount("online");
         const opening = yield* openTunnel(account, desk, { hello: "hello" }).pipe(Effect.forkScoped);
         yield* until(() => sent.length > 0);
-        yield* TestClock.adjust("8 seconds");
+        yield* TestClock.adjust(HELLO_WITHIN);
         const exit = yield* Fiber.await(opening);
         assert.isTrue(Exit.isFailure(exit));
+      }),
+    ),
+  );
+
+  it.effect("gives up on a silent machine sooner than on this device's relay connection", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { account, sent } = yield* fakeAccount("online");
+        const opening = yield* openTunnel(account, desk, { hello: "hello" }).pipe(Effect.forkScoped);
+        yield* until(() => sent.length > 0);
+        yield* TestClock.adjust(
+          Duration.subtract(Duration.fromInputUnsafe(HELLO_WITHIN), Duration.millis(1)),
+        );
+        assert.isUndefined(opening.pollUnsafe());
+        yield* TestClock.adjust("1 millis");
+        assert.isTrue(Exit.isFailure(yield* Fiber.await(opening)));
+        assert.isTrue(
+          Duration.isLessThan(Duration.fromInputUnsafe(HELLO_WITHIN), Duration.fromInputUnsafe(RELAY_WITHIN)),
+        );
       }),
     ),
   );

@@ -96,6 +96,9 @@ const thisInstallation = (): Installation | undefined => {
   }
 };
 
+/** The page's account's checks of its relay connection, while it runs. */
+const relayChecks = new Set<() => void>();
+
 /**
  * When the relay connection may have died unnoticed: iOS suspends a Home Screen app that leaves the
  * screen, and its socket often comes back open but dead; a network can also come back.
@@ -104,14 +107,24 @@ const browserWakes = (check: () => void) => {
   const shown = () => {
     if (document.visibilityState === "visible") check();
   };
+  relayChecks.add(check);
   document.addEventListener("visibilitychange", shown);
   window.addEventListener("pageshow", check);
   window.addEventListener("online", check);
   return () => {
+    relayChecks.delete(check);
     document.removeEventListener("visibilitychange", shown);
     window.removeEventListener("pageshow", check);
     window.removeEventListener("online", check);
   };
+};
+
+/**
+ * Checks the relay connection now, as the page being shown again does: a dead one is found within a
+ * moment and opened again, and one waiting to retry tries at once.
+ */
+export const checkRelayNow = () => {
+  for (const check of relayChecks) check();
 };
 
 const HANDED = /^#cerium-link=([A-Za-z0-9_-]{32,})\.([A-Za-z0-9_-]{32,})$/;

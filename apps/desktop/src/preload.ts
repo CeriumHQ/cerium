@@ -11,7 +11,8 @@ import { contextBridge, ipcRenderer, webUtils } from "electron";
 // the file manager, opens it in its own app or in an editor at a line, none of which a page can do itself. Right-clicks no page menu claimed come
 // through here for the page's text menu, whose commands the shell runs. The page supplies its
 // session state and notification preferences so the shell can use them while the window hibernates.
-// Start at login and updates also go through the shell.
+// Start at login, keeping the computer awake, and updates also go through the shell, which says
+// whether the user is at Cerium (focused and active) for the account's presence.
 // The main window opens a thread in a window of its own, and hears what the `cerium` command and links ask
 // for; the command is installed from Settings.
 // Dictation opens Windows' or macOS's microphone privacy settings when they block it. The Preview
@@ -87,6 +88,20 @@ contextBridge.exposeInMainWorld("cerium", {
     ipcRenderer.invoke("cerium:start-at-login"),
   setStartAtLogin: (enabled: boolean): Promise<{ available: boolean; enabled: boolean }> =>
     ipcRenderer.invoke("cerium:set-start-at-login", enabled),
+  keepAwake: (): Promise<unknown> => ipcRenderer.invoke("cerium:keep-awake"),
+  setKeepAwake: (mode: string): Promise<unknown> => ipcRenderer.invoke("cerium:set-keep-awake", mode),
+  onKeepAwakeChange: (listener: (mode: unknown) => void): (() => void) => {
+    const forward = (_event: unknown, mode: unknown) => listener(mode);
+    ipcRenderer.on("cerium:keep-awake", forward);
+    return () => ipcRenderer.off("cerium:keep-awake", forward);
+  },
+  // Calls back with whether the user is at Cerium now, then on every change.
+  onAttendedChange: (listener: (attended: boolean) => void): (() => void) => {
+    const forward = (_event: unknown, attended: unknown) => listener(attended !== false);
+    ipcRenderer.on("cerium:attended", forward);
+    void ipcRenderer.invoke("cerium:attended").then((attended: unknown) => listener(attended !== false));
+    return () => ipcRenderer.off("cerium:attended", forward);
+  },
   updates: (): Promise<unknown> => ipcRenderer.invoke("cerium:updates"),
   checkForUpdates: (): Promise<unknown> => ipcRenderer.invoke("cerium:check-for-updates"),
   setUpdateChannel: (channel: "stable" | "nightly"): Promise<unknown> =>

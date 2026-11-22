@@ -11,7 +11,7 @@ import { Atom, AtomRpc, type AtomRegistry } from "effect/reactivity";
 import { RpcClient, RpcSerialization, RpcTest } from "effect/rpc";
 import { Socket } from "effect/socket";
 
-import { WebDevice } from "../web/device.ts";
+import { checkRelayNow, WebDevice } from "../web/device.ts";
 import { liveness, type ConnectionState, type Liveness } from "./liveness.ts";
 import { drivenMachine, onMachineChange } from "./machine.ts";
 import { shellBridge, type BackendConnection } from "./shell.ts";
@@ -119,6 +119,39 @@ export const localMediaUrl = (root: string, path: string, version: number, range
 
 /** Closed to switch machines; the client then reopens on the new one. */
 const SWITCHING = 4000;
+/** Closed to open again at once, as `reconnectNow` asks. */
+const RECONNECTING = 4001;
+
+/** What `reconnectNow` does to each connection to the driven machine, while it lasts. */
+const reconnects = new Set<() => void>();
+
+/**
+ * Tries the driven machine again now, as a Retry button asks: the web client checks its relay
+ * connection at once (a dead one opens again within a moment), the backoff between attempts starts
+ * over, and the connection to the machine opens again. What the window shows of the machine stays
+ * while it does.
+ */
+export const reconnectNow = () => {
+  if (WEB) checkRelayNow();
+  for (const reconnect of reconnects) reconnect();
+};
+
+/**
+ * Calls `wake` whenever the page comes back to the screen or the network comes back: a phone
+ * resuming the app shouldn't wait out a backoff built up while it was away.
+ */
+const pageWakes = (wake: () => void) => {
+  if (typeof document === "undefined") return () => undefined;
+  const shown = () => {
+    if (document.visibilityState === "visible") wake();
+  };
+  document.addEventListener("visibilitychange", shown);
+  window.addEventListener("online", wake);
+  return () => {
+    document.removeEventListener("visibilitychange", shown);
+    window.removeEventListener("online", wake);
+  };
+};
 /**
  * How long the driven machine may stay silent before the connection counts as lost. Another machine
  * answers through the relay, where a moment's stall on either computer is no reason to give up.
@@ -139,11 +172,27 @@ const backendSocket = <R>(
           live.restart();
           current?.close(SWITCHING, "Switching machines");
         });
-        yield* Effect.addFinalizer(() => Effect.sync(stop));
+        const reconnect = () => {
+          live.retryNow();
+          current?.close(RECONNECTING, "Reconnecting");
+        };
+        reconnects.add(reconnect);
+        const stopWakes = pageWakes(live.retryNow);
+        yield* Effect.addFinalizer(() =>
+          Effect.sync(() => {
+            stop();
+            stopWakes();
+            reconnects.delete(reconnect);
+          }),
+        );
       }
+      // The wait between attempts comes first, outside the open, so it can be cut short or ended.
       return yield* Socket.fromWebSocket(
-        Effect.acquireRelease(open.pipe(Effect.tap((ws) => Effect.sync(() => (current = ws)))), (ws) =>
-          Effect.sync(() => ws.close(1000)),
+        Effect.andThen(
+          live.backoff,
+          Effect.acquireRelease(open.pipe(Effect.tap((ws) => Effect.sync(() => (current = ws)))), (ws) =>
+            Effect.sync(() => ws.close(1000)),
+          ),
         ),
       );
     }),
@@ -186,7 +235,7 @@ const protocol = (target: Target, registry: AtomRegistry.AtomRegistry) => {
       : liveness(registry, connectionAtom, connectionEpochAtom);
   return RpcClient.layerProtocolSocket({
     retryTransientErrors: true,
-    retryPolicy: Schedule.forever.pipe(Schedule.modifyDelay(() => Effect.sync(live.nextRetry))),
+    retryPolicy: Schedule.forever.pipe(Schedule.modifyDelay(() => Effect.sync(live.deferRetry))),
     ...(target === "driven" ? { pingTimeout: DRIVEN_PING_TIMEOUT } : {}),
   }).pipe(
     Layer.provide(socketLayer(target, live)),

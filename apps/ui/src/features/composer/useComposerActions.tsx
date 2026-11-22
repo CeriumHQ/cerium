@@ -1,5 +1,5 @@
 import { Button } from "@base-ui/react/button";
-import { ArrowUp, Square } from "lucide-react";
+import { ArrowUp, Clock, Square } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, type MouseEvent, type ReactNode } from "react";
 
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
@@ -20,6 +20,7 @@ export function useComposerActions({
   touch,
   sendKey,
   blockedAccess,
+  queueing = false,
   onSend,
   onStop,
 }: {
@@ -34,6 +35,8 @@ export function useComposerActions({
   readonly touch: boolean;
   readonly sendKey: SendKey;
   readonly blockedAccess: string | undefined;
+  /** The machine can't be reached: send keeps the message on this device until it can. */
+  readonly queueing?: boolean;
   readonly onSend: () => void;
   readonly onStop: () => void;
 }) {
@@ -110,7 +113,15 @@ export function useComposerActions({
     </Tooltip>
   );
   const sendLabel =
-    blockedAccess ?? (asksForProject ? "Choose a project first" : running ? "Send after this turn" : "Send");
+    blockedAccess ??
+    (asksForProject
+      ? "Choose a project first"
+      : queueing
+        ? "Queue message"
+        : running
+          ? "Send after this turn"
+          : "Send");
+  const glyph = "transition-[opacity,scale] duration-150 ease-out-soft motion-reduce:transition-opacity";
   const sendPops = turned || (running && sendPhase === "entering");
   // The glass can change rows as the draft clears. Send still fades from a full disc in the new row.
   const sendMotion = leavingSend
@@ -131,9 +142,19 @@ export function useComposerActions({
         {/* An empty draft gets an outlined ring. The disc pops without scaling the hit area. */}
         <span
           ref={sendDisc}
-          className={`pointer-events-none grid size-full place-items-center rounded-full bg-accent text-accent-fg shadow-button group-disabled:shadow-none group-disabled:bg-transparent group-disabled:text-fg-tertiary group-disabled:ring-1 group-disabled:ring-line-strong group-disabled:ring-inset ${sendMotion}`}
+          className={`pointer-events-none grid size-full place-items-center rounded-full ${queueing ? "bg-accent-soft text-accent-text ring-1 ring-accent/35 ring-inset" : "bg-accent text-accent-fg shadow-button"} group-disabled:shadow-none group-disabled:bg-transparent group-disabled:text-fg-tertiary group-disabled:ring-1 group-disabled:ring-line-strong group-disabled:ring-inset ${sendMotion}`}
         >
-          <ArrowUp size={16} strokeWidth={2.25} />
+          {/* Queueing swaps the arrow for a clock in place: same disc, same spot. */}
+          <ArrowUp
+            size={16}
+            strokeWidth={2.25}
+            className={`[grid-area:1/1] ${glyph} ${queueing ? "scale-80 opacity-0" : ""}`}
+          />
+          <Clock
+            size={15}
+            strokeWidth={2.25}
+            className={`[grid-area:1/1] ${glyph} ${queueing ? "" : "scale-80 opacity-0"}`}
+          />
         </span>
       </Button>
     </Tooltip>
@@ -146,7 +167,7 @@ export function useComposerActions({
       <div ref={leadingActions} className="flex min-w-0 items-center gap-1 empty:hidden">
         {children}
       </div>
-      {running ? stopButton : null}
+      {running && !queueing ? stopButton : null}
       {/* Send leaves from the right edge while the row closes the gap underneath it. */}
       {sendPhase === "gone" ? null : (
         <div
