@@ -87,7 +87,9 @@ export const reachOf = (device: DeviceInfo, now = Date.now()): Reach =>
 export const whyUnreachable = (device: DeviceInfo, now = Date.now()): string | undefined => {
   const reach = reachOf(device, now);
   return reach.kind === "outdated"
-    ? "Update Cerium there first"
+    ? device.headless
+      ? "Run cerium-host update there first"
+      : "Update Cerium there first"
     : reach.kind === "offline"
       ? reach.presence
       : undefined;

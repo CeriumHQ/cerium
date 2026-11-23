@@ -36,6 +36,7 @@ import {
   reachOf,
   selfNoun,
   thisDevice,
+  whyUnreachable,
 } from "../account/model.ts";
 import { DeviceIcon } from "../account/DeviceIcon.tsx";
 import { TitleField } from "../threads/Rename.tsx";
@@ -327,7 +328,7 @@ function DeviceRow({ device, self, live }: { device: DeviceInfo; self: boolean; 
     self || !live
       ? undefined
       : outdated
-        ? "Update Cerium there first"
+        ? whyUnreachable(device)
         : device.online
           ? undefined
           : presenceLabel(device);
