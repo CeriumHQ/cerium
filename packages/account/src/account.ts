@@ -751,6 +751,7 @@ export class Account extends Context.Service<
 
         const saved = yield* vault.read.pipe(Effect.result);
         if (saved._tag === "Failure") {
+          yield* Effect.logWarning(`Couldn't read the saved sign-in: ${saved.failure.message}`);
           yield* SubscriptionRef.set(state, {
             _tag: "SignedOut",
             error: "Cerium couldn't read this device's sign-in. Sign in again.",

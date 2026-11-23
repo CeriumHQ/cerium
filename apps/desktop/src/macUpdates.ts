@@ -25,6 +25,15 @@ export const signedWithDeveloperId = (report: string): boolean =>
 /** The running app's bundle: execPath is Cerium.app/Contents/MacOS/Cerium. */
 export const macBundlePath = () => join(process.execPath, "..", "..", "..");
 
+export const hasDeveloperIdSignature = async (bundle: string = macBundlePath()): Promise<boolean> => {
+  try {
+    const { stderr } = await exec("/usr/bin/codesign", ["-dv", "--verbose=2", bundle]);
+    return signedWithDeveloperId(stderr);
+  } catch {
+    return false;
+  }
+};
+
 export type MacUpdateMode = "native" | "adhoc" | "manual";
 
 /**

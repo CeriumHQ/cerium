@@ -10,6 +10,7 @@ import { promisify } from "node:util";
 import {
   diskImageUrl,
   downloadMacUpdate,
+  hasDeveloperIdSignature,
   MAC_INSTALL_SCRIPT,
   macUpdateFile,
   macUpdateMode,
@@ -252,6 +253,8 @@ describe.skipIf(process.platform !== "darwin")("Mac bundle verification and stag
   it("accepts a valid ad hoc app and rejects the wrong version, processor, or tampered resources", async () => {
     const { bundle } = await signedApp();
     expect(await macUpdateMode(bundle)).toBe("adhoc");
+    expect(await hasDeveloperIdSignature(bundle)).toBe(false);
+    expect(await hasDeveloperIdSignature(join(bundle, "missing"))).toBe(false);
     await verifyMacBundle(bundle, "1.2.3");
     await expect(verifyMacBundle(bundle, "1.2.4")).rejects.toThrow("version");
     await expect(
