@@ -4,16 +4,31 @@ Run Cerium on a workstation, home server or VPS and select it in your Cerium acc
 
 ## Install
 
-Install from npm with Node 24.11 or later.
+Install a self-contained build (includes Node 24) on Linux, macOS, or Windows:
+
+```sh
+# Linux & macOS (x64, ARM64)
+curl -fsSL https://cerium.nonlooped.xyz/install.sh | sh
+```
+
+```powershell
+# Windows PowerShell (x64, ARM64)
+irm https://cerium.nonlooped.xyz/install.ps1 | iex
+```
+
+Or install from npm with Node 24.11 or later:
 
 ```sh
 npm install -g @cerium/host
+```
+
+Then sign in and start the background service:
+
+```sh
 cerium-host login --name "Home server"
 cerium-host service install
 cerium-host status
 ```
-
-The standalone GitHub release archives include Node. Verify the archive against its matching `.sha256` file, extract it in a persistent directory and add its `bin` directory to PATH. The binary is `cerium-host.cmd` on Windows.
 
 Use `cerium-host login --no-browser` to sign in from another computer. Open the printed URL, confirm the device and paste the code into the original terminal. SSH sessions select this flow automatically. A local graphical session opens a browser and listens for its callback on loopback.
 
@@ -23,7 +38,7 @@ Use `cerium-host login --no-browser` to sign in from another computer. Open the 
 cerium-host run --data-dir ~/.cerium-host --name "Build machine"
 cerium-host service install --data-dir ~/.cerium-host
 cerium-host status --data-dir ~/.cerium-host --json
-cerium-host service logs
+cerium-host service logs -f
 cerium-host service restart
 cerium-host service stop
 cerium-host service start

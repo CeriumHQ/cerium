@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import { join } from "node:path";
 import { parse } from "../src/args.ts";
-import { manualLogin } from "../src/account.ts";
+import { isValidPastedInput, manualLogin } from "../src/account.ts";
 import { hostStatus } from "../src/status.ts";
 import { launchdDefinition, systemdDefinition, windowsDefinition } from "../src/service.ts";
 import { archiveName, compareVersions, releaseVersion, target, targets } from "../src/release.ts";
@@ -36,20 +36,35 @@ describe("command line", () => {
       version: "v2.0.0",
       check: true,
     });
+    expect(parse(["service", "logs", "-f"])).toMatchObject({ action: "logs", follow: true });
+    expect(parse(["service", "logs", "--follow"])).toMatchObject({ action: "logs", follow: true });
     expect(parse(["--version"])).toEqual({ command: "version" });
+    expect(parse(["-v"])).toEqual({ command: "version" });
+    expect(parse(["version"])).toEqual({ command: "version" });
+    expect(parse(["help"])).toEqual({ command: "help" });
   });
   it("rejects unknown or misplaced options and service actions", () => {
     for (const argv of [
       ["service"],
       ["service", "delete"],
+      ["service", "start", "--follow"],
       ["run", "--json"],
       ["update", "--channel=dev"],
       ["login", "--relay-url=file:///etc"],
       ["login", "--name=a\nb"],
     ])
       expect(() => parse(argv)).toThrow(
-        /service action|Unknown option|Unsupported channel|relay-url|Invalid value/i,
+        /service action|Unknown option|Unsupported channel|relay-url|Invalid value|--follow/i,
       );
+  });
+  it("validates pasted confirmation codes and callback URLs", () => {
+    const token = "a".repeat(40);
+    expect(isValidPastedInput(token, true)).toBe(true);
+    expect(isValidPastedInput(token, false)).toBe(false);
+    expect(isValidPastedInput("not a code", true)).toBe(false);
+    expect(isValidPastedInput(`http://127.0.0.1:4321/cerium/link?link=${token}&code=${token}`, false)).toBe(
+      true,
+    );
   });
   it("uses the manual handoff on SSH and when a browser is unavailable", () => {
     expect(manualLogin(false, { SSH_TTY: "tty" }, "darwin")).toBe(true);

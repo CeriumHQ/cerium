@@ -107,25 +107,67 @@
       </section>
       <section class="host-cli" aria-labelledby="host-title" id="headless">
         <h2 class="display" id="host-title">Headless / Server CLI</h2>
-        <p class="lede">Run Cerium on an x64 or ARM64 machine and connect from the web app.</p>
+        <p class="lede">
+          Run Cerium on an x64 or ARM64 machine and connect from the Cerium web or desktop app.
+        </p>
         <dl class="host-commands pane">
-          <div>
+          <div data-host-os="unix">
             <dt>Linux &amp; macOS</dt>
-            <dd><code>curl -fsSL https://cerium.nonlooped.xyz/install.sh | sh</code></dd>
+            <dd>
+              <code>curl -fsSL https://cerium.nonlooped.xyz/install.sh | sh</code>
+              <button
+                type="button"
+                class="copy-button"
+                data-copy="curl -fsSL https://cerium.nonlooped.xyz/install.sh | sh"
+                aria-label="Copy Linux and macOS install command"
+              >
+                Copy
+              </button>
+            </dd>
           </div>
-          <div>
+          <div data-host-os="windows">
             <dt>Windows PowerShell</dt>
-            <dd><code>irm https://cerium.nonlooped.xyz/install.ps1 | iex</code></dd>
+            <dd>
+              <code>irm https://cerium.nonlooped.xyz/install.ps1 | iex</code>
+              <button
+                type="button"
+                class="copy-button"
+                data-copy="irm https://cerium.nonlooped.xyz/install.ps1 | iex"
+                aria-label="Copy Windows PowerShell install command"
+              >
+                Copy
+              </button>
+            </dd>
           </div>
           <div>
             <dt>npm <span>Node 24.11+</span></dt>
-            <dd><code>npm install -g @cerium/host</code></dd>
+            <dd>
+              <code>npm install -g @cerium/host</code>
+              <button
+                type="button"
+                class="copy-button"
+                data-copy="npm install -g @cerium/host"
+                aria-label="Copy npm install command"
+              >
+                Copy
+              </button>
+            </dd>
           </div>
         </dl>
         <h3 class="subtitle">Start your host</h3>
-        <p>Sign in, then install Cerium as a background service.</p>
-        <pre><code>cerium-host login
+        <p>Sign in, then install Cerium as a 24/7 background service.</p>
+        <div class="host-quickstart">
+          <pre><code>cerium-host login
 cerium-host service install</code></pre>
+          <button
+            type="button"
+            class="copy-button"
+            data-copy="cerium-host login&#10;cerium-host service install"
+            aria-label="Copy quickstart commands"
+          >
+            Copy
+          </button>
+        </div>
       </section>
     </main>
 

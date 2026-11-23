@@ -21,9 +21,12 @@ const svg = (paths) =>
 const FINISH_WITHIN_MS = 15_000;
 const FINISH_POLL_MS = 1_000;
 
-// Lucide's monitor, smartphone and globe.
+// Lucide's monitor, server, smartphone and globe.
 const icons = {
   desktop: svg('<rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/>'),
+  server: svg(
+    '<rect width="20" height="8" x="2" y="2" rx="2" ry="2"/><rect width="20" height="8" x="2" y="14" rx="2" ry="2"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/>',
+  ),
   phone: svg('<rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/>'),
   browser: svg(
     '<circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/>',
@@ -52,7 +55,9 @@ const noun = (device) => (isBrowser(device) ? "device" : "machine");
 
 const iconFor = (device) =>
   !isBrowser(device)
-    ? icons.desktop
+    ? device.headless
+      ? icons.server
+      : icons.desktop
     : device.platform === "ios" || device.platform === "android"
       ? icons.phone
       : icons.browser;
@@ -102,11 +107,15 @@ const main = async () => {
     );
   }
   const device = link.body.device;
-  const showConnected = () =>
-    showOutcome(
-      "Connected",
-      `${device.name} is now part of your account. You can close this tab and go back to Cerium.`,
-    );
+  const showConnected = () => {
+    const lead = device.headless
+      ? `${device.name} is now linked to your account. Make sure the host service is running, then open Cerium to connect.`
+      : `${device.name} is now part of your account. You can close this tab and go back to Cerium.`;
+    panel.innerHTML = `
+      <h1>Connected</h1>
+      <p class="lead">${escapeHtml(lead)}</p>
+      <a class="button outcome-action" href="/app/">Open Cerium web app</a>`;
+  };
   const waitForClaim = async (until) => {
     while (Date.now() < until) {
       await new Promise((resolve) => setTimeout(resolve, FINISH_POLL_MS));
@@ -123,13 +132,21 @@ const main = async () => {
       <p class="lead">Paste this code into the terminal where you started signing in on <strong>${escapeHtml(device.name)}</strong>.</p>
       <code class="handoff-code" tabindex="0" id="code">${escapeHtml(code)}</code>
       <button type="button" class="button" id="copy">Copy code</button>
-      <p class="copy-status" role="status" id="copy-status"></p>`;
+      <p class="copy-status" role="status" id="copy-status"></p>
+      <p class="waiting-note">Waiting for ${escapeHtml(device.name)} to connect…</p>`;
     const status = document.getElementById("copy-status");
     const displayedCode = document.getElementById("code");
-    document.getElementById("copy").addEventListener("click", async () => {
+    const copyButton = document.getElementById("copy");
+    let resetLabel;
+    copyButton.addEventListener("click", async () => {
       try {
         await navigator.clipboard.writeText(code);
-        status.textContent = "Code copied.";
+        copyButton.textContent = "Copied";
+        status.textContent = "Code copied to clipboard.";
+        clearTimeout(resetLabel);
+        resetLabel = setTimeout(() => {
+          if (copyButton.isConnected) copyButton.textContent = "Copy code";
+        }, 2000);
       } catch {
         const range = document.createRange();
         range.selectNodeContents(displayedCode);

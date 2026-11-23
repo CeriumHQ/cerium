@@ -1,7 +1,7 @@
 import "./styles/downloads.css";
 
 import { startChrome } from "./chrome.ts";
-import { armGuess, askProcessor, download } from "./platform.ts";
+import { armGuess, askProcessor, download, handheld, linux, mac } from "./platform.ts";
 
 startChrome();
 
@@ -19,3 +19,29 @@ const mark = (arm: boolean) => {
 
 mark(armGuess);
 askProcessor(mark);
+
+const hostOs =
+  linux || mac ? "unix" : !handheld && /Windows/.test(navigator.userAgent) ? "windows" : undefined;
+if (hostOs !== undefined) {
+  document.querySelector(`[data-host-os="${hostOs}"]`)?.toggleAttribute("data-yours", true);
+}
+
+for (const button of document.querySelectorAll<HTMLButtonElement>("[data-copy]")) {
+  let reset: number | undefined;
+  button.addEventListener("click", () => {
+    const text = button.dataset["copy"];
+    if (!text) return;
+    void navigator.clipboard
+      ?.writeText(text)
+      .then(() => {
+        button.textContent = "Copied";
+        button.dataset["copied"] = "true";
+        window.clearTimeout(reset);
+        reset = window.setTimeout(() => {
+          button.textContent = "Copy";
+          delete button.dataset["copied"];
+        }, 1800);
+      })
+      .catch(() => undefined);
+  });
+}

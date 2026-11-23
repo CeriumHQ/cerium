@@ -5,6 +5,11 @@ set -eu
 fail() { printf 'cerium-host: %s\n' "$*" >&2; exit 1; }
 
 install_host() {
+  command -v curl >/dev/null 2>&1 || fail 'curl is required to download Cerium Host.'
+  command -v tar >/dev/null 2>&1 || fail 'tar is required to extract Cerium Host.'
+  if ! command -v sha256sum >/dev/null 2>&1 && ! command -v shasum >/dev/null 2>&1; then
+    fail 'sha256sum or shasum is required to verify the download.'
+  fi
   case "$(uname -s)" in
     Linux) os=linux ;;
     Darwin) os=darwin ;;
@@ -56,9 +61,10 @@ install_host() {
   staging=$(mktemp -d "$root/.install.XXXXXXXX")
   trap 'rm -rf "$staging"' EXIT
   trap 'exit 1' HUP INT TERM
-  printf 'Downloading %s\n' "$archive"
+  printf 'Downloading %s...\n' "$archive"
   curl -fsSL "$url" -o "$staging/$archive"
   curl -fsSL "$url.sha256" -o "$staging/checksum"
+  printf 'Verifying SHA-256 checksum...\n'
   if command -v sha256sum >/dev/null 2>&1; then
     sum=$(sha256sum < "$staging/$archive")
   else
@@ -74,6 +80,8 @@ install_host() {
   if [ "$bin" != "$root/bin" ] && [ -e "$bin/cerium-host" ] && [ ! -L "$bin/cerium-host" ]; then
     fail "Move the existing $bin/cerium-host before installing."
   fi
+  upgrading=false
+  if [ -f "$root/current-version" ]; then upgrading=true; fi
   mkdir "$root/.install-lock" || fail "Another installer holds $root/.install-lock."
   trap 'rmdir "$root/.install-lock"; rm -rf "$staging"' EXIT
   # The service keeps these bootstrap paths while the CLI updater switches current-version.
@@ -99,7 +107,11 @@ install_host() {
     *":$bin:"*) ;;
     *) printf 'Add this to your shell profile and run it in this terminal:\n  export PATH="$HOME/.local/bin:$PATH"\n' ;;
   esac
-  printf '\nSign in and start the service:\n  cerium-host login\n  cerium-host service install\n'
+  if [ "$upgrading" = true ] && [ -f "$HOME/.cerium/account.json" ]; then
+    printf '\nRestart the service to pick up the new version:\n  cerium-host service restart\n'
+  else
+    printf '\nSign in and start the service:\n  cerium-host login\n  cerium-host service install\n'
+  fi
 }
 
 install_host "$@"

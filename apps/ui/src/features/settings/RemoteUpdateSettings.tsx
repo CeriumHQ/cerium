@@ -86,7 +86,9 @@ function RemoteUpdateRow({ machine, headless }: { machine: DrivenMachine; headle
     version !== undefined && !updates.manual && status.kind !== "installing" && restart !== "requested";
   let hint = statusText(updates);
   if (updates.manual && version !== undefined)
-    hint = `${versionLabel(version)} is available. Install it on this Mac from the disk image.`;
+    hint = headless
+      ? `${versionLabel(version)} is available. Run cerium-host update on ${machine.name} to install it.`
+      : `${versionLabel(version)} is available. Install it on this Mac from the disk image.`;
   else if (status.kind === "downloading")
     hint = `Downloading ${versionLabel(status.version)} · ${Math.floor(status.percent)}%${restart === "requested" ? ". Cerium will restart when ready." : ""}`;
   else if (status.kind === "ready" && restart === "working")

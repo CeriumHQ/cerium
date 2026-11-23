@@ -29,8 +29,27 @@ async function main() {
           join(installRoot, "bin", "standalone.mjs"),
         ]
       : [process.execPath, join(root, "bin", "cerium-host.mjs")];
-    manageService(args.action!, [...launcher, "run", ...flags]);
-    if (args.action !== "logs") console.log(`Service ${args.action} complete.`);
+    manageService(args.action!, [...launcher, "run", ...flags], { follow: args.follow });
+    if (args.action === "install") {
+      const { status } = await import("./status.ts");
+      const current = status(args.dataDirectory, relayUrl, true);
+      console.log("Cerium Host service installed and started.");
+      if (!current.signedIn) {
+        console.warn(
+          "Note: this host is not signed in yet. Run cerium-host service stop, cerium-host login, and cerium-host service start to link your account.",
+        );
+      } else {
+        console.log("Check status with cerium-host status, or follow logs with cerium-host service logs -f.");
+      }
+    } else if (args.action !== "logs") {
+      const labels = {
+        uninstall: "Cerium Host service uninstalled.",
+        start: "Cerium Host service started.",
+        stop: "Cerium Host service stopped.",
+        restart: "Cerium Host service restarted.",
+      } as const;
+      console.log(labels[args.action!]);
+    }
   } else if (args.command === "update") {
     const { updateHost } = await import("./update.ts");
     await updateHost({

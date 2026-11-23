@@ -1,11 +1,13 @@
 import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { archiveName, compareVersions, layoutName, releaseVersion, target } from "./release.ts";
 import { checksum, download, extract, sha256 } from "./download.ts";
 import { manageService, serviceInstalled } from "./service.ts";
+
+const STALE_LOCK_MS = 15 * 60_000;
 
 interface Release {
   tag_name: string;
@@ -72,7 +74,20 @@ export async function updateHost(options: {
       `Install with npm install -g @cerium/host@${release.version}, then restart a running host.`,
     );
   if (options.check) return;
-  const staged = await prepareRelease(options.installRoot, release);
+  const tty = process.stdout.isTTY === true;
+  let lastPercent = -1;
+  const staged = await prepareRelease(options.installRoot, release, (percent) => {
+    if (tty) {
+      if (percent !== lastPercent) {
+        lastPercent = percent;
+        process.stdout.write(`\rDownloading ${release.asset}... ${percent}%`);
+      }
+    } else if (percent === 100 || percent - lastPercent >= 25) {
+      lastPercent = percent;
+      console.log(`Downloading ${release.asset}... ${percent}%`);
+    }
+  });
+  if (tty && lastPercent >= 0) process.stdout.write("\n");
   try {
     await staged.activate(() => {
       if (serviceInstalled()) manageService("restart");
@@ -121,6 +136,41 @@ export async function prepareRelease(
   }
 }
 
+async function acquireInstallLock(lock: string, staleAfterMs = STALE_LOCK_MS) {
+  try {
+    await mkdir(lock);
+    return;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+  }
+  const info = await stat(lock).catch(() => undefined);
+  if (info && Date.now() - info.mtimeMs >= staleAfterMs) {
+    await rm(lock, { recursive: true, force: true });
+    try {
+      await mkdir(lock);
+      return;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    }
+  }
+  throw new Error(
+    `Another Cerium Host install or update is in progress (${lock}). Wait for it to finish, or remove that path if an earlier update crashed.`,
+  );
+}
+
+/** Keeps the active release and one previous release for rollback, removing older directories. */
+export async function pruneReleases(root: string, keep: ReadonlyArray<string | undefined>) {
+  const releases = join(root, "releases");
+  const retained = new Set(
+    keep.map((entry) => entry?.trim()).filter((entry): entry is string => Boolean(entry)),
+  );
+  const entries = await readdir(releases, { withFileTypes: true }).catch(() => []);
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name.startsWith(".") || retained.has(entry.name)) continue;
+    await rm(join(releases, entry.name), { recursive: true, force: true }).catch(() => undefined);
+  }
+}
+
 /** Serialize the pointer swap with other updaters and the public installer. */
 export async function activateRelease(
   root: string,
@@ -129,9 +179,10 @@ export async function activateRelease(
   version: string,
   original: string | undefined,
   restart: () => void,
+  staleLockMs = STALE_LOCK_MS,
 ) {
   const lock = join(root, ".install-lock");
-  await mkdir(lock);
+  await acquireInstallLock(lock, staleLockMs);
   try {
     const pointer = join(root, "current-version");
     const previous = existsSync(pointer) ? await readFile(pointer, "utf8") : undefined;
@@ -153,7 +204,8 @@ export async function activateRelease(
       restart();
       throw error;
     }
+    await pruneReleases(root, [directory, previous]);
   } finally {
-    await rm(lock, { recursive: true });
+    await rm(lock, { recursive: true, force: true });
   }
 }

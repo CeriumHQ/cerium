@@ -280,7 +280,7 @@ body {
 }
 
 .copy-status {
-  margin: 8px 0 0;
+  margin: 10px 0 0;
   color: var(--fg-secondary);
   font-size: 13px;
   text-align: center;
@@ -288,6 +288,18 @@ body {
 
 .copy-status:empty {
   margin: 0;
+}
+
+.waiting-note {
+  margin: 16px 0 0;
+  color: var(--fg-tertiary);
+  font-size: 13px;
+  text-align: center;
+}
+
+.outcome-action {
+  margin-top: 24px;
+  text-decoration: none;
 }
 
 .machine-name {

@@ -104,7 +104,14 @@ export function serviceInstalled() {
   return false;
 }
 
-export function manageService(action: ServiceAction, argv: string[] = []) {
+export function manageService(
+  action: ServiceAction,
+  argv: string[] = [],
+  options: { readonly follow?: boolean } = {},
+) {
+  const follow = options.follow === true;
+  if ((action === "start" || action === "stop" || action === "restart") && !serviceInstalled())
+    throw new Error("Cerium Host service is not installed. Run cerium-host service install first.");
   if (process.platform === "linux") {
     const systemctl = (args: string[]) => run("systemctl", ["--user", ...args]);
     if (action === "install") {
@@ -124,7 +131,12 @@ export function manageService(action: ServiceAction, argv: string[] = []) {
       rmSync(unitFile);
       systemctl(["daemon-reload"]);
     } else if (action === "logs")
-      run("journalctl", ["--user", "-u", unit, "-n", "100", "--no-pager"], false, true);
+      run(
+        "journalctl",
+        ["--user", "-u", unit, "-n", "100", ...(follow ? ["-f"] : ["--no-pager"])],
+        false,
+        true,
+      );
     else systemctl([action, unit]);
   } else if (process.platform === "darwin") {
     const domain = `gui/${process.getuid!()}`;
@@ -144,8 +156,10 @@ export function manageService(action: ServiceAction, argv: string[] = []) {
       unload();
       rmSync(plist, { force: true });
     } else if (action === "stop") unload();
-    else if (action === "logs") run("tail", ["-n", "100", logfile], false, true);
-    else if (!loaded()) run("launchctl", ["bootstrap", domain, plist]);
+    else if (action === "logs") {
+      if (!existsSync(logfile)) return console.log(`No service logs yet at ${logfile}.`);
+      run("tail", ["-n", "100", ...(follow ? ["-f"] : []), logfile], false, true);
+    } else if (!loaded()) run("launchctl", ["bootstrap", domain, plist]);
     else if (action === "restart") run("launchctl", ["kickstart", "-k", address]);
   } else if (process.platform === "win32") {
     const schedule = (args: string[], allowFailure = false) =>
@@ -169,18 +183,18 @@ export function manageService(action: ServiceAction, argv: string[] = []) {
       rmSync(windowsScript, { force: true });
       rmSync(join(folder, "task.xml"), { force: true });
     } else if (action === "logs") {
-      if (existsSync(logfile))
-        run(
-          "powershell.exe",
-          [
-            "-NoProfile",
-            "-NonInteractive",
-            "-Command",
-            `Get-Content -LiteralPath '${logfile.replaceAll("'", "''")}' -Tail 100`,
-          ],
-          false,
-          true,
-        );
+      if (!existsSync(logfile)) return console.log(`No service logs yet at ${logfile}.`);
+      run(
+        "powershell.exe",
+        [
+          "-NoProfile",
+          "-NonInteractive",
+          "-Command",
+          `Get-Content -LiteralPath '${logfile.replaceAll("'", "''")}' -Tail 100${follow ? " -Wait" : ""}`,
+        ],
+        false,
+        true,
+      );
     } else {
       if (action === "stop" || action === "restart") schedule(["/End"], action === "restart");
       if (action === "start" || action === "restart") schedule(["/Run"]);

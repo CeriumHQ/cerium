@@ -48,9 +48,10 @@ $staging = Join-Path $root ('.install-' + [Guid]::NewGuid().ToString('N'))
 try {
     $zip = Join-Path $staging $archive
     $checksum = Join-Path $staging 'checksum'
-    Write-Host "Downloading $archive"
+    Write-Host "Downloading $archive..."
     Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $zip
     Invoke-WebRequest -UseBasicParsing -Uri "$url.sha256" -OutFile $checksum
+    Write-Host "Verifying SHA-256 checksum..."
     $hash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
     if ([IO.File]::ReadAllText($checksum).Trim() -cne "$hash  $archive") {
         throw "Checksum mismatch for $archive."
@@ -70,7 +71,14 @@ try {
     [void][IO.Directory]::CreateDirectory($releases)
     $selected = "$Version-" + [Guid]::ParseExact($hash.Substring(0, 32), 'N').ToString()
     $destination = Join-Path $releases $selected
-    $lock = [IO.File]::Open((Join-Path $root '.install-lock'), 'OpenOrCreate', 'Write', 'None')
+    $pointer = Join-Path $root 'current-version'
+    $upgrading = [IO.File]::Exists($pointer)
+    $lockDir = Join-Path $root '.install-lock'
+    try {
+        [void](New-Item -ItemType Directory -Path $lockDir -ErrorAction Stop)
+    } catch {
+        throw "Another installer or updater holds $lockDir."
+    }
     try {
         if (-not [IO.File]::Exists((Join-Path $runtime 'node.exe'))) {
             [IO.File]::Copy($node, (Join-Path $staging 'bootstrap-node.exe'))
@@ -89,7 +97,6 @@ try {
             }
         }
         $next = Join-Path $staging 'current-version'
-        $pointer = Join-Path $root 'current-version'
         [IO.File]::WriteAllText($next, "$selected`n", [Text.Encoding]::ASCII)
         if ([IO.File]::Exists($pointer)) {
             [IO.File]::Replace($next, $pointer, (Join-Path $staging 'old-pointer'))
@@ -97,7 +104,7 @@ try {
             [IO.File]::Move($next, $pointer)
         }
     } finally {
-        $lock.Dispose()
+        if ([IO.Directory]::Exists($lockDir)) { [IO.Directory]::Delete($lockDir, $false) }
     }
     $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
     if (($userPath -split ';') -notcontains $bin) {
@@ -105,8 +112,12 @@ try {
         [Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
     }
     if (($env:Path -split ';') -notcontains $bin) { $env:Path = "$bin;$env:Path" }
-    Write-Host "Installed Cerium Host $Version in $destination"
-    Write-Host "`nSign in and start the service:`n  cerium-host login`n  cerium-host service install"
+    Write-Host "Installed Cerium Host $Version in $root"
+    if ($upgrading -and [IO.File]::Exists((Join-Path $env:USERPROFILE '.cerium\account.json'))) {
+        Write-Host "`nRestart the service to pick up the new version:`n  cerium-host service restart"
+    } else {
+        Write-Host "`nSign in and start the service:`n  cerium-host login`n  cerium-host service install"
+    }
 } finally {
     [IO.Directory]::Delete($staging, $true)
 }

@@ -13,12 +13,12 @@ import { RemoteUpdateSettings, remoteUpdatesAtom } from "../src/features/setting
 
 const machine = { id: "host" as DeviceId, name: "Build host" };
 
-function render(status: RemoteUpdates["status"], headless = true) {
+function render(status: RemoteUpdates["status"], headless = true, manual = status.kind === "unsupported") {
   const updates: RemoteUpdates = {
     channel: "stable",
     buildChannel: "stable",
     version: "1.0.0",
-    manual: status.kind === "unsupported",
+    manual,
     autoDownload: false,
     restart: "idle",
     status,
@@ -71,5 +71,11 @@ describe("remote update settings", () => {
     expect(html).toContain("npm");
     expect(html).not.toContain("Update and restart");
     expect(render({ kind: "unsupported" }, false)).toContain("This installation needs to be updated on");
+  });
+
+  it("never shows Mac disk image instructions for manual updates on a headless host", () => {
+    const html = render({ kind: "available", version: "1.1.0" }, true, true);
+    expect(html).toContain("cerium-host update");
+    expect(html).not.toContain("disk image");
   });
 });

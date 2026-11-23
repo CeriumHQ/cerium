@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from "vite-plus/test";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { activateRelease } from "../src/update.ts";
@@ -52,4 +53,28 @@ it("preserves a concurrently activated release", async () => {
   );
   expect(await readFile(pointer, "utf8")).toBe("newer\n");
   expect(restart).not.toHaveBeenCalled();
+});
+
+it("prunes older release directories while keeping the active and previous release", async () => {
+  const { root, work, staged, pointer } = await fixture();
+  await mkdir(join(root, "releases", "older"));
+  await mkdir(join(root, "releases", "ancient"));
+  const restart = vi.fn<() => void>();
+  await activateRelease(root, work, staged, "2.0.0", "older\n", restart);
+  const current = (await readFile(pointer, "utf8")).trim();
+  expect(existsSync(join(root, "releases", current))).toBe(true);
+  expect(existsSync(join(root, "releases", "older"))).toBe(true);
+  expect(existsSync(join(root, "releases", "ancient"))).toBe(false);
+});
+
+it("recovers from a stale install lock left behind by a crashed run", async () => {
+  const { root, work, staged } = await fixture();
+  const lock = join(root, ".install-lock");
+  await writeFile(lock, "");
+  const past = new Date(Date.now() - 60_000);
+  await utimes(lock, past, past);
+  const restart = vi.fn<() => void>();
+  await activateRelease(root, work, staged, "2.0.0", "older\n", restart, 1000);
+  expect(restart).toHaveBeenCalledOnce();
+  expect(existsSync(lock)).toBe(false);
 });
