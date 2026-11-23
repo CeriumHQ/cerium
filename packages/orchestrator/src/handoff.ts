@@ -254,7 +254,7 @@ export const handoffBrief = (live: ReadonlyArray<AgentEvent>, context: BriefCont
       : [
           "## Agents still running",
           `${context.running.map((agent) => `- ${agent.id} "${agent.role}" (${agent.model})`).join("\n")}\n` +
-            "They report to you now; message them with `send_message` and stop them with `kill_agent`.",
+            "They report to you now; continue their work with `continue_agent` and stop them with `kill_agent`.",
         ]),
   ];
   return sections.join("\n\n");

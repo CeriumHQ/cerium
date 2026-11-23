@@ -314,11 +314,7 @@ export class Orchestrator extends Context.Service<
     startAssistantThread(
       request: AssistantThreadRequest,
     ): Effect.Effect<{ readonly thread: ThreadInfo; readonly lead: AgentInfo }, OrchestratorError>;
-    /**
-     * Delivers an agent's message. One to another thread's lead waits for that lead's next turn,
-     * unless the sender asks for a `reply` or answers one the receiver asked for: then, as within a
-     * thread, it starts the receiver's turn once it is idle. Resolves with whether it waits.
-     */
+    /** Sends a note, blocking question, or correlated reply to another thread's lead. */
     sendMessage(
       callerId: AgentId,
       to: AgentId,
@@ -328,6 +324,11 @@ export class Orchestrator extends Context.Service<
       { readonly held: boolean; readonly requestId?: string; readonly reason?: string },
       OrchestratorError
     >;
+    continueChild(
+      callerId: AgentId,
+      childId: AgentId,
+      prompt: string,
+    ): Effect.Effect<void, OrchestratorError>;
     killChild(callerId: AgentId, childId: AgentId): Effect.Effect<void, OrchestratorError>;
     /**
      * Puts a question to the thread's advisor, starting one on the model the user picked when none
@@ -514,6 +515,7 @@ export class Orchestrator extends Context.Service<
         spawn: team.spawn,
         startThread: threads.startThread,
         startAssistantThread: threads.startAssistantThread,
+        continueChild: team.continueChild,
         sendMessage: team.sendMessage,
         askAdvisor: team.askAdvisor,
         startReview: team.startReview,

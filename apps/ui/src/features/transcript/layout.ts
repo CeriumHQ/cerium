@@ -27,6 +27,7 @@ export type Item =
   /** Where the thread came from: a session the user had with the harness outside Cerium. */
   | { readonly kind: "imported"; readonly id: string; readonly block: Block<"imported"> }
   | { readonly kind: "tools"; readonly id: string; readonly tools: ReadonlyArray<Block<"tool">> }
+  | { readonly kind: "childResults"; readonly id: string; readonly notices: ReadonlyArray<Block<"notice">> }
   | { readonly kind: "spawns"; readonly id: string; readonly spawns: ReadonlyArray<Block<"spawn">> }
   /** A request to start an agent that waits for the user's approval, which leaves no card yet. */
   | { readonly kind: "spawnAsk"; readonly id: string; readonly call: Block<"tool"> }
@@ -70,9 +71,10 @@ export type Item =
 
 /** Arrays belong to this invocation until the finished layout is returned read-only. */
 type BuildingItem =
-  | Exclude<Item, { kind: "input" | "tools" | "spawns" }>
+  | Exclude<Item, { kind: "input" | "tools" | "spawns" | "childResults" }>
   | { kind: "input"; id: string; blocks: Array<TranscriptBlock> }
   | { kind: "tools"; id: string; tools: Array<Block<"tool">> }
+  | { kind: "childResults"; id: string; notices: Array<Block<"notice">> }
   | { kind: "spawns"; id: string; spawns: Array<Block<"spawn">> };
 
 // Every update asks these of every call; most are a harness's own tools, which the prefix rules out
@@ -194,6 +196,9 @@ export const layout = (blocks: ReadonlyArray<TranscriptBlock>): ReadonlyArray<It
     } else if (block.kind === "tool") {
       if (previous?.kind === "tools") previous.tools.push(block);
       else items.push({ kind: "tools", id: block.id, tools: [block] });
+    } else if (block.kind === "notice" && block.item._tag === "ChildFinishedTurn") {
+      if (previous?.kind === "childResults") previous.notices.push(block);
+      else items.push({ kind: "childResults", id: `childResults:${block.id}`, notices: [block] });
     } else if (block.kind === "spawn") {
       if (previous?.kind === "spawns") previous.spawns.push(block);
       else items.push({ kind: "spawns", id: block.id, spawns: [block] });
@@ -257,6 +262,7 @@ const isBoundary = (item: Item) =>
   item.kind === "imported" ||
   item.kind === "replaced" ||
   item.kind === "turnEnd" ||
+  item.kind === "childResults" ||
   // What the agent does with the user's answer is a new response, as after a message.
   (item.kind === "block" && (item.block.kind === "notice" || item.block.kind === "question"));
 

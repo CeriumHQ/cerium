@@ -216,6 +216,7 @@ export interface OrchestratorSettings {
   readonly batchWindow: Duration.Duration;
   /** Idle hosts beyond the warm pool are closed after this grace period, then resumed on demand. */
   readonly idleSessionTTL: Duration.Duration;
+  readonly childIdleTTL: Duration.Duration;
   /** Maximum age of a warm host before it closes the next time it can safely be retired. */
   readonly warmSessionMaxAge: Duration.Duration;
   readonly warmSessions: number;
@@ -251,6 +252,7 @@ export class OrchestratorConfig extends Context.Service<OrchestratorConfig, Orch
     Layer.succeed(OrchestratorConfig, {
       batchWindow: Duration.seconds(2),
       idleSessionTTL: Duration.minutes(5),
+      childIdleTTL: Duration.minutes(2),
       warmSessionMaxAge: Duration.minutes(30),
       warmSessions: 4,
       automaticWakeLimit: 12,

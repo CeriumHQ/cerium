@@ -37,7 +37,7 @@ import { notFound, OrchestratorError, unavailable } from "./errors.ts";
 import { makeEventFeeds } from "./eventFeeds.ts";
 import { Condenser, type pendingHandoff } from "./handoff.ts";
 import type { ModelChoice, SpawnRequest } from "./inputs.ts";
-import { choiceOf, isAdvisor, isReviewer, type OpenQuestion, type Runtime } from "./runtime.ts";
+import { choiceOf, isAdvisor, isHelper, isReviewer, type OpenQuestion, type Runtime } from "./runtime.ts";
 import { ProjectScripts } from "./scripts.ts";
 import {
   Adapters,
@@ -500,6 +500,20 @@ export const makeOrchestratorContext = Effect.gen(function* () {
   const childrenOf = (leadId: AgentId) =>
     [...runtimes.values()].filter((candidate) => candidate.info.parentId === leadId);
 
+  const isFreeChild = (rt: Runtime) =>
+    rt.info.parentId !== undefined &&
+    !isHelper(rt.info) &&
+    !rt.ended &&
+    rt.info.state === "idle" &&
+    rt.turn === undefined &&
+    !rt.preparingTurn &&
+    Queue.sizeUnsafe(rt.inbox) === 0 &&
+    rt.openCalls.size === 0 &&
+    rt.background === 0 &&
+    messageDelivery.taskFor(rt.info.id) === undefined &&
+    (leadRequests.get(rt.info.id)?.size ?? 0) === 0 &&
+    (openQuestions.get(rt.info.id)?.size ?? 0) === 0;
+
   const awaitingApproval = (threadId: ThreadId) =>
     [...runtimes.values()].some(
       (rt) => rt.info.threadId === threadId && (pendingPermissions.get(rt.info.id)?.size ?? 0) > 0,
@@ -688,6 +702,7 @@ export const makeOrchestratorContext = Effect.gen(function* () {
     endPause,
     threadRuntimes,
     childrenOf,
+    isFreeChild,
     awaitingApproval,
     waitsOnUser,
     working,

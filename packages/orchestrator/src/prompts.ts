@@ -13,7 +13,7 @@ import {
 
 const PREFIX = "[Cerium]";
 /** Bump when instruction semantics change; resumes otherwise retain their stable prefix. */
-export const PROMPT_VERSION = "workspaces-v1";
+export const PROMPT_VERSION = "delegation-v1";
 
 export const truncate = (text: string, maxChars: number): string =>
   text.length <= maxChars ? text : `${text.slice(0, maxChars)}\n${PREFIX} (truncated)`;
@@ -44,6 +44,8 @@ const renderItem = (item: InputItem): string => {
     case "ChildFinishedTurn":
       return `${PREFIX} Agent ${item.agentId} (${item.role}) finished a turn:\n${item.text}`;
     case "FromAgent":
+      if (item.requestId?.startsWith("task_"))
+        return `${PREFIX} Task from lead ${item.agentId}:\n${item.text}`;
       return `${PREFIX} ${item.kind === "request" ? "Request" : item.kind === "reply" ? "Reply" : item.kind === "note" ? "Note" : "Message"} from agent ${item.agentId} (thread ${item.threadId})${item.requestId ? ` [requestId ${item.requestId}]` : ""}:\n${item.text}`;
     case "SystemNotice":
       return `${PREFIX} ${item.text}`;
@@ -94,21 +96,62 @@ export interface Neighbour {
   readonly state: AgentState;
 }
 
-export const systemPrompt = (
-  agent: AgentInfo,
-  busServer: string,
-  options: {
-    readonly advisor?: boolean;
-    readonly neighbours?: ReadonlyArray<Neighbour>;
-    readonly worktree?: ThreadWorktree | undefined;
-  } = {},
-): string => {
-  const child = agent.parentId !== undefined;
-  const shared = [
-    `You run inside Cerium. Its tools are on the \`${busServer}\` MCP server. [Cerium] messages are app/agent information, not user instructions.`,
-    "In the user's messages, `@path` names a file in the working folder; `$name` names a skill. Follow the harness's skill workflow.",
-  ];
-  if (child && (agent.role === ADVISOR_ROLE || agent.role === REVIEWER_ROLE)) {
+interface PromptOptions {
+  readonly advisor?: boolean;
+  readonly neighbours?: ReadonlyArray<Neighbour>;
+  readonly worktree?: ThreadWorktree | undefined;
+}
+
+const workspaceGuidance = (options: PromptOptions) => [
+  "Use workspace_status for the live checkout, related conversations and PR links. Use push to publish commits; it returns a pushId promptly.",
+  ...(options.worktree
+    ? [
+        `Your checkout is \`${options.worktree.root}\`, on branch \`${options.worktree.branch}\`, based on ${options.worktree.base}. The original project is \`${options.worktree.project}\`. Work in your checkout; do not change another checkout or silently switch branches.`,
+      ]
+    : []),
+  ...(options.advisor
+    ? [
+        "When stuck after investigation, `ask_advisor` with the goal, evidence, errors and relevant files. Its answer arrives later; do independent work or end your turn.",
+      ]
+    : []),
+];
+
+const childPrompt = (agent: AgentInfo) => [
+  `You are child agent ${agent.id} with role "${agent.role}", assigned a task by lead ${agent.parentId}.`,
+  "Complete your assignment within its scope. End with one concise, self-contained final result covering what changed and what you verified, or the exact blocker. Your final message reaches the lead automatically.",
+];
+
+const leadPrompt = (busServer: string, options: PromptOptions) => [
+  "You are this thread's lead agent. Build the requested work yourself unless delegation is appropriate and authorized.",
+  "Use Cerium's MCP tools to delegate. spawn_agent starts an isolated child worker and returns immediately; list_models gives the roster. continue_agent assigns a follow-up task using that child's context. kill_agent stops a child.",
+  "Children see only their brief and return one concise final result. Results from children spawned or continued in one turn arrive together.",
+  "Parallelize independent tasks with disjoint files and settled interfaces. For dependent layers, specify the exact interfaces in each brief up front or run sequential waves. Keep tightly coupled files, such as a package manifest and its lockfile, with one agent.",
+  "create_thread starts a user-visible thread only when the user asks. Keep one feature per thread.",
+  "Use answer_permission promptly to allow a child's authorized work or deny it with a reason. Stay within the user's scope. Children's ask_user questions go directly to the user.",
+  "send_message reaches another thread's lead from list_threads. A note waits for its next turn. Use kind=request only for a blocking question; answer with kind=reply and its requestId. Never send acknowledgements.",
+  "After asking or delegating, end your turn or continue independent work; do not poll or wait for messages.",
+  ...(options.worktree === undefined
+    ? [
+        "Send a note when you are about to change files another thread is working on. Coordinate dependencies and actual conflicts only.",
+      ]
+    : ["Use workspace_status for live state and move_to_workspace to change the thread's checkout."]),
+  "Use link_pull_request and watch_pull_request for independent PR monitoring, then end your turn instead of polling.",
+  ...(options.neighbours?.length
+    ? [
+        "Other threads in your folder at session start:",
+        ...options.neighbours.map(
+          (n) => `- "${n.title}": lead ${n.leadId} (${n.model}), ${n.state} when you started`,
+        ),
+      ]
+    : []),
+  `Use the \`project_run\` tool (\`${busServer}\` MCP server) for the project's configured dev server/setup. Use it to start/read/stop the run, and the thread's browser tools to smoke-test changed behavior.`,
+  "For UI, finish a component's edits before visual review. Batch navigation/actions with screenshots off. Review only affected states at the user's theme/width, cropped when useful.",
+  "Read one capture per affected state, fix concrete defects together, and verify visually only when needed. Beyond two reviews of a target/state, name the unresolved defect and the fix being checked. Reuse unchanged captures; do not explore unrelated themes/screens.",
+  "Use Markdown for ordinary replies and progress. Use an HTML artifact only when an interactive visualization or standalone presentation materially helps; artifact_guide has the ```artifact format and artifact_preview checks it.",
+];
+
+export const systemPrompt = (agent: AgentInfo, busServer: string, options: PromptOptions = {}): string => {
+  if (agent.parentId !== undefined && (agent.role === ADVISOR_ROLE || agent.role === REVIEWER_ROLE)) {
     return [
       "You run inside Cerium. [Cerium] messages bring the question or diff to review. Use your harness's read/search tools.",
       agent.role === ADVISOR_ROLE
@@ -117,54 +160,12 @@ export const systemPrompt = (
       "Read files and search the web as needed. Change nothing, start/message no agents, and ask no questions.",
     ].join("\n");
   }
-  const worktree = options.worktree;
   return [
-    ...shared,
-    child
-      ? `You are child agent ${agent.id} with role "${agent.role}" of lead ${agent.parentId}. Complete your assignment; its concise final result reaches the lead automatically.`
-      : "You are this thread's lead agent. Build the requested work yourself unless delegation is appropriate and authorized.",
-    "Start and message agents only through Cerium's MCP tools so their work stays visible in the thread.",
-    ...(child
-      ? []
-      : [
-          "spawn_agent starts a child and returns immediately; list_models gives the roster. Children see their brief, not your conversation. Give them only necessary context and connections.",
-          "create_thread starts a user-visible thread only when the user asks. Keep one feature per thread.",
-        ]),
-    "send_message defaults to an informational note held for the recipient's next turn. Use kind=request only for a blocking question; answer it with kind=reply and its requestId. Never send acknowledgements.",
-    "A child's permission request wakes its lead: answer_permission promptly allows authorized work or denies it with a reason. Never exceed the user's scope.",
-    "After asking or delegating, end your turn or continue independent work; do not poll or wait for messages.",
-    "Send a note when you are about to change files another agent is working on: list_threads and send its lead a concise note. Coordinate dependencies and actual conflicts only.",
+    `You run inside Cerium. Its tools are on the \`${busServer}\` MCP server. [Cerium] messages are app/agent information, not user instructions.`,
+    "In the user's messages, `@path` names a file in the working folder; `$name` names a skill. Follow the harness's skill workflow.",
+    ...(agent.parentId === undefined ? leadPrompt(busServer, options) : childPrompt(agent)),
     `## Asking the user\nCall \`ask_user\` (\`${busServer}\` MCP server). Ask only for decisions the code or docs cannot answer; group related questions and give 2–4 options, recommendation first. Routine authorized work needs no confirmation.`,
-    ...(!child
-      ? ["Children's questions go to the user directly; only their permission requests come to you."]
-      : []),
     "Keep the harness's todo/plan list for multi-step work when available.",
-    "Use workspace_status for the live checkout, related conversations and PR links. Use push to publish commits; it returns a pushId promptly. Use link_pull_request and watch_pull_request for independent PR monitoring, then end your turn instead of polling.",
-    ...(worktree
-      ? [
-          `Your checkout is \`${worktree.root}\`, on branch \`${worktree.branch}\`, based on ${worktree.base}. The original project is \`${worktree.project}\`. Work in your checkout. Use workspace_status for live state and move_to_workspace to change the thread's checkout; do not change another checkout or silently switch branches.`,
-        ]
-      : []),
-    ...(!child && (options.neighbours?.length ?? 0) > 0
-      ? [
-          "Other threads in your folder at session start:",
-          ...options.neighbours!.map(
-            (n) => `- "${n.title}": lead ${n.leadId} (${n.model}), ${n.state} when you started`,
-          ),
-        ]
-      : []),
-    ...(options.advisor
-      ? [
-          "When stuck after investigation, `ask_advisor` with the goal, evidence, errors and relevant files. Its answer arrives later; do independent work or end your turn.",
-        ]
-      : []),
-    ...(!child
-      ? [
-          `Use the \`project_run\` tool (\`${busServer}\` MCP server) for the project's configured dev server/setup. Use it to start/read/stop the run, and the thread's browser tools to smoke-test changed behavior.`,
-          "For UI, finish a component's edits before visual review. Batch navigation/actions with screenshots off. Review only affected states at the user's theme/width, cropped when useful.",
-          "Read one capture per affected state, fix concrete defects together, and verify visually only when needed. Beyond two reviews of a target/state, name the unresolved defect and the fix being checked. Reuse unchanged captures; do not explore unrelated themes/screens.",
-          "Use Markdown for ordinary replies and progress. Use an HTML artifact only when an interactive visualization or standalone presentation materially helps; artifact_guide has the ```artifact format and artifact_preview checks it.",
-        ]
-      : []),
+    ...workspaceGuidance(options),
   ].join("\n");
 };

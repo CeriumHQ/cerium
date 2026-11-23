@@ -107,6 +107,7 @@ describe("Advisor", () => {
       const reasons = yield* Effect.forEach(
         [
           orchestrator.askAdvisor(advisorId, "asking myself"),
+          orchestrator.continueChild(thread.lead.id, advisorId, "more"),
           orchestrator.sendMessage(advisorId, thread.lead.id, "let me do it").pipe(Effect.asVoid),
           orchestrator.sendMessage(thread.lead.id, advisorId, "around the tool").pipe(Effect.asVoid),
           orchestrator.spawn(advisorId, { role: "worker", model: "scout", prompt: "work" }),
@@ -114,7 +115,14 @@ describe("Advisor", () => {
         ],
         (attempt) => Effect.flip(attempt).pipe(Effect.map((error) => error.reason)),
       );
-      assert.deepStrictEqual(reasons, ["notAllowed", "notAllowed", "notAllowed", "notAllowed", "invalid"]);
+      assert.deepStrictEqual(reasons, [
+        "notAllowed",
+        "notAllowed",
+        "notAllowed",
+        "notAllowed",
+        "notAllowed",
+        "invalid",
+      ]);
     }).pipe(Effect.provide(testLayer([lead.adapter, advisor.adapter], { catalog: [scout] })), Effect.scoped);
   });
 

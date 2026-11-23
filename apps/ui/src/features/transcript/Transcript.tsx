@@ -9,7 +9,7 @@ import type {
 } from "@cerium/protocol";
 import type { ThreadHistory } from "../../backend/threadLog.ts";
 import { useAtomValue } from "@effect/atom-react";
-import { ArrowDown, History } from "lucide-react";
+import { ArrowDown, History, Workflow } from "lucide-react";
 import {
   createContext,
   memo,
@@ -173,6 +173,7 @@ const entrance = (item: Item): string => {
     case "switch":
     case "imported":
     case "spawnAsk":
+    case "childResults":
       return "write-in";
     case "push":
       return "unroll";
@@ -226,8 +227,11 @@ function ItemEntrance({
 }
 
 /** An item's id, and those of the steps inside it, which come in one by one as a run or work grows. */
-const idsOf = (item: Item): ReadonlyArray<string> =>
-  item.kind === "run" || item.kind === "work" ? [item.id, ...item.steps.flatMap(idsOf)] : [item.id];
+const idsOf = (item: Item): ReadonlyArray<string> => {
+  if (item.kind === "run" || item.kind === "work") return [item.id, ...item.steps.flatMap(idsOf)];
+  if (item.kind === "childResults") return [item.id, ...item.notices.map((notice) => notice.id)];
+  return [item.id];
+};
 
 /** Steps that follow their section's header in the same update. */
 const openingSteps = (
@@ -248,6 +252,7 @@ const workSteps = (steps: ReadonlyArray<Item>) =>
 
 const containsBlock = (item: Item, id: string): boolean => {
   if (item.id === id) return true;
+  if (item.kind === "childResults") return item.notices.some((notice) => notice.id === id);
   if (item.kind === "input") return item.blocks.some((block) => block.id === id);
   if (item.kind === "run" || item.kind === "work") return item.steps.some((step) => containsBlock(step, id));
   if (item.kind === "replaced") return item.items.some((each) => containsBlock(each, id));
@@ -720,6 +725,8 @@ const TranscriptItem = memo(
           return <ToolGroup key={each.id} tools={each.tools} activity={activity} />;
         case "spawns":
           return <SpawnCards key={each.id} spawns={each.spawns} />;
+        case "childResults":
+          return <ChildResults notices={each.notices} />;
         case "spawnAsk":
           return <SpawnAsk key={each.id} call={each.call} />;
         case "push":
@@ -832,6 +839,29 @@ const TurnChangesItem = memo(
   },
   (before, after) => before.replaced === after.replaced && same(before.changes, after.changes),
 );
+
+function ChildResults({ notices }: { notices: ReadonlyArray<Block<"notice">> }) {
+  const { roleOf, providerOf } = use(Actions);
+  if (notices.length === 1) return <Notice block={notices[0]!} roleOf={roleOf} providerOf={providerOf} />;
+  const roles = notices.flatMap(({ item }) => (item._tag === "ChildFinishedTurn" ? [item.role] : []));
+  return (
+    <Disclosure
+      summary={
+        <span className="flex items-center gap-1.5 text-meta">
+          <Workflow size={13} strokeWidth={1.75} className="shrink-0 text-fg-tertiary" />
+          {notices.length} agents finished
+        </span>
+      }
+      hint={<span className="text-caption">{roles.join(", ")}</span>}
+    >
+      <div className="flex flex-col gap-2 border-l border-line-subtle pl-3">
+        {notices.map((notice) => (
+          <Notice key={notice.id} block={notice} roleOf={roleOf} providerOf={providerOf} />
+        ))}
+      </div>
+    </Disclosure>
+  );
+}
 
 function SpawnCards({ spawns }: { spawns: ReadonlyArray<Block<"spawn">> }) {
   const { childState, childAgent, agentActions } = use(Actions);

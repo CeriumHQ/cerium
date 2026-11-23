@@ -421,20 +421,24 @@ describe("Orchestrator", () => {
           .pipe(Effect.map((outcome) => (outcome._tag === "Spawned" ? outcome.agentId : ("" as AgentId))));
       const child = yield* spawnScout(first.lead.id);
       const otherChild = yield* spawnScout(second.lead.id);
+      const sibling = yield* spawnScout(first.lead.id);
 
       const reasons = yield* Effect.forEach(
         [
           orchestrator.spawn(child, { role: "x", model: "scout", prompt: "no" }),
+          orchestrator.sendMessage(child, first.lead.id, "child to lead"),
+          orchestrator.sendMessage(child, sibling, "child to sibling"),
+          orchestrator.sendMessage(first.lead.id, child, "lead to child"),
           orchestrator.sendMessage(child, second.lead.id, "cross-thread from a child"),
           orchestrator.sendMessage(first.lead.id, otherChild, "into another thread's child"),
           orchestrator.killChild(second.lead.id, child),
         ],
         (attempt) => Effect.flip(attempt).pipe(Effect.map((error) => error.reason)),
       );
-      assert.deepStrictEqual(reasons, ["notAllowed", "notAllowed", "notAllowed", "notAllowed"]);
+      assert.deepStrictEqual(reasons, Array(7).fill("notAllowed"));
 
       yield* orchestrator.sendMessage(first.lead.id, second.lead.id, "leads may talk across threads");
-      yield* orchestrator.sendMessage(child, first.lead.id, "children may talk to their lead");
+      yield* orchestrator.continueChild(first.lead.id, child, "follow up");
       yield* orchestrator.killChild(first.lead.id, child);
       const stopped = (yield* orchestrator.listAgents(first.lead.threadId)).find(
         (agent) => agent.id === child,
@@ -575,8 +579,7 @@ describe("Orchestrator", () => {
       assert.notInclude(elsewherePrompt, "Other threads in your folder");
       assert.include(secondPrompt, `"Test": lead ${first.lead.id} (opus)`);
       assert.notInclude(secondPrompt, elsewhere.lead.id);
-      // Every agent is told when a message is worth sending, not just that the tool exists.
-      assert.include(firstPrompt, "when you are about to change files another agent is working on");
+      assert.include(firstPrompt, "when you are about to change files another thread is working on");
     }).pipe(Effect.provide(testLayer([fake.adapter])), Effect.scoped);
   });
 
@@ -690,12 +693,11 @@ describe("Orchestrator", () => {
       const { seen, waitFor } = yield* recordEvents;
       const first = yield* startWorkThread;
       const second = yield* startWorkThread;
-      const child = yield* orchestrator.spawn(second.lead.id, {
+      yield* orchestrator.spawn(second.lead.id, {
         role: "scout",
         model: "scout",
         prompt: "go",
       });
-      const childId = child._tag === "Spawned" ? child.agentId : ("" as AgentId);
       yield* waitFor((events) => turnInputs(events, second.lead.id).at(0));
 
       const sent = yield* orchestrator.sendMessage(first.lead.id, second.lead.id, "I'm editing notes.md");
@@ -712,11 +714,12 @@ describe("Orchestrator", () => {
 
       // A blocking request wakes the lead and brings held notes with it.
       assert.isFalse(
-        (yield* orchestrator.sendMessage(childId, second.lead.id, "found it", { kind: "request" })).held,
+        (yield* orchestrator.sendMessage(first.lead.id, second.lead.id, "found it", { kind: "request" }))
+          .held,
       );
       const next = yield* waitFor((events) =>
         turnInputs(events, second.lead.id).find((turn) =>
-          turn.some((item) => item._tag === "FromAgent" && item.agentId === childId),
+          turn.some((item) => item._tag === "FromAgent" && item.kind === "request"),
         ),
       );
       assert.deepStrictEqual(

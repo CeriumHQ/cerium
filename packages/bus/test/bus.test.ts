@@ -162,7 +162,12 @@ describe("Cerium MCP bus", () => {
       assert.notInclude(names, "watch_pull_request");
       assert.notInclude(names, "move_to_workspace");
       assert.includeMembers(names, ["workspace_status", "list_workspaces", "review_changes"]);
-      assert.includeMembers(names, ["send_message", "browser_act", "browser_screenshot"]);
+      assert.includeMembers(names, ["browser_act", "browser_screenshot"]);
+      for (const name of ["list_agents", "send_message", "continue_agent"]) assert.notInclude(names, name);
+      const followUp = { agentId: childId, prompt: "Check the population." };
+      const continued = yield* leadClient.callTool("continue_agent", followUp);
+      assert.deepEqual(continued?.result?.structuredContent, { status: "continued", agentId: childId });
+      assert.isDefined((yield* workerClient.callTool("continue_agent", followUp))?.error);
 
       const agents = yield* leadClient.callTool("list_agents");
       assert.deepStrictEqual(

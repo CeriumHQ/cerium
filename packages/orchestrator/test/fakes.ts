@@ -37,6 +37,7 @@ export const testLayer = (
     readonly catalog?: ReadonlyArray<CatalogEntry>;
     readonly messageLimit?: number;
     readonly automaticWakeLimit?: number;
+    readonly childIdleTTL?: Duration.Duration;
     readonly idleSessionTTL?: Duration.Duration;
     readonly warmSessions?: number;
     readonly threadLimit?: number;
@@ -78,6 +79,7 @@ export const testLayer = (
         ...(options.automaticWakeLimit === undefined
           ? {}
           : { automaticWakeLimit: options.automaticWakeLimit }),
+        ...(options.childIdleTTL === undefined ? {} : { childIdleTTL: options.childIdleTTL }),
         ...(options.idleSessionTTL === undefined ? {} : { idleSessionTTL: options.idleSessionTTL }),
         ...(options.warmSessions === undefined ? {} : { warmSessions: options.warmSessions }),
         messageBudget: { limit: options.messageLimit ?? 10, window: Duration.minutes(30) },

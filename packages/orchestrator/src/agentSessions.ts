@@ -67,6 +67,8 @@ export const makeAgentSessions = (ctx: OrchestratorContext, turns: Turns, worksp
     deliver,
     setState,
     clearBackground,
+    isFreeChild,
+    stopRuntime,
     waitsOnUser,
     working,
     threadDirectory,
@@ -487,6 +489,7 @@ export const makeAgentSessions = (ctx: OrchestratorContext, turns: Turns, worksp
         : resumeLead(agentId);
     });
 
+  const childIdleTTL = Duration.toMillis(config.childIdleTTL);
   const idleTTL = Duration.toMillis(config.idleSessionTTL);
   const isIdleHost = (rt: Runtime) =>
     !rt.ended &&
@@ -503,10 +506,25 @@ export const makeAgentSessions = (ctx: OrchestratorContext, turns: Turns, worksp
   // Keep the latest idle hosts warm until their own deadlines. Only the session scope closes:
   // the inbox and turn loop remain reachable, so a delayed report or message wakes the agent.
   const retireIdleSessions = Effect.gen(function* () {
-    const idle = [...runtimes.values()].filter(isIdleHost).sort((a, b) => b.touchedAt - a.touchedAt);
+    const idle = [...runtimes.values()]
+      .filter((rt) => (rt.info.parentId === undefined || isHelper(rt.info)) && isIdleHost(rt))
+      .sort((a, b) => b.touchedAt - a.touchedAt);
     const checkedAt = yield* Clock.currentTimeMillis;
-    for (const [index, rt] of idle.entries()) {
-      const warm = index < config.warmSessions;
+    for (const child of [...runtimes.values()]) {
+      if (!isFreeChild(child)) continue;
+      const parent = child.info.parentId === undefined ? undefined : runtimes.get(child.info.parentId);
+      const idleSince = Math.max(child.touchedAt, parent?.touchedAt ?? 0);
+      if (
+        checkedAt - idleSince >= childIdleTTL &&
+        !working(child.info.threadId) &&
+        !waitsOnUser(child.info.threadId)
+      ) {
+        yield* stopRuntime(child);
+      }
+    }
+    let warmLeads = 0;
+    for (const rt of idle) {
+      const warm = rt.info.parentId === undefined && warmLeads++ < config.warmSessions;
       if (!hostIsDue(rt, warm, checkedAt)) continue;
       yield* rt.sessionPermit.withPermitsIfAvailable(1)(
         Effect.gen(function* () {
@@ -552,7 +570,10 @@ export const makeAgentSessions = (ctx: OrchestratorContext, turns: Turns, worksp
   }).pipe(
     Effect.catchCause((cause) => Effect.logWarning("Couldn't retire idle sessions", cause)),
     Effect.delay(
-      Math.max(10, Math.min(60_000, idleTTL / 5, Duration.toMillis(config.warmSessionMaxAge) / 5)),
+      Math.max(
+        10,
+        Math.min(60_000, childIdleTTL / 5, idleTTL / 5, Duration.toMillis(config.warmSessionMaxAge) / 5),
+      ),
     ),
     Effect.forever,
   );

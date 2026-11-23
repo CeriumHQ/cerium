@@ -107,6 +107,143 @@ it.effect("retires excess idle hosts first and expires the latest four even afte
   }).pipe(Effect.provide(testLayer([adapter])), Effect.scoped);
 });
 
+it.effect("reserves warm slots for leads and fully stops free children even without resume support", () => {
+  const leads = makeFakeAdapter("claude");
+  const other = makeFakeAdapter("codex");
+  const adapter = {
+    ...other.adapter,
+    manifest: { ...other.adapter.manifest, session: { ...other.adapter.manifest.session, resume: false } },
+  };
+  return Effect.gen(function* () {
+    const orchestrator = yield* Orchestrator;
+    const thread = (title: string) =>
+      orchestrator.createThread({
+        title,
+        mode: "chat",
+        lead: { provider: "claude", model: "opus", access: "readOnly" },
+      });
+    const earlier = yield* thread("First");
+    yield* orchestrator.sendUserMessage(earlier.lead.id, "hello");
+    yield* TestClock.adjust("50 millis");
+    const { lead } = yield* thread("Team");
+    for (const model of ["worker", "other"]) {
+      yield* orchestrator.spawn(lead.id, { model, role: model, prompt: "go" });
+    }
+    yield* TestClock.adjust("300 millis");
+    const team = () =>
+      orchestrator
+        .listAgents(lead.threadId)
+        .pipe(Effect.map((agents) => agents.filter((a) => a.parentId === lead.id)));
+    assert.deepStrictEqual(
+      (yield* team()).map((a) => a.state),
+      ["idle", "idle"],
+    );
+    yield* orchestrator.sendUserMessage(earlier.lead.id, "again");
+    yield* TestClock.adjust("100 millis");
+    assert.lengthOf(leads.sessions, 3, "the older lead still has its original host");
+    assert.lengthOf(leads.sessions[0]!.sent, 2);
+    yield* TestClock.adjust("800 millis");
+    assert.deepStrictEqual(
+      (yield* team()).map((a) => a.state),
+      ["stopped", "stopped"],
+    );
+    assert.lengthOf(leads.sessions[1]!.sent, 1, "idle cleanup does not wake the parent");
+  }).pipe(
+    Effect.provide(
+      testLayer([leads.adapter, adapter], {
+        catalog: [
+          { alias: "worker", provider: "claude", model: "haiku", description: "Worker" },
+          { alias: "other", provider: "codex", model: "gpt", description: "Worker" },
+        ],
+        idleSessionTTL: Duration.millis(100),
+        childIdleTTL: Duration.seconds(1),
+        warmSessions: 2,
+      }),
+    ),
+    Effect.scoped,
+  );
+});
+
+it.effect(
+  "retires prior idle children after a user turn and preserves the one continued in that turn",
+  () => {
+    const fake = makeFakeAdapter("claude", { turnDuration: "100 millis" });
+    return Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator;
+      const { lead } = yield* orchestrator.createThread({
+        title: "Work",
+        mode: "chat",
+        lead: { provider: "claude", model: "opus", access: "readOnly" },
+      });
+      yield* orchestrator.sendUserMessage(lead.id, "parallel work");
+      yield* TestClock.adjust("10 millis");
+      const spawn = (role: string) => orchestrator.spawn(lead.id, { model: "worker", role, prompt: "go" });
+      const one = yield* spawn("scout");
+      const two = yield* spawn("writer");
+      if (one._tag !== "Spawned" || two._tag !== "Spawned") throw new Error("Expected children");
+      yield* TestClock.adjust("500 millis");
+      assert.strictEqual((yield* orchestrator.agent(one.agentId)).state, "idle");
+      assert.strictEqual((yield* orchestrator.agent(two.agentId)).state, "idle");
+      yield* orchestrator.sendUserMessage(lead.id, "follow up");
+      yield* TestClock.adjust("10 millis");
+      yield* orchestrator.continueChild(lead.id, two.agentId, "check another file");
+      yield* TestClock.adjust("500 millis");
+      const agents = yield* orchestrator.listAgents(lead.threadId);
+      assert.strictEqual(agents.find((a) => a.id === one.agentId)?.state, "stopped");
+      assert.strictEqual(agents.find((a) => a.id === two.agentId)?.state, "idle");
+    }).pipe(
+      Effect.provide(
+        testLayer([fake.adapter], {
+          catalog: [{ alias: "worker", provider: "claude", model: "haiku", description: "Worker" }],
+        }),
+      ),
+      Effect.scoped,
+    );
+  },
+);
+
+it.effect(
+  "keeps a finished child alive while a sibling is still working, then retires both once idle",
+  () => {
+    const fast = makeFakeAdapter("claude", { turnDuration: "50 millis" });
+    const slow = makeFakeAdapter("codex", { turnDuration: "1500 millis" });
+    return Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator;
+      const { lead } = yield* orchestrator.createThread({
+        title: "Wave",
+        mode: "chat",
+        lead: { provider: "claude", model: "opus", access: "readOnly" },
+      });
+      yield* orchestrator.sendUserMessage(lead.id, "parallel work");
+      yield* TestClock.adjust("10 millis");
+      const first = yield* orchestrator.spawn(lead.id, { model: "fast", role: "fast", prompt: "quick" });
+      const second = yield* orchestrator.spawn(lead.id, { model: "slow", role: "slow", prompt: "long" });
+      if (first._tag !== "Spawned" || second._tag !== "Spawned") throw new Error("Expected children");
+      yield* TestClock.adjust("900 millis");
+      assert.strictEqual((yield* orchestrator.agent(first.agentId)).state, "idle");
+      assert.strictEqual((yield* orchestrator.agent(second.agentId)).state, "running");
+      yield* TestClock.adjust("1000 millis");
+      assert.strictEqual((yield* orchestrator.agent(first.agentId)).state, "idle");
+      assert.strictEqual((yield* orchestrator.agent(second.agentId)).state, "idle");
+      yield* TestClock.adjust("600 millis");
+      const agents = yield* orchestrator.listAgents(lead.threadId);
+      assert.strictEqual(agents.find((a) => a.id === first.agentId)?.state, "stopped");
+      assert.strictEqual(agents.find((a) => a.id === second.agentId)?.state, "stopped");
+    }).pipe(
+      Effect.provide(
+        testLayer([fast.adapter, slow.adapter], {
+          catalog: [
+            { alias: "fast", provider: "claude", model: "haiku", description: "Fast" },
+            { alias: "slow", provider: "codex", model: "gpt", description: "Slow" },
+          ],
+          childIdleTTL: Duration.millis(500),
+        }),
+      ),
+      Effect.scoped,
+    );
+  },
+);
+
 it.live("wakes a host that slept before its first turn on a new session, not the one it never saved", () => {
   const fake = makeFakeAdapter("codex");
   const closed: number[] = [];

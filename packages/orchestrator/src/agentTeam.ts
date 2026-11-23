@@ -19,7 +19,7 @@ import type { OrchestratorContext } from "./context.ts";
 import type { MessageOptions } from "./delivery.ts";
 import { noAdapter, notAllowed, notFound, OrchestratorError, unavailable } from "./errors.ts";
 import type { SpawnApproval, SpawnOutcome, SpawnRequest } from "./inputs.ts";
-import { isAdvisor, isReviewer, resolveTarget, type Runtime, type SpawnTarget } from "./runtime.ts";
+import { isAdvisor, isHelper, resolveTarget, type Runtime, type SpawnTarget } from "./runtime.ts";
 
 /**
  * The agents a lead works with and how they talk: the children it spawns (some with the user's
@@ -64,6 +64,26 @@ export const makeAgentTeam = (ctx: OrchestratorContext, sessions: AgentSessions)
       ? "readOnly"
       : narrowAccess(lead.info.access, request.access ?? lead.info.access);
 
+  const assignmentFor = (lead: Runtime, childId: AgentId, prompt: string) =>
+    Effect.gen(function* () {
+      const requestId = yield* makeId("task");
+      messageDelivery.request({
+        id: requestId,
+        from: lead.info.id,
+        to: childId,
+        task: true,
+        group: lead.currentTurnId,
+      });
+      return {
+        _tag: "FromAgent",
+        agentId: lead.info.id,
+        threadId: lead.info.threadId,
+        kind: "request",
+        requestId,
+        text: prompt,
+      } satisfies FromAgent;
+    });
+
   const launchChild = (lead: Runtime, request: SpawnRequest, target: SpawnTarget) =>
     Effect.gen(function* () {
       const createdAt = yield* now;
@@ -101,24 +121,9 @@ export const makeAgentTeam = (ctx: OrchestratorContext, sessions: AgentSessions)
         access: child.access,
       });
       const cwd = threadDirectories.get(lead.info.threadId) ?? ".";
-      const assignmentId = yield* makeId("task");
-      messageDelivery.request({
-        id: assignmentId,
-        from: lead.info.id,
-        to: child.id,
-        task: true,
-        group: lead.currentTurnId,
-      });
       yield* startRuntime(child, cwd, {
         includeUserMcpServers: request.includeUserMcpServers === true,
-        initial: {
-          _tag: "FromAgent",
-          agentId: lead.info.id,
-          threadId: lead.info.threadId,
-          kind: "request",
-          requestId: assignmentId,
-          text: request.prompt,
-        },
+        initial: yield* assignmentFor(lead, child.id, request.prompt),
       });
       return child.id;
     });
@@ -258,6 +263,29 @@ export const makeAgentTeam = (ctx: OrchestratorContext, sessions: AgentSessions)
     });
   });
 
+  const continueChild = Effect.fn("Orchestrator.continueChild")(function* (
+    callerId: AgentId,
+    childId: AgentId,
+    prompt: string,
+  ) {
+    const lead = yield* runtime(callerId);
+    if (lead.info.parentId !== undefined) {
+      return yield* notAllowed("Only a thread's lead can continue child agents.");
+    }
+    const child = yield* runtime(childId);
+    if (child.ended) return yield* notFound(`Agent ${childId} is not running.`);
+    if (child.info.parentId !== callerId) return yield* notAllowed(`Agent ${childId} is not your child.`);
+    if (isHelper(child.info)) return yield* notAllowed("Only assigned workers can take follow-up tasks.");
+    if (prompt.length > config.maxDeliveredChars) {
+      return yield* new OrchestratorError({
+        reason: "invalid",
+        message: `The prompt is ${prompt.length} characters; the limit is ${config.maxDeliveredChars}.`,
+      });
+    }
+    const id = yield* makeId("msg");
+    yield* deliver(childId, { ...(yield* assignmentFor(lead, childId, prompt)), id });
+  });
+
   const sendMessage = Effect.fn("Orchestrator.sendMessage")(function* (
     callerId: AgentId,
     to: AgentId,
@@ -265,30 +293,26 @@ export const makeAgentTeam = (ctx: OrchestratorContext, sessions: AgentSessions)
     options: MessageOptions = {},
   ) {
     const from = yield* runtime(callerId);
+    if (from.info.parentId !== undefined) {
+      return yield* notAllowed(
+        "Child agents do not send messages; return your result or blocker at the end of your turn.",
+      );
+    }
     const stopped = notFound(
       `Agent ${to} isn't running, so it can't take messages: it was stopped, or its thread waits for the user to pick it back up. \`list_threads\` shows which leads are working.`,
     );
     const recipient = yield* runtime(to).pipe(Effect.mapError(() => stopped));
     // An agent whose session ended would drop the message while the sender heard it was delivered.
     if (recipient.ended) return yield* stopped;
-    if (isAdvisor(from.info)) {
+    if (recipient.info.parentId === callerId) {
       return yield* notAllowed(
-        "An advisor only answers the question it was asked; your reply reaches the agent that asked it.",
+        "Use `continue_agent` to send follow-up instructions to a child agent; `send_message` is for messaging another thread's lead.",
       );
     }
-    if (isAdvisor(recipient.info)) {
-      return yield* notAllowed("Put questions to the advisor with `ask_advisor`.");
-    }
-    if (isReviewer(from.info)) {
-      return yield* notAllowed("A reviewer messages nobody: end your turn with the review.");
-    }
-    if (isReviewer(recipient.info)) {
-      return yield* notAllowed("That agent is reviewing a diff for the user and takes no messages.");
-    }
-    const crossThread = from.info.threadId !== recipient.info.threadId;
-    if (crossThread && (from.info.parentId !== undefined || recipient.info.parentId !== undefined)) {
+    if (recipient.info.parentId !== undefined) {
       return yield* notAllowed("Across threads only leads can message each other; ask that thread's lead.");
     }
+    if (to === callerId) return yield* notAllowed("Use `send_message` to reach another thread's lead.");
     if (text.length > config.maxDeliveredChars) {
       return yield* new OrchestratorError({
         reason: "invalid",
@@ -316,7 +340,7 @@ export const makeAgentTeam = (ctx: OrchestratorContext, sessions: AgentSessions)
           id: requestId,
           from: callerId,
           to,
-          task: recipient.info.parentId === callerId,
+          task: false,
           legacy: options.reply === true,
           group: from.currentTurnId,
         });
@@ -475,6 +499,7 @@ export const makeAgentTeam = (ctx: OrchestratorContext, sessions: AgentSessions)
     childAccess,
     spawn,
     resolveSpawnApproval,
+    continueChild,
     sendMessage,
     askAdvisor,
     startReview,

@@ -5,6 +5,7 @@ import { Store } from "@cerium/store";
 import { assert, describe, it } from "@effect/vitest";
 import { Effect } from "effect";
 import { MessageDelivery } from "../src/delivery.ts";
+import { systemPrompt } from "../src/prompts.ts";
 import { Orchestrator, UserSettings } from "../src/index.ts";
 import { recordEvents, testLayer } from "./fakes.ts";
 
@@ -41,38 +42,24 @@ describe("message requests", () => {
     assert.isFalse(delivery.groupPending(request));
   });
 
-  it.live("100 same-thread notes cause no extra turns and arrive with the next user turn", () =>
-    Effect.gen(function* () {
+  it.live("100 cross-thread lead notes reach the next user turn without waking the recipient", () => {
+    const fake = makeFakeAdapter("claude");
+    return Effect.gen(function* () {
       const orchestrator = yield* Orchestrator;
       const { waitFor } = yield* recordEvents;
       const { lead } = yield* start(orchestrator);
-      const spawned = yield* orchestrator.spawn(lead.id, {
-        model: "scout",
-        role: "worker",
-        prompt: "inspect",
-      });
-      assert.strictEqual(spawned._tag, "Spawned");
-      if (spawned._tag !== "Spawned") return;
-      yield* waitFor(() =>
-        fake.sessions[0]?.sent.length === 1 && fake.sessions[1]?.sent.length === 1 ? true : undefined,
-      );
-      yield* Effect.sleep("100 millis");
+      const other = yield* start(orchestrator);
       for (let n = 0; n < 100; n++) {
-        assert.isTrue((yield* orchestrator.sendMessage(spawned.agentId, lead.id, `note ${n}`)).held);
+        assert.isTrue((yield* orchestrator.sendMessage(other.lead.id, lead.id, `note ${n}`)).held);
       }
       yield* Effect.sleep("100 millis");
-      assert.lengthOf(fake.sessions[0]!.sent, 1);
-      assert.lengthOf(fake.sessions[1]!.sent, 1);
+      assert.lengthOf(fake.sessions[0]!.sent, 0);
       yield* orchestrator.sendUserMessage(lead.id, "continue");
-      yield* waitFor(() => (fake.sessions[0]?.sent.length === 2 ? true : undefined));
-      assert.include(fake.sessions[0]!.sent[1]!, "note 0");
-      assert.include(fake.sessions[0]!.sent[1]!, "note 99");
-    }).pipe(
-      Effect.provide(testLayer([fake.adapter], { catalog: [scout], messageLimit: 110 })),
-      Effect.scoped,
-    ),
-  );
-  const fake = makeFakeAdapter("claude");
+      yield* waitFor(() => fake.sessions[0]?.sent[0]);
+      assert.include(fake.sessions[0]!.sent[0]!, "note 0");
+      assert.include(fake.sessions[0]!.sent[0]!, "note 99");
+    }).pipe(Effect.provide(testLayer([fake.adapter], { messageLimit: 110 })), Effect.scoped);
+  });
 
   it.live("explicit replies wake their asker while notes leave the request open", () => {
     const fake = makeFakeAdapter("claude");
@@ -107,40 +94,59 @@ describe("message requests", () => {
     }).pipe(Effect.provide(testLayer([fake.adapter])), Effect.scoped);
   });
 
-  it.live("a worker's explicit result produces no duplicate automatic completion", () => {
-    const fake = makeFakeAdapter("claude", { turnDuration: "150 millis" });
-    return Effect.gen(function* () {
-      const orchestrator = yield* Orchestrator;
-      const store = yield* Store;
-      const { waitFor } = yield* recordEvents;
-      const { lead } = yield* start(orchestrator);
-      const spawned = yield* orchestrator.spawn(lead.id, {
-        model: "scout",
-        role: "worker",
-        prompt: "inspect",
-      });
-      if (spawned._tag !== "Spawned") return;
-      yield* waitFor(() => (fake.sessions[1]?.sent.length ? true : undefined));
-      const events = yield* store.listEvents(spawned.agentId, { tags: ["TurnInput"] });
-      const input = events[0]?.payload;
-      const assignment =
-        input?._tag === "TurnInput" ? input.items.find((i) => i._tag === "FromAgent") : undefined;
-      assert.isDefined(assignment);
-      if (assignment?._tag !== "FromAgent") return;
-      yield* orchestrator.sendMessage(spawned.agentId, lead.id, "done", {
-        kind: "reply",
-        requestId: assignment.requestId!,
-      });
-      yield* Effect.sleep("400 millis");
-      const reports = yield* store.listEvents(lead.id, { tags: ["TurnInput"] });
-      assert.lengthOf(reports, 1);
-      assert.notInclude(
-        reports.flatMap((e) => (e.payload._tag === "TurnInput" ? e.payload.items.map((i) => i._tag) : [])),
-        "ChildFinishedTurn",
-      );
-      assert.isFalse(fake.sessions[1]!.options.includeUserMcpServers);
-    }).pipe(Effect.provide(testLayer([fake.adapter], { catalog: [scout] })), Effect.scoped);
-  });
+  it.live(
+    "renders a private assignment as a task and prevents workers messaging their lead or siblings",
+    () => {
+      const fake = makeFakeAdapter("claude");
+      return Effect.gen(function* () {
+        const orchestrator = yield* Orchestrator;
+        const { waitFor } = yield* recordEvents;
+        const { lead } = yield* start(orchestrator);
+        const one = yield* orchestrator.spawn(lead.id, { model: "scout", role: "one", prompt: "inspect" });
+        const two = yield* orchestrator.spawn(lead.id, { model: "scout", role: "two", prompt: "test" });
+        if (one._tag !== "Spawned" || two._tag !== "Spawned") throw new Error("Expected children");
+        const rendered = yield* waitFor(() => fake.sessions[1]?.sent[0]);
+        assert.strictEqual(rendered, `[Cerium] Task from lead ${lead.id}:\ninspect`);
+        const event = yield* waitFor((events) =>
+          events.find((e) => e.agentId === one.agentId && e.payload._tag === "TurnInput"),
+        );
+        if (event.payload._tag !== "TurnInput") throw new Error("Expected input");
+        const task = event.payload.items[0];
+        if (task?._tag !== "FromAgent") throw new Error("Expected assignment");
+        assert.match(task.requestId!, /^task_/);
+        for (const to of [lead.id, two.agentId]) {
+          assert.strictEqual(
+            (yield* Effect.flip(
+              orchestrator.sendMessage(one.agentId, to, "done", {
+                kind: "reply",
+                requestId: task.requestId!,
+              }),
+            )).reason,
+            "notAllowed",
+          );
+        }
+        assert.isFalse(fake.sessions[1]!.options.includeUserMcpServers);
+        const childPrompt = fake.sessions[1]!.options.appendSystemPrompt!;
+        for (const tool of [
+          "answer_permission",
+          "send_message",
+          "list_threads",
+          "spawn_agent",
+          "continue_agent",
+        ]) {
+          assert.notInclude(childPrompt, tool);
+        }
+        assert.include(childPrompt, "ask_user");
+        assert.include(childPrompt, lead.id);
+        const worktree = { root: "/checkout", project: "/project", branch: "topic", base: "main" };
+        const leadPrompt = systemPrompt(lead, "cerium", { worktree });
+        assert.include(leadPrompt, "continue_agent");
+        assert.include(leadPrompt, "/checkout");
+        assert.notInclude(leadPrompt, "about to change files");
+        assert.include(systemPrompt(lead, "cerium"), "about to change files");
+      }).pipe(Effect.provide(testLayer([fake.adapter], { catalog: [scout] })), Effect.scoped);
+    },
+  );
 
   it.live("records helper calls and attributes their usage to the model that actually ran", () => {
     const fake = makeFakeAdapter("claude");
@@ -203,6 +209,36 @@ describe("message requests", () => {
       yield* waitFor(() => (fake.sessions[0]?.sent.length === 2 ? true : undefined));
       assert.include(fake.sessions[0]!.sent[1]!, "inspect one");
       assert.include(fake.sessions[0]!.sent[1]!, "inspect two");
+      const store = yield* Store;
+      const resultTurns = () =>
+        store
+          .listEvents(lead.id, { tags: ["TurnInput"] })
+          .pipe(
+            Effect.map((events) =>
+              events.flatMap(({ payload }) => (payload._tag === "TurnInput" ? [payload.items] : [])),
+            ),
+          );
+      assert.deepStrictEqual(
+        (yield* resultTurns())[1]?.map((i) => i._tag),
+        ["ChildFinishedTurn", "ChildFinishedTurn"],
+      );
+      yield* orchestrator.continueChild(lead.id, one.agentId, "inspect again");
+      const three = yield* orchestrator.spawn(lead.id, {
+        model: "scout",
+        role: "three",
+        prompt: "inspect three",
+      });
+      if (three._tag !== "Spawned") throw new Error("Expected child");
+      yield* waitFor(() => fake.sessions[0]?.sent[2]);
+      assert.lengthOf(fake.sessions[1]!.sent, 2);
+      assert.strictEqual(fake.sessions[1]!.sent[1], `[Cerium] Task from lead ${lead.id}:\ninspect again`);
+      const turns = yield* resultTurns();
+      assert.lengthOf(turns, 3);
+      assert.sameMembers(
+        turns[2]!.map((i) => i._tag === "ChildFinishedTurn" && i.agentId),
+        [one.agentId, three.agentId],
+      );
+      assert.isEmpty(yield* store.listEvents(lead.id, { tags: ["MessageHeld"] }));
     }).pipe(Effect.provide(testLayer([fake.adapter], { catalog: [scout] })), Effect.scoped);
   });
 
@@ -246,38 +282,32 @@ describe("message requests", () => {
     );
   });
 
-  it.live("keeps an assignment open while its worker waits on a blocking answer", () => {
-    const fake = makeFakeAdapter("claude", { turnDuration: "100 millis" });
+  it.live("continues only a live owned worker with a bounded prompt", () => {
+    const fake = makeFakeAdapter("claude");
     return Effect.gen(function* () {
       const orchestrator = yield* Orchestrator;
-      const { waitFor } = yield* recordEvents;
       const { lead } = yield* start(orchestrator);
-      const child = yield* orchestrator.spawn(lead.id, { model: "scout", role: "worker", prompt: "inspect" });
-      if (child._tag !== "Spawned") throw new Error("Expected child");
-      yield* waitFor(() => (fake.sessions[1]?.sent.length ? true : undefined));
-      const question = yield* orchestrator.sendMessage(child.agentId, lead.id, "which module?", {
-        kind: "request",
-      });
-      yield* Effect.sleep("200 millis");
-      const store = yield* Store;
-      const before = yield* store.listEvents(lead.id, { tags: ["TurnInput"] });
-      assert.isFalse(
-        before.some(
-          (e) =>
-            e.payload._tag === "TurnInput" && e.payload.items.some((i) => i._tag === "ChildFinishedTurn"),
-        ),
+      const other = yield* start(orchestrator);
+      const one = yield* orchestrator.spawn(lead.id, { model: "scout", role: "one", prompt: "inspect" });
+      if (one._tag !== "Spawned") throw new Error("Expected child");
+      for (const [caller, target] of [
+        [one.agentId, one.agentId],
+        [lead.id, other.lead.id],
+        [other.lead.id, one.agentId],
+      ] as const) {
+        assert.strictEqual(
+          (yield* Effect.flip(orchestrator.continueChild(caller, target, "more"))).reason,
+          "notAllowed",
+        );
+      }
+      assert.strictEqual(
+        (yield* Effect.flip(orchestrator.continueChild(lead.id, one.agentId, "x".repeat(8001)))).reason,
+        "invalid",
       );
-      yield* orchestrator.sendMessage(lead.id, child.agentId, "the bus", {
-        kind: "reply",
-        requestId: question.requestId!,
-      });
-      yield* waitFor((events) =>
-        events.find(
-          (e) =>
-            e.agentId === lead.id &&
-            e.payload._tag === "TurnInput" &&
-            e.payload.items.some((i) => i._tag === "ChildFinishedTurn"),
-        ),
+      yield* orchestrator.killChild(lead.id, one.agentId);
+      assert.strictEqual(
+        (yield* Effect.flip(orchestrator.continueChild(lead.id, one.agentId, "more"))).reason,
+        "notFound",
       );
     }).pipe(Effect.provide(testLayer([fake.adapter], { catalog: [scout] })), Effect.scoped);
   });

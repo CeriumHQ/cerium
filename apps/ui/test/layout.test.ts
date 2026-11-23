@@ -1,3 +1,4 @@
+import type { AgentId, ThreadId } from "@cerium/protocol";
 import { describe, expect, it } from "@effect/vitest";
 
 import { foldOf } from "../src/features/transcript/FoldedText.tsx";
@@ -43,6 +44,39 @@ const opened = (items: ReadonlyArray<Item>): ReadonlyArray<Item> =>
   items.flatMap((item) => (item.kind === "work" ? item.steps : [item]));
 
 describe("layout", () => {
+  it("groups adjacent child results at a response boundary and keeps other notices separate", () => {
+    const agentId = "a" as AgentId;
+    const result = (role: string): TranscriptBlock => ({
+      kind: "notice",
+      id: role,
+      item: { _tag: "ChildFinishedTurn", role, agentId, text: "done" },
+    });
+    const first = result("scout");
+    const second = result("reviewer");
+    const note: TranscriptBlock = {
+      kind: "notice",
+      id: "note",
+      item: { _tag: "FromAgent", agentId, threadId: "t" as ThreadId, text: "news" },
+    };
+    const system: TranscriptBlock = {
+      kind: "notice",
+      id: "system",
+      item: { _tag: "SystemNotice", text: "hello" },
+    };
+    const items = layout([tool("t", "Read"), first, second, note, result("writer"), system]);
+    expect(items.map((item) => item.kind)).toEqual([
+      "work",
+      "childResults",
+      "block",
+      "childResults",
+      "block",
+    ]);
+    expect(items[0]).toMatchObject({ done: true });
+    expect(items[1]).toMatchObject({ notices: [first, second] });
+    expect(items[2]).toMatchObject({ block: note });
+    expect(items[4]).toMatchObject({ block: system });
+  });
+
   it("groups long consecutive stretches without changing their order, ids or earlier layouts", () => {
     const calls = Array.from({ length: 10_000 }, (_, index) => tool(String(index), "Read"));
     const first = opened(layout(calls));

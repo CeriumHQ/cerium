@@ -1,12 +1,5 @@
 import type { AgentSession, HarnessFailure, TurnExtras, TurnImage } from "@cerium/harness";
-import type {
-  AgentInfo,
-  Attachment,
-  EventPayload,
-  FromAgent,
-  InputItem,
-  LimitReached,
-} from "@cerium/protocol";
+import type { AgentInfo, Attachment, EventPayload, InputItem, LimitReached } from "@cerium/protocol";
 import { Clock, Deferred, Effect, Option, Queue, Stream } from "effect";
 import { Base64 } from "effect/encoding";
 
@@ -72,7 +65,6 @@ export const makeTurns = (ctx: OrchestratorContext, requests: UserRequests, hook
     advisorQuestions,
     reviews,
     briefsOwed,
-    makeId,
     beginWork,
     endWork,
     emit,
@@ -84,6 +76,8 @@ export const makeTurns = (ctx: OrchestratorContext, requests: UserRequests, hook
     clearBackground,
     expireQuestions,
     childrenOf,
+    isFreeChild,
+    waitsOnUser,
     stopRuntime,
   } = ctx;
   const { askLead, closeLeadRequest, releaseOwnRequests, releaseLeadRequests } = requests;
@@ -423,6 +417,7 @@ export const makeTurns = (ctx: OrchestratorContext, requests: UserRequests, hook
           rt.scope,
         );
       }
+      return startedAt;
     }).pipe(Effect.ensuring(Effect.asVoid(endWork(rt.info.id))));
 
   /**
@@ -594,7 +589,7 @@ export const makeTurns = (ctx: OrchestratorContext, requests: UserRequests, hook
       // What was held for it while its session started (a new worktree's setup) comes along.
       const taken = advisor ? items : withHeld(rt.info.id, items);
       const told: readonly [InputItem, ...Array<InputItem>] = brief === undefined ? taken : [brief, ...taken];
-      yield* rt.turnPermit.withPermits(1)(
+      const startedAt = yield* rt.turnPermit.withPermits(1)(
         Effect.gen(function* () {
           yield* applyModel(rt, session);
           if (rt.effortDecision) {
@@ -606,7 +601,7 @@ export const makeTurns = (ctx: OrchestratorContext, requests: UserRequests, hook
               ...(requested !== actual ? { detail: "The harness kept its previous effort." } : {}),
             });
           }
-          yield* runTurn(rt, session, told, first);
+          return yield* runTurn(rt, session, told, first);
         }),
       );
       if (rt.ended) return yield* Effect.interrupt;
@@ -620,6 +615,20 @@ export const makeTurns = (ctx: OrchestratorContext, requests: UserRequests, hook
       rt.limit = undefined;
       if (limit !== undefined && !halted && rt.info.parentId === undefined) {
         yield* handleLimit(rt, limit);
+      }
+
+      if (
+        rt.info.parentId === undefined &&
+        rt.turnCause === "user" &&
+        !halted &&
+        !rt.turnFailed &&
+        limit === undefined &&
+        Queue.sizeUnsafe(rt.inbox) === 0 &&
+        !waitsOnUser(rt.info.threadId)
+      ) {
+        for (const child of childrenOf(rt.info.id)) {
+          if (child.touchedAt < startedAt && isFreeChild(child)) yield* stopRuntime(child);
+        }
       }
 
       const review = reviews.get(rt.info.id);
@@ -651,8 +660,6 @@ export const makeTurns = (ctx: OrchestratorContext, requests: UserRequests, hook
         const assignment = assignments[0];
         for (const id of rt.activeAssignments)
           if (!messageDelivery.requests.has(id)) rt.activeAssignments.delete(id);
-        // A child waiting for an answer has not finished its assignment. Explicit replies
-        // already delivered a result, so no second automatic report follows them.
         if (
           assignment === undefined ||
           ((messageDelivery.waiting(rt.info.id) || (openQuestions.get(rt.info.id)?.size ?? 0) > 0) &&
@@ -670,28 +677,18 @@ export const makeTurns = (ctx: OrchestratorContext, requests: UserRequests, hook
             : `Stopped early: ${rt.info.model}'s usage limit ran out. ${rt.lastMessage ?? ""}`,
           config.maxDeliveredChars,
         );
+        const result: InputItem = {
+          _tag: "ChildFinishedTurn",
+          requestId: assignment.id,
+          agentId: rt.info.id,
+          role: rt.info.role,
+          text,
+        };
         if (!rt.turnFailed && messageDelivery.groupPending(assignment)) {
           const parent = runtimes.get(assignment.from);
-          if (parent === undefined || parent.ended) return;
-          const message: FromAgent = {
-            _tag: "FromAgent",
-            id: yield* makeId("msg"),
-            agentId: rt.info.id,
-            threadId: rt.info.threadId,
-            kind: "reply",
-            requestId: assignment.id,
-            text,
-          };
-          yield* emit(parent, { _tag: "MessageHeld", message });
-          holdNotice(parent.info.id, message);
+          if (parent !== undefined && !parent.ended) holdNotice(parent.info.id, result);
         } else {
-          yield* deliver(assignment.from, {
-            _tag: "ChildFinishedTurn",
-            requestId: assignment.id,
-            agentId: rt.info.id,
-            role: rt.info.role,
-            text,
-          });
+          yield* deliver(assignment.from, result);
         }
       }
     }).pipe(
