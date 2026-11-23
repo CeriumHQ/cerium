@@ -40,6 +40,7 @@ vi.mock("electron", () => ({
     setContextMenu(menu: typeof fake.menu) {
       fake.menu = menu;
     }
+    displayBalloon() {}
     on() {}
     destroy() {}
   },
