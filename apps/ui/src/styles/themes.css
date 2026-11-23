@@ -24,8 +24,8 @@
 
 :is([data-palette="concrete"], [data-palette="cherry"], [data-palette="flamingo"]) [data-statement] {
   --fg-primary: var(--accent-fg);
-  --fg-secondary: color-mix(in oklab, var(--accent-fg) 80%, var(--accent));
-  --fg-tertiary: color-mix(in oklab, var(--accent-fg) 62%, var(--accent));
+  --fg-secondary: color-mix(in oklab, var(--accent-fg) 88%, var(--accent));
+  --fg-tertiary: color-mix(in oklab, var(--accent-fg) 76%, var(--accent));
   --accent-text: var(--accent-fg);
   --line-subtle: color-mix(in oklab, var(--accent-fg) 16%, transparent);
   --line-strong: color-mix(in oklab, var(--accent-fg) 26%, transparent);
@@ -181,8 +181,8 @@
   --accent-text: var(--accent);
   --accent-soft: color-mix(in oklab, var(--accent) 16%, transparent);
   --selection: color-mix(in oklab, var(--accent) 30%, transparent);
-  /* Yellow thinned over near-black goes khaki; more of it, over a little light, stays yellow. */
-  --surface-selected: color-mix(in oklab, var(--accent) 26%, oklch(1 0 0 / 0.07));
+  /* Yellow thinned over near-black goes khaki; a little light keeps it yellow, and kept faint it leaves grey text on it legible. */
+  --surface-selected: color-mix(in oklab, var(--accent) 15%, oklch(1 0 0 / 0.05));
   --glass-light: color-mix(in oklab, var(--accent) 9%, transparent);
 
   --status-attention: oklch(0.76 0.16 52);
@@ -241,8 +241,9 @@
   --fg-tertiary: oklch(0.67 0.03 90);
   --fg-disabled: oklch(0.47 0.02 85);
 
-  --accent: oklch(0.6 0.21 22);
-  --accent-strong: oklch(0.65 0.2 24);
+  /* Deep enough to carry white as body text, and darker again when pressed rather than lighter. */
+  --accent: oklch(0.52 0.2 23);
+  --accent-strong: oklch(0.47 0.19 23);
   --accent-fg: oklch(0.99 0.01 30);
   --accent-text: oklch(0.74 0.15 24);
   --accent-soft: color-mix(in oklab, var(--accent) 22%, transparent);
