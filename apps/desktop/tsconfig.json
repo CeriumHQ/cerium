@@ -2,6 +2,7 @@
   "extends": "../../tsconfig.base.json",
   "include": ["src", "test", "vite.config.ts", "electron-builder.ts"],
   "references": [
+    { "path": "../backend" },
     { "path": "../../packages/browser" },
     { "path": "../../packages/protocol" },
     { "path": "../../packages/rpc" }

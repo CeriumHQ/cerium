@@ -121,6 +121,33 @@ describe("keeping awake", () => {
     expect(awake()).toBe(false);
     expect(fake.tooltip).toBe("Cerium · reachable from your other devices");
   });
+
+  it("does not keep a hidden tray process or intercept window close while attached to cerium-host", () => {
+    let hidden = false;
+    const background = backgroundMode({
+      icon: "icon.png",
+      window: () => ({ hide: () => (hidden = true) }) as never,
+      show: () => {},
+    });
+    fake.files.set(FILE, "always");
+    background.setSignedIn(true);
+    expect(awake()).toBe(true);
+    expect(background.interceptClose()).toBe(true);
+    expect(hidden).toBe(true);
+
+    hidden = false;
+    background.setAttached(true);
+    expect(background.attached()).toBe(true);
+    expect(awake()).toBe(false);
+    expect(background.interceptClose()).toBe(false);
+    expect(hidden).toBe(false);
+
+    // Leaving attach mode explicitly restores tray & keep-awake behavior.
+    background.setAttached(false);
+    expect(background.attached()).toBe(false);
+    expect(awake()).toBe(true);
+    expect(background.interceptClose()).toBe(true);
+  });
 });
 
 describe("whether the user is at Cerium", () => {

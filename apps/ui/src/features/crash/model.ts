@@ -7,7 +7,18 @@ export type BackendFailureKind =
   | "listen"
   | "startup"
   | "crash"
-  | "exited";
+  | "exited"
+  | "hostStopped"
+  | "hostOutdated"
+  | "desktopOutdated"
+  | "hostUnreachable";
+
+export interface HostFailureInfo {
+  readonly serviceInstalled: boolean;
+  readonly canFallback?: boolean;
+  readonly busy?: "starting" | "updating";
+  readonly command?: string;
+}
 
 /** Mirrors the shell's `BackendFailure`: why the backend last stopped. */
 export interface BackendFailure {
@@ -15,6 +26,7 @@ export interface BackendFailure {
   readonly message: string;
   readonly log: string;
   readonly at: number;
+  readonly host?: HostFailureInfo;
 }
 
 const HEADLINES: Record<BackendFailureKind, string> = {
@@ -24,18 +36,49 @@ const HEADLINES: Record<BackendFailureKind, string> = {
   startup: "Cerium's backend couldn't start.",
   crash: "Cerium's backend crashed.",
   exited: "Cerium's backend stopped.",
+  hostStopped: "Cerium Host is stopped.",
+  hostOutdated: "Cerium Host needs an update.",
+  desktopOutdated: "Cerium Desktop needs an update.",
+  hostUnreachable: "Cerium Host isn't responding.",
 };
+
+export const isHostFailure = (kind: BackendFailureKind): boolean =>
+  kind === "hostStopped" ||
+  kind === "hostOutdated" ||
+  kind === "desktopOutdated" ||
+  kind === "hostUnreachable";
 
 /** What the notice leads with for a failure of `kind`. */
 export const failureHeadline = (kind: BackendFailureKind): string => HEADLINES[kind];
 
+const asHostFailureInfo = (value: unknown): HostFailureInfo | undefined => {
+  if (typeof value !== "object" || value === null) return undefined;
+  const { serviceInstalled, canFallback, busy, command } = value as Partial<
+    Record<keyof HostFailureInfo, unknown>
+  >;
+  if (typeof serviceInstalled !== "boolean") return undefined;
+  return {
+    serviceInstalled,
+    ...(typeof canFallback === "boolean" ? { canFallback } : {}),
+    ...(busy === "starting" || busy === "updating" ? { busy } : {}),
+    ...(typeof command === "string" ? { command } : {}),
+  };
+};
+
 /** A failure the shell sent, or undefined for anything else, including none. */
 export const asBackendFailure = (value: unknown): BackendFailure | undefined => {
   if (typeof value !== "object" || value === null) return undefined;
-  const { kind, message, log, at } = value as Partial<Record<keyof BackendFailure, unknown>>;
+  const { kind, message, log, at, host } = value as Partial<Record<keyof BackendFailure, unknown>>;
   if (typeof kind !== "string" || !(kind in HEADLINES)) return undefined;
   if (typeof message !== "string" || typeof at !== "number") return undefined;
-  return { kind: kind as BackendFailureKind, message, log: typeof log === "string" ? log : "", at };
+  const hostInfo = asHostFailureInfo(host);
+  return {
+    kind: kind as BackendFailureKind,
+    message,
+    log: typeof log === "string" ? log : "",
+    at,
+    ...(hostInfo === undefined ? {} : { host: hostInfo }),
+  };
 };
 
 /** The failure's first line, short enough for one line of a notice. */

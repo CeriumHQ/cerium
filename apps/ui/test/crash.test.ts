@@ -3,6 +3,8 @@ import { describe, expect, it } from "@effect/vitest";
 import {
   asBackendFailure,
   backendFailureDetails,
+  failureHeadline,
+  isHostFailure,
   renderErrorDetails,
   renderErrorMessage,
   shortMessage,
@@ -46,6 +48,28 @@ describe("asBackendFailure", () => {
     expect(asBackendFailure({ kind: "melted", message: "boom", at: 1 })).toBeUndefined();
     expect(asBackendFailure(undefined)).toBeUndefined();
     expect(asBackendFailure(null)).toBeUndefined();
+    expect(
+      asBackendFailure({
+        kind: "hostOutdated",
+        message: "Run cerium-host update",
+        log: "",
+        at: 2,
+        host: { serviceInstalled: true, command: "cerium-host update", busy: "updating" },
+      }),
+    ).toEqual({
+      kind: "hostOutdated",
+      message: "Run cerium-host update",
+      log: "",
+      at: 2,
+      host: { serviceInstalled: true, command: "cerium-host update", busy: "updating" },
+    });
+    expect(isHostFailure("hostStopped")).toBe(true);
+    expect(isHostFailure("hostOutdated")).toBe(true);
+    expect(isHostFailure("desktopOutdated")).toBe(true);
+    expect(isHostFailure("hostUnreachable")).toBe(true);
+    expect(isHostFailure("crash")).toBe(false);
+    expect(failureHeadline("hostOutdated")).toBe("Cerium Host needs an update.");
+    expect(failureHeadline("desktopOutdated")).toBe("Cerium Desktop needs an update.");
   });
 });
 

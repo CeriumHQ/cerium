@@ -29,6 +29,9 @@ contextBridge.exposeInMainWorld("cerium", {
     return () => ipcRenderer.off("cerium:backend-failure", forward);
   },
   restartBackend: (): Promise<void> => ipcRenderer.invoke("cerium:restart-backend"),
+  startHostService: (): Promise<void> => ipcRenderer.invoke("cerium:start-host-service"),
+  updateHost: (): Promise<void> => ipcRenderer.invoke("cerium:update-host"),
+  useLocalBackend: (): Promise<void> => ipcRenderer.invoke("cerium:use-local-backend"),
   crashReports: (): Promise<unknown> => ipcRenderer.invoke("cerium:crash-reports"),
   setCrashReports: (enabled: boolean): Promise<unknown> =>
     ipcRenderer.invoke("cerium:set-crash-reports", enabled),

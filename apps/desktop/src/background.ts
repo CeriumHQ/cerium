@@ -137,6 +137,7 @@ export const backgroundMode = (options: {
 }) => {
   let signedIn = false;
   let working = false;
+  let attached = false;
   let quitting = false;
   let tray: Tray | undefined;
   let blocker: number | undefined;
@@ -191,11 +192,12 @@ export const backgroundMode = (options: {
     ]);
 
   const syncTray = () => {
-    if (signedIn && tray === undefined) {
+    const keepInTray = signedIn && !attached;
+    if (keepInTray && tray === undefined) {
       tray = new Tray(options.icon);
       tray.setContextMenu(trayMenu());
       tray.on("click", options.show);
-    } else if (!signedIn && tray !== undefined) {
+    } else if (!keepInTray && tray !== undefined) {
       tray.destroy();
       tray = undefined;
     }
@@ -203,12 +205,14 @@ export const backgroundMode = (options: {
   };
 
   const syncBlocker = () => {
-    const wanted = keepsAwake({
-      signedIn,
-      working,
-      mode: keepAwake(),
-      onBattery: keepAwake() === "ac" && battery(),
-    });
+    const wanted =
+      !attached &&
+      keepsAwake({
+        signedIn,
+        working,
+        mode: keepAwake(),
+        onBattery: keepAwake() === "ac" && battery(),
+      });
     if (wanted && blocker === undefined) blocker = powerSaveBlocker.start("prevent-app-suspension");
     if (!wanted && blocker !== undefined) {
       powerSaveBlocker.stop(blocker);
@@ -263,11 +267,16 @@ export const backgroundMode = (options: {
   return {
     /** Hides instead of closing while signed in; returns whether it did. */
     interceptClose: () => {
-      if (!signedIn || quitting) return false;
+      if (!signedIn || quitting || attached) return false;
       options.window()?.hide();
       hintOnce();
       return true;
     },
+    setAttached: (next: boolean) => {
+      attached = next;
+      syncBlocker();
+    },
+    attached: () => attached,
     setSignedIn: (next: boolean) => {
       signedIn = next;
       syncBlocker();

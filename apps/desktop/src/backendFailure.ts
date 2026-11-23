@@ -8,7 +8,18 @@ export type BackendFailureKind =
   | "listen"
   | "startup"
   | "crash"
-  | "exited";
+  | "exited"
+  | "hostStopped"
+  | "hostOutdated"
+  | "desktopOutdated"
+  | "hostUnreachable";
+
+export interface HostFailureInfo {
+  readonly serviceInstalled: boolean;
+  readonly canFallback?: boolean;
+  readonly busy?: "starting" | "updating";
+  readonly command?: string;
+}
 
 export interface BackendFailure {
   readonly kind: BackendFailureKind;
@@ -17,6 +28,7 @@ export interface BackendFailure {
   readonly log: string;
   /** When it stopped, in milliseconds since the epoch. */
   readonly at: number;
+  readonly host?: HostFailureInfo;
 }
 
 const KINDS: ReadonlySet<string> = new Set(["databaseOpen", "databaseMigrate", "listen", "startup", "crash"]);

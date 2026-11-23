@@ -53,8 +53,14 @@ export interface ShellBridge {
   readonly backendFailure?: () => Promise<unknown>;
   /** Calls back whenever the backend stops on a failure, or listens again (undefined); returns how to stop. */
   readonly onBackendFailure?: (listener: (failure: unknown) => void) => () => void;
-  /** Starts a stopped backend now instead of after its back-off. */
+  /** Starts a stopped backend now instead of after its back-off, or re-probes `cerium-host`. */
   readonly restartBackend?: () => Promise<void>;
+  /** Starts an installed `cerium-host` native service that is currently stopped. */
+  readonly startHostService?: () => Promise<void>;
+  /** Runs `cerium-host update` locally when the attached host has an older RPC version. */
+  readonly updateHost?: () => Promise<void>;
+  /** Explicitly leaves `cerium-host` attach mode for this run and starts Electron's own backend. */
+  readonly useLocalBackend?: () => Promise<void>;
   /** Opens the folder of Cerium's logs in the system's file manager. */
   readonly openLogs?: () => Promise<void>;
   /** Opens the Chromium notices bundled with this desktop app. */

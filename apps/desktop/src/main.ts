@@ -27,6 +27,7 @@ import {
 } from "./background.ts";
 import { startBackend, type BackendConnection } from "./backend.ts";
 import { watchBackendActivity } from "./backendActivity.ts";
+import type { BackendFailure } from "./backendFailure.ts";
 import { asCrashReport } from "./crashReport.ts";
 import { reportCrash, startCrashReports } from "./crashReports.ts";
 import { desktopTheme } from "./desktopTheme.ts";
@@ -82,7 +83,7 @@ const devUrl = app.isPackaged
 /** Anonymous crash reports, started before anything else can fail. */
 const crashReports = startCrashReports(buildChannel());
 
-let backend: ReturnType<typeof startBackend> | undefined;
+let backend: Awaited<ReturnType<typeof startBackend>> | undefined;
 /** Settles once the packaged app's backend has started. */
 let backendStarting: Promise<void> | undefined;
 let updater: ReturnType<typeof startUpdater> | undefined;
@@ -429,6 +430,7 @@ const scheduleHibernation = (window: BrowserWindow, delay = HIBERNATE_AFTER_MS) 
   if (
     smokeTest !== undefined ||
     quitting ||
+    background.attached() ||
     !background.signedIn() ||
     window.isDestroyed() ||
     window.isVisible() ||
@@ -440,6 +442,7 @@ const scheduleHibernation = (window: BrowserWindow, delay = HIBERNATE_AFTER_MS) 
     if (
       quitting ||
       sessionEnding ||
+      background.attached() ||
       !background.signedIn() ||
       window !== mainWindow ||
       window.isVisible() ||
@@ -692,8 +695,26 @@ ipcMain.handle("cerium:backend-connection", async () => {
 });
 
 /** Why the backend last stopped, while none listens since; the UI also hears each change. */
-ipcMain.handle("cerium:backend-failure", () => backend?.failure());
-ipcMain.handle("cerium:restart-backend", () => backend?.restart());
+ipcMain.handle("cerium:backend-failure", async () => {
+  await backendStarting;
+  return backend?.failure();
+});
+ipcMain.handle("cerium:restart-backend", async () => {
+  await backendStarting;
+  backend?.restart();
+});
+ipcMain.handle("cerium:start-host-service", async () => {
+  await backendStarting;
+  await backend?.startHostService();
+});
+ipcMain.handle("cerium:update-host", async () => {
+  await backendStarting;
+  await backend?.updateHost();
+});
+ipcMain.handle("cerium:use-local-backend", async () => {
+  await backendStarting;
+  backend?.useLocalBackend();
+});
 /** Whether this build sends crash reports, and the user's switch for them. */
 ipcMain.handle("cerium:crash-reports", () => crashReports.state());
 ipcMain.handle("cerium:set-crash-reports", (_event, enabled: unknown) =>
@@ -847,8 +868,9 @@ const SHELL_PATH_FILE = "shell-path.txt";
  * now reaches the running backend once it's there.
  */
 const launchBackend = async (update: ReturnType<typeof startUpdater>["remote"]) => {
+  const options = { disableAttach: smokeTest !== undefined };
   if (process.platform === "win32") {
-    backend = startBackend(process.env, update);
+    backend = await startBackend(process.env, update, options);
     return;
   }
   const env = mac
@@ -862,15 +884,16 @@ const launchBackend = async (update: ReturnType<typeof startUpdater>["remote"]) 
     if (path !== undefined && path !== remembered) void rememberPath(file, path);
     return path;
   });
-  if (remembered === undefined) {
-    backend = startBackend(withShellPath(env, await asked), update);
-    return;
-  }
-  const started = startBackend(withShellPath(env, remembered), update);
+  const initialEnv =
+    remembered !== undefined ? withShellPath(env, remembered) : withShellPath(env, await asked);
+  const started = await startBackend(initialEnv, update, options);
   backend = started;
-  void asked.then((path) => {
-    if (path !== undefined && path !== remembered) started.setPath(withShellPath(env, path)["PATH"] ?? path);
-  });
+  if (remembered !== undefined) {
+    void asked.then((path) => {
+      if (path !== undefined && path !== remembered)
+        started.setPath(withShellPath(env, path)["PATH"] ?? path);
+    });
+  }
 };
 
 const activityConnection = async (): Promise<BackendConnection> => {
@@ -890,19 +913,27 @@ const activityConnection = async (): Promise<BackendConnection> => {
 let heardPresence = false;
 void app.whenReady().then(() => {
   updater = startUpdater({
-    working: background.working,
+    working: () => !backend?.attached() && background.working(),
     stopBackend,
     changed: (state) => backend?.publishUpdate(state),
   });
   if (devUrl === undefined) {
     backendStarting = launchBackend(updater.remote);
-    void backendStarting.then(() =>
-      backend?.onFailure((failure) => {
+    void backendStarting.then(() => {
+      const current = backend;
+      if (current === undefined) return;
+      background.setAttached(current.attached());
+      if (current.attached() && startHidden) showMainWindow();
+      current.onAttachedChange((attached) => background.setAttached(attached));
+      const publishFailure = (failure: BackendFailure | undefined) => {
         if (failure !== undefined) background.setWorking(false);
         for (const window of BrowserWindow.getAllWindows())
           window.webContents.send("cerium:backend-failure", failure);
-      }),
-    );
+      };
+      current.onFailure(publishFailure);
+      const initialFailure = current.failure();
+      if (initialFailure !== undefined) publishFailure(initialFailure);
+    });
   }
   attention = watchAttention((attended) => mainWindow?.webContents.send("cerium:attended", attended));
   // A Mac shutting down would stop the update helper partway too (installOnExit).

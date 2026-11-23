@@ -21,6 +21,7 @@
 // also keeps this machine's sign-in there, encrypted (src/vault.ts).
 
 import type { Channel } from "@cerium/protocol";
+import { RPC_VERSION } from "@cerium/rpc";
 import { NodeRuntime } from "@effect/platform-node";
 import { Cause, Effect, FileSystem, Layer, Logger, Path, Stream } from "effect";
 import { HttpServer } from "effect/http";
@@ -112,21 +113,26 @@ const Reports = Logger.layer([reportLogger((report) => supervisor?.postMessage(r
 });
 
 /** Tells the UI where to connect once the server is listening. */
-const Announce = Layer.effectDiscard(
-  Effect.gen(function* () {
-    const server = yield* HttpServer.HttpServer;
-    const url = `${HttpServer.formatAddress(server.address).replace(/^http/, "ws")}${RPC_PATH}`;
-    yield* Effect.log(`Cerium backend listening on ${url} (data: ${dataDirectory})`);
-    listening = true;
-    supervisor?.postMessage({ url, token });
-    if (connectionFile === undefined) return;
-    const fs = yield* FileSystem.FileSystem;
-    const path = yield* Path.Path;
-    yield* fs.makeDirectory(path.dirname(connectionFile), { recursive: true });
-    yield* fs.writeFileString(connectionFile, JSON.stringify({ url, token }), { mode: 0o600 });
-    yield* Effect.addFinalizer(() => fs.remove(connectionFile).pipe(Effect.ignore));
-  }),
-);
+const announce = (runtime: ReturnType<typeof acquireDaemonLock>) =>
+  Layer.effectDiscard(
+    Effect.gen(function* () {
+      const server = yield* HttpServer.HttpServer;
+      const url = `${HttpServer.formatAddress(server.address).replace(/^http/, "ws")}${RPC_PATH}`;
+      yield* Effect.log(`Cerium backend listening on ${url} (data: ${dataDirectory})`);
+      listening = true;
+      supervisor?.postMessage({ url, token });
+      if (headless.headless) {
+        runtime.publishConnection({ url, token, rpcVersion: RPC_VERSION, channel });
+        yield* Effect.addFinalizer(() => Effect.sync(() => runtime.clearConnection()));
+      }
+      if (connectionFile === undefined) return;
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      yield* fs.makeDirectory(path.dirname(connectionFile), { recursive: true });
+      yield* fs.writeFileString(connectionFile, JSON.stringify({ url, token }), { mode: 0o600 });
+      yield* Effect.addFinalizer(() => fs.remove(connectionFile).pipe(Effect.ignore));
+    }),
+  );
 
 /** The port the sign-in page hands its code to, while this machine signs in on its own. */
 let signInPort: number | undefined;
@@ -186,7 +192,7 @@ const serve = Effect.gen(function* () {
     }),
   );
   return yield* Layer.launch(
-    Layer.mergeAll(Announce, Headless, Status).pipe(Layer.provideMerge(backendLayer(options))),
+    Layer.mergeAll(announce(runtime), Headless, Status).pipe(Layer.provideMerge(backendLayer(options))),
   );
 });
 serve.pipe(

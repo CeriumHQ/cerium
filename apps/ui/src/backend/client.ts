@@ -124,6 +124,8 @@ const RECONNECTING = 4001;
 
 /** What `reconnectNow` does to each connection to the driven machine, while it lasts. */
 const reconnects = new Set<() => void>();
+/** What `reconnectLocalNow` does to connections targeting this computer's local backend. */
+const localReconnects = new Set<() => void>();
 
 /**
  * Tries the driven machine again now, as a Retry button asks: the web client checks its relay
@@ -134,6 +136,14 @@ const reconnects = new Set<() => void>();
 export const reconnectNow = () => {
   if (WEB) checkRelayNow();
   for (const reconnect of reconnects) reconnect();
+};
+
+/** Cuts short local backend reconnect backoff, e.g. right after `cerium-host` comes back up. */
+export const reconnectLocalNow = () => {
+  for (const reconnect of localReconnects) reconnect();
+  if (drivenMachine() === undefined) {
+    for (const reconnect of reconnects) reconnect();
+  }
 };
 
 /**
@@ -167,6 +177,14 @@ const backendSocket = <R>(
     Socket.Socket,
     Effect.gen(function* () {
       let current: Socket.WebSocketLike | undefined;
+      if (target === "local") {
+        const reconnect = () => {
+          live.retryNow();
+          current?.close(RECONNECTING, "Reconnecting");
+        };
+        localReconnects.add(reconnect);
+        yield* Effect.addFinalizer(() => Effect.sync(() => localReconnects.delete(reconnect)));
+      }
       if (target === "driven") {
         const stop = onMachineChange(() => {
           live.restart();

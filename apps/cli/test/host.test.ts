@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { acquireDaemonLock } from "@cerium/backend/runtime";
 import { parse } from "../src/args.ts";
 import { isValidPastedInput, manualLogin } from "../src/account.ts";
-import { hostStatus } from "../src/status.ts";
+import { hostStatus, status } from "../src/status.ts";
 import { launchdDefinition, systemdDefinition, windowsDefinition } from "../src/service.ts";
 import { archiveName, compareVersions, releaseVersion, target, targets } from "../src/release.ts";
 import { updateAvailable } from "../src/update.ts";
@@ -127,6 +130,32 @@ describe("status", () => {
     expect(live).toMatchObject({ signedIn: true, running: true, online: true, serviceInstalled: false });
     expect(JSON.stringify(live)).not.toContain("keep-secret");
     expect(hostStatus(saved, undefined, "https://other", false).signedIn).toBe(false);
+  });
+
+  it("never leaks local RPC handoff tokens in cerium-host status output", () => {
+    const directory = mkdtempSync(join(tmpdir(), "cerium-host-status-"));
+    try {
+      writeFileSync(join(directory, "account.json"), saved, { mode: 0o600 });
+      const lock = acquireDaemonLock(directory, { name: "Office", version: "1.0.0" });
+      try {
+        lock.publishConnection({
+          url: "ws://127.0.0.1:45555/rpc",
+          token: "super-secret-rpc-handoff-token",
+          rpcVersion: 58,
+          channel: "stable",
+        });
+        const output = status(directory, relay, true);
+        expect(output).toMatchObject({ signedIn: true, running: true, serviceInstalled: true });
+        const serialized = JSON.stringify({ ...output, dataDirectory: directory });
+        expect(serialized).not.toContain("super-secret-rpc-handoff-token");
+        expect(serialized).not.toContain("45555");
+        expect(serialized).not.toContain("keep-secret");
+      } finally {
+        lock.release();
+      }
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 });
 

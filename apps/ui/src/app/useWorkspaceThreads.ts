@@ -261,6 +261,7 @@ export function useWorkspaceThreads({
   // account: its threads, kept from last time or the cloud copy's, show while the machine connects.
   useLaunched(
     connection === "unreachable" ||
+      backendFailure !== undefined ||
       (AsyncResult.isSuccess(accountResult) && (WEB || AsyncResult.isSuccess(threadsResult))),
   );
   // A thread's own window closes once its thread is gone, deleted from here or from the main window.
