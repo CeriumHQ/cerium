@@ -564,7 +564,7 @@ describe("attached backend lifecycle", () => {
     }
   });
 
-  it("surfaces npm update instructions when cerium-host update cannot self-update", async () => {
+  it("surfaces npm update instructions on line 1 when cerium-host update prints multi-line output", async () => {
     const dir = mkdtempSync(join(tmpdir(), "cerium-attach-npm-"));
     const server = await startMockRpcServer("old-token");
     const lock = acquireDaemonLock(dir, { name: "Workstation", version: "0.9.0" });
@@ -580,22 +580,110 @@ describe("attached backend lifecycle", () => {
       expect(discovery.kind).toBe("incompatible");
       if (discovery.kind !== "incompatible") return;
 
+      const fullOutput = [
+        "Cerium Host 0.9.0 → 1.0.0",
+        "Install with npm install -g @cerium/host@1.0.0, then restart a running host.",
+      ].join("\n");
       const attached = createAttachedBackend({
         initial: discovery,
         service,
         getEnv: () => process.env,
         connectedPollMs: 50,
         waitingPollMs: 30,
-        updateHost: async () => ({
-          ok: true,
-          output: "Install with npm install -g @cerium/host@1.0.0, then restart a running host.",
-        }),
+        updateHost: async () => ({ ok: true, output: fullOutput }),
         onFailure: () => undefined,
       });
       try {
         await attached.updateHost();
         expect(attached.failure()?.kind).toBe("hostOutdated");
-        expect(attached.failure()?.message).toContain("npm install -g @cerium/host@1.0.0");
+        expect(attached.failure()?.message.split("\n", 1)[0]).toContain("npm install -g @cerium/host@1.0.0");
+        expect(attached.failure()?.log).toBe(fullOutput);
+      } finally {
+        await attached.stop();
+      }
+    } finally {
+      lock.release();
+      await server.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("deduplicates steady-state failure notifications and preserves pre-attach update errors", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "cerium-attach-dedupe-"));
+    const lock = acquireDaemonLock(dir, { name: "Workstation", version: "0.8.0" });
+    try {
+      const service = makeService(dir, true);
+      const discovery = await discoverHostDaemon({ service, startupWaitMs: 0 });
+      expect(discovery.kind).toBe("incompatible");
+      if (discovery.kind !== "incompatible") return;
+
+      const seen: Array<BackendFailure | undefined> = [];
+      const attached = createAttachedBackend({
+        initial: discovery,
+        service,
+        getEnv: () => process.env,
+        connectedPollMs: 25,
+        waitingPollMs: 25,
+        restartGraceMs: 0,
+        updateHost: async () => ({
+          ok: false,
+          output: "Cerium Host 0.8.0 → 1.0.0\nGitHub Releases returned 503.",
+        }),
+        onFailure: (next) => seen.push(next),
+      });
+      try {
+        // Wait across multiple poll intervals: initial hostOutdated should not spam duplicates.
+        await new Promise((resolveDelay) => setTimeout(resolveDelay, 90));
+        expect(seen).toHaveLength(1);
+
+        await attached.updateHost();
+        const afterError = seen.length;
+        expect(attached.failure()?.message).toBe("GitHub Releases returned 503.");
+
+        // Subsequent polls must preserve the update failure detail rather than overwriting it.
+        await new Promise((resolveDelay) => setTimeout(resolveDelay, 90));
+        expect(seen).toHaveLength(afterError);
+        expect(attached.failure()?.message).toBe("GitHub Releases returned 503.");
+      } finally {
+        await attached.stop();
+      }
+    } finally {
+      lock.release();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects connection() promptly when settled in hostUnreachable without spamming failure events", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "cerium-attach-unreachable-"));
+    const server = await startMockRpcServer("expected-token");
+    const lock = acquireDaemonLock(dir, { name: "Workstation", version: "1.0.0" });
+    try {
+      lock.publishConnection({
+        url: server.url,
+        token: "wrong-token",
+        rpcVersion: RPC_VERSION,
+        channel: "stable",
+      });
+      const service = makeService(dir, true);
+      const discovery = await discoverHostDaemon({ service, startupWaitMs: 0 });
+      expect(discovery.kind).toBe("unreachable");
+      if (discovery.kind !== "unreachable") return;
+
+      const seen: Array<BackendFailure | undefined> = [];
+      const attached = createAttachedBackend({
+        initial: discovery,
+        service,
+        getEnv: () => process.env,
+        connectedPollMs: 30,
+        waitingPollMs: 20,
+        restartGraceMs: 0,
+        connectTimeoutMs: 5_000,
+        onFailure: (next) => seen.push(next),
+      });
+      try {
+        await expect(attached.connection()).rejects.toThrow(/did not respond/i);
+        await new Promise((resolveDelay) => setTimeout(resolveDelay, 100));
+        expect(seen).toHaveLength(1);
       } finally {
         await attached.stop();
       }

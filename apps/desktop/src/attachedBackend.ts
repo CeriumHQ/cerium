@@ -79,6 +79,7 @@ const hostOutdatedFailure = (options: {
   readonly expectedRpcVersion: number;
   readonly serviceInstalled: boolean;
   readonly detail?: string;
+  readonly log?: string;
   readonly busy?: "starting" | "updating";
 }): BackendFailure => ({
   kind: "hostOutdated",
@@ -87,7 +88,7 @@ const hostOutdatedFailure = (options: {
     (options.hostRpcVersion === undefined
       ? `Running cerium-host (${versionLabel(options.version)}) predates desktop attach. Run cerium-host update to connect.`
       : `Running cerium-host (${versionLabel(options.version)}, RPC v${options.hostRpcVersion}) is older than this app (RPC v${options.expectedRpcVersion}). Run cerium-host update to connect.`),
-  log: "",
+  log: options.log ?? "",
   at: Date.now(),
   host: {
     serviceInstalled: options.serviceInstalled,
@@ -95,6 +96,26 @@ const hostOutdatedFailure = (options: {
     ...(options.busy === undefined ? {} : { busy: options.busy }),
   },
 });
+
+const summarizeUpdateOutput = (output: string, ok: boolean): string => {
+  const lines = output
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !/^Downloading .+\.\.\.\s*\d+%$/i.test(line));
+  if (!ok) {
+    return lines.at(-1) ?? "Run `cerium-host update` in a terminal to update Cerium Host.";
+  }
+  const npmLine = lines.find((line) => /npm install/i.test(line));
+  if (npmLine !== undefined) return npmLine;
+  const upToDateLine = lines.find((line) => /is up to date/i.test(line));
+  if (upToDateLine !== undefined) return upToDateLine;
+  const installedLine = lines.find((line) => /^Installed Cerium Host\b/i.test(line));
+  if (installedLine !== undefined) return `${installedLine} Restart cerium-host and click Retry.`;
+  return (
+    lines.at(-1) ??
+    "Cerium Host updated, but didn't reconnect with a compatible version yet. Restart cerium-host or retry."
+  );
+};
 
 const desktopOutdatedFailure = (options: {
   readonly version: string;
@@ -145,6 +166,8 @@ export const createAttachedBackend = (options: AttachedBackendOptions) => {
   let dataDirectory = initialDirectory(options.initial, options.service);
   let active: RuntimeConnection | undefined =
     options.initial.kind === "ready" ? options.initial.connection : undefined;
+  let unreachableRecord: RuntimeConnection | undefined =
+    options.initial.kind === "unreachable" ? options.initial.connection : undefined;
   let lastIncompatible:
     | {
         readonly version: string;
@@ -248,7 +271,8 @@ export const createAttachedBackend = (options: AttachedBackendOptions) => {
   const schedulePoll = () => {
     clearTimeout(pollTimer);
     if (stopping) return;
-    const delay = active !== undefined && failure === undefined ? connectedPollMs : waitingPollMs;
+    const fast = busy !== undefined || waiting.length > 0 || (active === undefined && failure === undefined);
+    const delay = fast ? waitingPollMs : connectedPollMs;
     pollTimer = setTimeout(() => {
       void syncHost();
     }, delay);
@@ -258,94 +282,111 @@ export const createAttachedBackend = (options: AttachedBackendOptions) => {
     if (stopping) return Promise.resolve();
     if (syncing !== undefined) return syncing;
     const run = (async () => {
-      const runningDir = findLiveDirectory();
-      if (runningDir === undefined) {
-        const hadActive = active !== undefined;
-        active = undefined;
-        if (hadActive && lostAt === undefined) lostAt = Date.now();
-        if (busy !== undefined) return;
-        if (lostAt === undefined || Date.now() - lostAt >= restartGraceMs) {
-          if (failure?.kind !== "hostStopped" || failure.host?.busy !== undefined) {
-            setFailure(hostStoppedFailure(serviceInstalled));
+      try {
+        const runningDir = findLiveDirectory();
+        if (runningDir === undefined) {
+          const hadActive = active !== undefined;
+          active = undefined;
+          unreachableRecord = undefined;
+          if (hadActive && lostAt === undefined) lostAt = Date.now();
+          if (busy !== undefined) return;
+          if (lostAt === undefined || Date.now() - lostAt >= restartGraceMs) {
+            if (failure?.kind !== "hostStopped" || failure.host?.busy !== undefined) {
+              setFailure(hostStoppedFailure(serviceInstalled));
+            }
           }
+          return;
         }
-        return;
-      }
 
-      dataDirectory = runningDir;
-      const record = readRuntimeConnection(runningDir);
-      if (record === undefined) {
-        const hadActive = active !== undefined;
-        active = undefined;
-        if (hadActive && lostAt === undefined) lostAt = Date.now();
-        if (busy !== undefined) return;
-        const runtime = readRuntimeStatus(runningDir);
-        if (runtime !== undefined && (lostAt === undefined || Date.now() - lostAt >= restartGraceMs)) {
-          lastIncompatible = { version: runtime.version };
-          setFailure(
-            hostOutdatedFailure({
-              version: runtime.version,
-              expectedRpcVersion,
-              serviceInstalled,
-            }),
-          );
+        dataDirectory = runningDir;
+        const record = readRuntimeConnection(runningDir);
+        if (record === undefined) {
+          const hadActive = active !== undefined;
+          active = undefined;
+          unreachableRecord = undefined;
+          if (hadActive && lostAt === undefined) lostAt = Date.now();
+          if (busy !== undefined) return;
+          const runtime = readRuntimeStatus(runningDir);
+          if (runtime !== undefined && (lostAt === undefined || Date.now() - lostAt >= restartGraceMs)) {
+            lastIncompatible = { version: runtime.version };
+            if (failure?.kind !== "hostOutdated" || failure.host?.busy !== undefined) {
+              setFailure(
+                hostOutdatedFailure({
+                  version: runtime.version,
+                  expectedRpcVersion,
+                  serviceInstalled,
+                }),
+              );
+            }
+          }
+          return;
         }
-        return;
-      }
 
-      const compatibility = checkRpcCompatibility(record.rpcVersion, expectedRpcVersion);
-      if (compatibility !== "compatible") {
-        active = undefined;
+        const compatibility = checkRpcCompatibility(record.rpcVersion, expectedRpcVersion);
+        if (compatibility !== "compatible") {
+          active = undefined;
+          unreachableRecord = undefined;
+          lostAt = undefined;
+          lastIncompatible = {
+            version: record.version,
+            hostRpcVersion: record.rpcVersion,
+            channel: record.channel,
+          };
+          if (busy !== undefined) return;
+          if (compatibility === "desktopOutdated") {
+            if (failure?.kind !== "desktopOutdated" || failure.host?.busy !== undefined) {
+              setFailure(
+                desktopOutdatedFailure({
+                  version: record.version,
+                  hostRpcVersion: record.rpcVersion,
+                  expectedRpcVersion,
+                  serviceInstalled,
+                }),
+              );
+            }
+          } else if (failure?.kind !== "hostOutdated" || failure.host?.busy !== undefined) {
+            setFailure(
+              hostOutdatedFailure({
+                version: record.version,
+                hostRpcVersion: record.rpcVersion,
+                expectedRpcVersion,
+                serviceInstalled,
+              }),
+            );
+          }
+          return;
+        }
+
+        if (sameRecord(record, active) && !syncOptions.forceProbe && failure === undefined) {
+          return;
+        }
+
+        const live = await probe(record.url, record.token);
+        if (stopping) return;
+        if (!live) {
+          active = undefined;
+          unreachableRecord = record;
+          if (lostAt === undefined) lostAt = Date.now();
+          if (busy !== undefined) return;
+          if (Date.now() - lostAt >= restartGraceMs) {
+            if (failure?.kind !== "hostUnreachable" || failure.host?.busy !== undefined) {
+              setFailure(hostUnreachableFailure(serviceInstalled, runningDir));
+            } else {
+              rejectWaiters(failure.message);
+            }
+          }
+          return;
+        }
+
+        active = record;
+        unreachableRecord = undefined;
         lostAt = undefined;
-        lastIncompatible = {
-          version: record.version,
-          hostRpcVersion: record.rpcVersion,
-          channel: record.channel,
-        };
-        if (busy !== undefined) return;
-        if (compatibility === "desktopOutdated") {
-          setFailure(
-            desktopOutdatedFailure({
-              version: record.version,
-              hostRpcVersion: record.rpcVersion,
-              expectedRpcVersion,
-              serviceInstalled,
-            }),
-          );
-        } else if (failure?.kind !== "hostOutdated" || failure.host?.busy !== undefined) {
-          setFailure(
-            hostOutdatedFailure({
-              version: record.version,
-              hostRpcVersion: record.rpcVersion,
-              expectedRpcVersion,
-              serviceInstalled,
-            }),
-          );
-        }
-        return;
+        lastIncompatible = undefined;
+        if (failure !== undefined) setFailure(undefined);
+        resolveWaiters({ url: record.url, token: record.token });
+      } catch {
+        // Retry on the next poll if the host directory is mid-transition.
       }
-
-      if (sameRecord(record, active) && !syncOptions.forceProbe && failure === undefined) {
-        return;
-      }
-
-      const live = await probe(record.url, record.token);
-      if (stopping) return;
-      if (!live) {
-        active = undefined;
-        if (lostAt === undefined) lostAt = Date.now();
-        if (busy !== undefined) return;
-        if (Date.now() - lostAt >= restartGraceMs) {
-          setFailure(hostUnreachableFailure(serviceInstalled, runningDir));
-        }
-        return;
-      }
-
-      active = record;
-      lostAt = undefined;
-      lastIncompatible = undefined;
-      if (failure !== undefined) setFailure(undefined);
-      resolveWaiters({ url: record.url, token: record.token });
     })().finally(() => {
       syncing = undefined;
       schedulePoll();
@@ -380,11 +421,13 @@ export const createAttachedBackend = (options: AttachedBackendOptions) => {
       if (lostAt === undefined) lostAt = Date.now();
     }
     const candidateCompatible =
-      current !== undefined && checkRpcCompatibility(current.rpcVersion, expectedRpcVersion) === "compatible";
-    void syncHost({ forceProbe: true });
+      current !== undefined &&
+      checkRpcCompatibility(current.rpcVersion, expectedRpcVersion) === "compatible" &&
+      !sameRecord(current, unreachableRecord);
     if (!candidateCompatible && failure !== undefined && failure.host?.busy === undefined) {
       return Promise.reject(new Error(failure.message));
     }
+    void syncHost({ forceProbe: true });
     return waitForReady(connectTimeoutMs);
   };
 
@@ -460,7 +503,8 @@ export const createAttachedBackend = (options: AttachedBackendOptions) => {
               ...(snapshot.hostRpcVersion === undefined ? {} : { hostRpcVersion: snapshot.hostRpcVersion }),
               expectedRpcVersion,
               serviceInstalled,
-              detail: result.output,
+              detail: summarizeUpdateOutput(result.output, false),
+              log: result.output,
             }),
           );
           return;
@@ -471,16 +515,14 @@ export const createAttachedBackend = (options: AttachedBackendOptions) => {
         if (!ready && !stopping) {
           await syncHost({ forceProbe: true });
           if (active === undefined) {
-            const detail =
-              result.output.trim() ||
-              "Cerium Host updated, but didn't reconnect with a compatible version yet. Restart cerium-host or retry.";
             setFailure(
               hostOutdatedFailure({
                 version: snapshot.version,
                 ...(snapshot.hostRpcVersion === undefined ? {} : { hostRpcVersion: snapshot.hostRpcVersion }),
                 expectedRpcVersion,
                 serviceInstalled,
-                detail,
+                detail: summarizeUpdateOutput(result.output, true),
+                log: result.output,
               }),
             );
           }

@@ -30,6 +30,9 @@ const decodeConnection = Schema.decodeOption(Schema.fromJsonString(RuntimeConnec
 const busy = (error: unknown) =>
   typeof error === "object" && error !== null && "errcode" in error && error.errcode === 5; // SQLITE_BUSY
 
+const cantOpen = (error: unknown) =>
+  typeof error === "object" && error !== null && "errcode" in error && error.errcode === 14; // SQLITE_CANTOPEN
+
 const isLoopbackWsUrl = (value: string): boolean => {
   const url = URL.parse(value);
   if (!url || url.protocol !== "ws:") return false;
@@ -40,13 +43,14 @@ const isLoopbackWsUrl = (value: string): boolean => {
 export const isDaemonRunning = (directory: string): boolean => {
   const lockfile = join(directory, "daemon.lock");
   if (!existsSync(lockfile)) return false;
-  using lock = new DatabaseSync(lockfile, { readOnly: true });
   try {
+    using lock = new DatabaseSync(lockfile, { readOnly: true });
     lock.prepare("SELECT name FROM sqlite_schema").all();
     return false;
   } catch (error) {
-    if (!busy(error)) throw error;
-    return true;
+    if (busy(error)) return true;
+    if (cantOpen(error) && !existsSync(lockfile)) return false;
+    throw error;
   }
 };
 
