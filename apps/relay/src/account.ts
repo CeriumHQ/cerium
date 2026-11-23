@@ -197,6 +197,7 @@ export class Account extends DurableObject<Env> {
     const deviceId = (again?.id ?? randomToken(16)) as DeviceId;
     const build = {
       kind: device.kind,
+      headless: device.headless ?? null,
       platform: device.platform,
       channel: device.channel,
       version: device.version,
@@ -273,7 +274,11 @@ export class Account extends DurableObject<Env> {
       this.write(
         this.db
           .update(tables.devices)
-          .set({ version: build.version, rpcVersion: build.rpcVersion ?? null })
+          .set({
+            version: build.version,
+            rpcVersion: build.rpcVersion ?? null,
+            headless: build.headless ?? null,
+          })
           .where(eq(tables.devices.id, row.id)),
       );
     }

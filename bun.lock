@@ -46,6 +46,49 @@
         "@effect/vitest": "4.0.5",
       },
     },
+    "apps/cli": {
+      "name": "@cerium/host",
+      "version": "0.0.0",
+      "bin": {
+        "cerium-host": "./bin/cerium-host.mjs",
+      },
+      "dependencies": {
+        "@anthropic-ai/claude-agent-sdk": "0.3.302",
+        "@anthropic-ai/sdk": "0.135.0",
+        "@cursor/sdk": "1.0.38",
+        "@effect/sql-sqlite-node": "4.0.5",
+        "@fontsource-variable/red-hat-mono": "5.3.0",
+        "@fontsource-variable/red-hat-text": "5.3.0",
+        "@modelcontextprotocol/sdk": "1.32.1",
+        "@muse-code/sdk": "1.4.8",
+        "@opencode/client": "2.0.32",
+        "@xterm/addon-serialize": "0.14.0",
+        "@xterm/headless": "6.0.0",
+        "drizzle-orm": "1.0.0-rc.5",
+        "effect": "4.0.5",
+        "ignore": "7.0.14",
+        "jsonc-parser": "3.3.1",
+        "node-pty": "1.2.0-beta.15",
+        "parse5": "8.0.1",
+        "remark-gfm": "4.0.1",
+        "remark-math": "6.0.0",
+        "remark-parse": "11.0.0",
+        "toml-eslint-parser": "1.0.3",
+        "undici": "8.12.2",
+        "unified": "11.0.5",
+        "vscode-jsonrpc": "10.0.0",
+        "ws": "8.22.0",
+        "yaml": "2.9.1",
+        "zod": "4.6.7",
+      },
+      "devDependencies": {
+        "@cerium/account": "workspace:*",
+        "@cerium/backend": "workspace:*",
+        "@cerium/protocol": "workspace:*",
+        "@cerium/rpc": "workspace:*",
+        "@effect/platform-node": "4.0.5",
+      },
+    },
     "apps/desktop": {
       "name": "@cerium/desktop",
       "version": "0.0.0",
@@ -539,6 +582,8 @@
     "@cerium/desktop": ["@cerium/desktop@workspace:apps/desktop"],
 
     "@cerium/harness": ["@cerium/harness@workspace:packages/harness"],
+
+    "@cerium/host": ["@cerium/host@workspace:apps/cli"],
 
     "@cerium/orchestrator": ["@cerium/orchestrator@workspace:packages/orchestrator"],
 

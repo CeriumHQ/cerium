@@ -1,0 +1,9 @@
+#!/bin/sh
+set -eu
+launcher=$0
+while [ -L "$launcher" ]; do
+  link=$(readlink "$launcher")
+  case "$link" in /*) launcher=$link ;; *) launcher=$(dirname "$launcher")/$link ;; esac
+done
+bin=$(CDPATH='' cd -P -- "$(dirname -- "$launcher")" && pwd)
+exec "$bin/../runtime/bin/node" "$bin/standalone.mjs" "$@"

@@ -6,9 +6,14 @@ import { hostname } from "node:os";
 import { join } from "node:path";
 
 /** How this machine describes itself when it signs in: its name on the network, until renamed. */
-export const thisMachine = (channel: Channel, version: string): DeviceDraft => ({
+export const thisMachine = (
+  channel: Channel,
+  version: string,
+  options: { readonly name?: string | undefined; readonly headless?: boolean } = {},
+): DeviceDraft => ({
   kind: "desktop",
-  name: hostname().trim().slice(0, MAX_DEVICE_NAME).trim() || "This PC",
+  name: (options.name?.trim() || hostname().trim()).slice(0, MAX_DEVICE_NAME).trim() || "This PC",
+  ...(options.headless ? { headless: true } : {}),
   platform: process.platform,
   channel,
   version: version.trim() || "dev",

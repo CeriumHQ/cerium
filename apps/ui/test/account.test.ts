@@ -1,7 +1,13 @@
 import type { AccountId, AccountState, DeviceId, DeviceInfo } from "@cerium/protocol";
 import { describe, expect, it } from "@effect/vitest";
 
-import { orderedDevices, presenceLabel, reachOf, whyUnreachable } from "../src/features/account/model.ts";
+import {
+  deviceDetails,
+  orderedDevices,
+  presenceLabel,
+  reachOf,
+  whyUnreachable,
+} from "../src/features/account/model.ts";
 
 const device = (id: string, extra: Partial<DeviceInfo> = {}): DeviceInfo => ({
   id: id as DeviceId,
@@ -34,6 +40,13 @@ describe("device order", () => {
     if (state._tag !== "SignedIn") throw new Error("signed in");
     expect(orderedDevices(state).map((each) => each.name)).toEqual(["Mine", "Alpha", "Zeta", "Omega"]);
   });
+});
+
+it("labels a headless CLI while keeping it reachable as a desktop", () => {
+  const cli = device("cli", { platform: "linux", headless: true, online: true, rpcVersion: 1 });
+  expect(deviceDetails(cli)).toBe("Linux · Headless CLI");
+  expect(reachOf(cli)).toEqual({ kind: "reachable" });
+  expect(deviceDetails(device("desktop"))).toBe("Windows");
 });
 
 describe("presence", () => {

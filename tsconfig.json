@@ -71,6 +71,9 @@
       "path": "./apps/ui"
     },
     {
+      "path": "./apps/cli"
+    },
+    {
       "path": "./apps/desktop"
     },
     {

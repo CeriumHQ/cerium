@@ -8,6 +8,7 @@ import { check, integer, primaryKey, sqliteTable, text } from "drizzle-orm/sqlit
 export const devices = sqliteTable("devices", {
   id: text("id").primaryKey(),
   kind: text("kind").$type<DeviceKind>().notNull(),
+  headless: integer("headless", { mode: "boolean" }),
   name: text("name").notNull(),
   platform: text("platform").notNull(),
   channel: text("channel").$type<Channel>().notNull(),

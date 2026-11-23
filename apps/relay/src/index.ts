@@ -11,7 +11,6 @@ import {
   randomToken,
   RenameDeviceRequest,
   ThreadId,
-  type ConfirmLinkResponse,
   type CreateLinkResponse,
   type Credential,
 } from "@cerium/protocol";
@@ -89,9 +88,7 @@ const route = async (request: Request, env: Env): Promise<Response> => {
       const body = await readBody(request, ConfirmLinkRequest);
       if (body === undefined) return refuse(400, "That confirmation isn't one the relay understands.");
       const outcome = await link.confirm(linkId, accountId, body.profile);
-      return outcome.ok
-        ? json({ next: outcome.next } satisfies ConfirmLinkResponse)
-        : refuse(outcome.status, outcome.message);
+      return outcome.ok ? json(outcome.response) : refuse(outcome.status, outcome.message);
     }
     if (action === "claim" && method === "POST") {
       const secret = bearer(request);

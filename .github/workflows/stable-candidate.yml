@@ -75,7 +75,7 @@ jobs:
     needs: [plan, build]
     if: ${{ github.run_attempt == '1' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 20
     permissions:
       contents: write
     outputs:
@@ -83,10 +83,14 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ needs.plan.outputs.commit }}
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
+      - uses: ./.github/actions/collect-cli
+        with:
+          version: ${{ needs.plan.outputs.version }}
       - id: seal
         run: node scripts/stable-candidate.ts seal
         env:

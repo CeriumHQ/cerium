@@ -5,10 +5,12 @@ import { LINK_CALLBACK_PATH, randomToken, type AccountState, type DeviceId } fro
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Layer, Stream } from "effect";
 
+import { thisMachine } from "../src/device.ts";
 import {
   describeAccount,
   headlessFlags,
   headlessHandoff,
+  manualHandoff,
   pastedCode,
   savedStatus,
   watchAccount,
@@ -28,9 +30,23 @@ const signedIn = (connection: "connecting" | "online" | "offline"): AccountState
 });
 
 describe("headlessFlags", () => {
-  it("reads --sign-in and --status", () => {
-    assert.deepStrictEqual(headlessFlags(["node", "main.ts", "--sign-in"]), { signIn: true, status: false });
-    assert.deepStrictEqual(headlessFlags(["--status"]), { signIn: false, status: true });
+  it("reads sign-in, status, and host identity options", () => {
+    assert.deepStrictEqual(headlessFlags(["node", "main.ts", "--sign-in"]), {
+      signIn: true,
+      status: false,
+      headless: false,
+    });
+    const flags = headlessFlags(["--name= Lab computer ", "--headless"]);
+    assert.deepStrictEqual(thisMachine("stable", "1.0", flags), {
+      ...thisMachine("stable", "1.0"),
+      name: "Lab computer",
+      headless: true,
+    });
+    assert.strictEqual(
+      thisMachine("stable", "1.0", headlessFlags(["--name= "])).name,
+      thisMachine("stable", "1.0").name,
+    );
+    assert.deepStrictEqual(headlessFlags(["--status"]), { signIn: false, status: true, headless: false });
   });
 });
 
@@ -72,6 +88,25 @@ describe("pastedCode", () => {
     assert.isUndefined(pastedCode("not an address"));
   });
 });
+
+it.effect("passes raw terminal input to a manual link and releases the listener", () =>
+  Effect.gen(function* () {
+    let stopped = false;
+    const handoff = manualHandoff((onLine) => {
+      onLine("  confirmation code  ");
+      return () => {
+        stopped = true;
+      };
+    });
+    assert.equal(handoff.mode, "manual");
+    yield* Effect.gen(function* () {
+      const input = yield* handoff.listen({ returnTo });
+      assert.isUndefined(input.callback);
+      assert.equal(yield* input.next, "  confirmation code  ");
+    }).pipe(Effect.scoped);
+    assert.isTrue(stopped);
+  }),
+);
 
 describe("headlessHandoff", () => {
   it.effect("takes a pasted address, and stops reading the terminal when done", () =>

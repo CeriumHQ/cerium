@@ -29,6 +29,17 @@ defaults:
     shell: bash
 
 jobs:
+  cli:
+    name: Build the headless CLI
+    permissions:
+      contents: read
+    if: ${{ inputs.candidate == '' || github.run_attempt == '1' }}
+    uses: ./.github/workflows/package-cli.yml
+    with:
+      commit: ${{ inputs.commit }}
+      version: ${{ inputs.version }}
+      keep: true
+
   web:
     name: Build the web app
     if: ${{ inputs.candidate == '' || github.run_attempt == '1' }}

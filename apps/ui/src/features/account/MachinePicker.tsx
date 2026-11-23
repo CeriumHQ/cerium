@@ -1,8 +1,8 @@
 import { Button } from "@base-ui/react/button";
 import { Menu } from "@base-ui/react/menu";
-import type { AccountState } from "@cerium/protocol";
+import type { AccountState, DeviceInfo } from "@cerium/protocol";
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
-import { Check, ChevronDown, Monitor } from "lucide-react";
+import { Check, ChevronDown } from "lucide-react";
 import { useContext } from "react";
 
 import { driveMachine, machineAtom } from "../../backend/machine.ts";
@@ -10,7 +10,8 @@ import type { ShownStatus } from "../../app/connectionStatus.ts";
 import { menuPopupClass } from "../../components/ui/Menu.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { WEB } from "../../backend/target.ts";
-import { platformLabel, thisDevice, whyUnreachable } from "./model.ts";
+import { DeviceIcon } from "./DeviceIcon.tsx";
+import { machinePlatform, thisDevice, whyUnreachable } from "./model.ts";
 
 /**
  * Chooses which of the account's computers the window drives: this one, or
@@ -42,6 +43,8 @@ export function MachinePicker({
   const quiet = !WEB && driven === undefined;
   const away = status?.kind === "reconnecting" || status?.kind === "offline" ? status.kind : undefined;
 
+  const selected = account.devices.find((device) => device.id === driving);
+
   const choose = (id: string) => {
     if (id === account.deviceId) return driveMachine(registry, undefined);
     const device = others.find((other) => other.id === id);
@@ -69,7 +72,12 @@ export function MachinePicker({
             />
           }
         >
-          <Monitor size={13} strokeWidth={1.75} className={`shrink-0 ${quiet ? "md:size-[15px]" : ""}`} />
+          <DeviceIcon
+            device={selected}
+            size={13}
+            strokeWidth={1.75}
+            className={`shrink-0 ${quiet ? "md:size-[15px]" : ""}`}
+          />
           <span className={`truncate ${quiet ? "md:hidden" : ""}`}>{label}</span>
           <ChevronDown
             size={12}
@@ -97,11 +105,7 @@ export function MachinePicker({
               </Menu.GroupLabel>
               <Menu.RadioGroup value={driving} onValueChange={(id: string) => choose(id)}>
                 {self && !WEB ? (
-                  <MachineItem
-                    value={self.id}
-                    name={self.name}
-                    detail={`This computer · ${platformLabel(self.platform)}`}
-                  />
+                  <MachineItem device={self} detail={`This computer · ${machinePlatform(self)}`} />
                 ) : null}
                 {others.map((device) => {
                   const reason = whyUnreachable(device);
@@ -109,9 +113,8 @@ export function MachinePicker({
                   return (
                     <MachineItem
                       key={device.id}
-                      value={device.id}
-                      name={device.name}
-                      detail={reason ?? platformLabel(device.platform)}
+                      device={device}
+                      detail={reason ?? machinePlatform(device)}
                       reachable={reason === undefined}
                       attention={reason !== undefined && device.online}
                       disabled={reason !== undefined && device.id !== driven?.id}
@@ -128,15 +131,13 @@ export function MachinePicker({
 }
 
 function MachineItem({
-  value,
-  name,
+  device,
   detail,
   reachable = false,
   attention = false,
   disabled = false,
 }: {
-  value: string;
-  name: string;
+  device: DeviceInfo;
   detail: string;
   /** Shows the green dot: it can be driven now. */
   reachable?: boolean;
@@ -146,20 +147,23 @@ function MachineItem({
 }) {
   return (
     <Menu.RadioItem
-      value={value}
+      value={device.id}
       disabled={disabled}
       closeOnClick
       className="group relative flex cursor-default items-center gap-2.5 rounded-lg py-1.5 pr-8 pl-2 outline-none select-none data-highlighted:bg-surface-hover"
     >
       {/* Dimmed when it can't be chosen; its detail stays readable, since that says why. */}
-      <Monitor
+      <DeviceIcon
+        device={device}
         size={15}
         strokeWidth={1.75}
         className="shrink-0 text-fg-tertiary group-data-disabled:opacity-40"
       />
       <span className="flex min-w-0 flex-col">
         <span className="flex items-center gap-1.5">
-          <span className="truncate text-body text-fg-primary group-data-disabled:opacity-40">{name}</span>
+          <span className="truncate text-body text-fg-primary group-data-disabled:opacity-40">
+            {device.name}
+          </span>
           {reachable ? <span className="size-1.5 shrink-0 rounded-full bg-success" aria-hidden /> : null}
         </span>
         <span className={`truncate text-caption ${attention ? "text-attention-text" : "text-fg-tertiary"}`}>

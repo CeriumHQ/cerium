@@ -36,6 +36,8 @@ export const DeviceName = Schema.Trimmed.check(Schema.isNonEmpty(), Schema.isMax
 /** What a device says about itself when it signs in. */
 export const DeviceDraft = Schema.Struct({
   kind: DeviceKind,
+  /** The machine runs the CLI backend without a desktop window. */
+  headless: Schema.optionalKey(Schema.Boolean),
   name: DeviceName,
   /** Node's `process.platform` for a desktop (`win32`, `darwin`, `linux`). */
   platform: Schema.NonEmptyString,
@@ -120,6 +122,10 @@ export type LinkCallback = typeof LinkCallback.Type;
 /** The path a desktop's loopback listener takes the page's code on. */
 export const LINK_CALLBACK_PATH = "/cerium/link";
 
+/** How a desktop receives the confirmation code. Older desktops use a loopback callback. */
+export const LinkHandoffMode = Schema.Literals(["loopback", "manual"]);
+export type LinkHandoffMode = typeof LinkHandoffMode.Type;
+
 /** `POST /api/links`: a machine starts signing in. */
 export const CreateLinkRequest = Schema.Struct({
   device: DeviceDraft,
@@ -127,7 +133,8 @@ export const CreateLinkRequest = Schema.Struct({
   secretHash: Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/)),
   /** Absent from desktops older than installations, which join as a new device each time. */
   installation: Schema.optionalKey(Installation),
-  /** A desktop's; the relay refuses a desktop without one, and a browser with one. */
+  handoff: Schema.optionalKey(LinkHandoffMode),
+  /** The listener for a desktop using loopback handoff. */
   callback: Schema.optionalKey(LinkCallback),
 });
 export type CreateLinkRequest = typeof CreateLinkRequest.Type;
@@ -141,6 +148,7 @@ export type CreateLinkResponse = typeof CreateLinkResponse.Type;
  */
 export const LinkView = Schema.Struct({
   device: DeviceDraft,
+  handoff: Schema.optionalKey(LinkHandoffMode),
   status: Schema.Literals(["pending", "approved", "confirmed"]),
   expiresAt: EpochMillis,
 });
@@ -162,8 +170,11 @@ export type ConfirmLinkRequest = typeof ConfirmLinkRequest.Type;
 /** The one-time code that finishes a sign-in, unguessable. */
 export const LinkCode = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9_-]{32,}$/));
 
-/** The confirmation's answer: where the page goes next, carrying the code to the device. */
-export const ConfirmLinkResponse = Schema.Struct({ next: Schema.String });
+/** A redirect carrying the code, or the code to copy into the terminal that started the link. */
+export const ConfirmLinkResponse = Schema.Union([
+  Schema.Struct({ next: Schema.String }),
+  Schema.Struct({ code: LinkCode }),
+]);
 export type ConfirmLinkResponse = typeof ConfirmLinkResponse.Type;
 
 /**
@@ -366,22 +377,26 @@ export const relayProtocols = (credential: Credential): Array<string> => [
  * The build a device runs now. It says so each time it connects, in the query: it may have updated
  * since it signed in, and a browser opens the web UI built for the desktop it drives.
  */
-export const DeviceBuild = DeviceDraft.mapFields(Struct.pick(["version", "rpcVersion"]));
+export const DeviceBuild = DeviceDraft.mapFields(Struct.pick(["version", "rpcVersion", "headless"]));
 export type DeviceBuild = typeof DeviceBuild.Type;
 
 /** The query a device connects with, reporting its build. */
-export const buildQuery = ({ version, rpcVersion }: DeviceBuild): string =>
+export const buildQuery = ({ version, rpcVersion, headless }: DeviceBuild): string =>
   new URLSearchParams({
     version,
+    ...(headless === undefined ? {} : { headless: String(headless) }),
     ...(rpcVersion === undefined ? {} : { rpcVersion: String(rpcVersion) }),
   }).toString();
 
 /** The build a connecting device reported, if it reported a valid one. */
 export const buildFromQuery = (query: URLSearchParams): DeviceBuild | undefined => {
   const rpcVersion = query.get("rpcVersion");
+  const headless = query.get("headless");
+  if (headless !== null && headless !== "true" && headless !== "false") return undefined;
   return Option.getOrUndefined(
     Schema.decodeUnknownOption(DeviceBuild)({
       version: query.get("version") ?? undefined,
+      ...(headless === null ? {} : { headless: headless === "true" }),
       ...(rpcVersion === null ? {} : { rpcVersion: Number(rpcVersion) }),
     }),
   );

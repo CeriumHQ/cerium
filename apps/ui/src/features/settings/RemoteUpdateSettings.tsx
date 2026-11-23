@@ -14,7 +14,7 @@ import { SettingsList, SettingsNote, SettingsPage, SettingsRow } from "./parts.t
 import { RowButton } from "./ToolRow.tsx";
 
 const runUpdate = Backend.mutation("RunDesktopUpdate");
-const remoteUpdates = Atom.family((deviceId: DrivenMachine["id"]) =>
+export const remoteUpdatesAtom = Atom.family((deviceId: DrivenMachine["id"]) =>
   Backend.runtime.atom((get) => {
     if (get(machineAtom)?.id !== deviceId || get(drivenRpcVersionAtom) < REMOTE_UPDATES_RPC_VERSION)
       return Stream.empty;
@@ -29,6 +29,8 @@ export function RemoteUpdateSettings({ machine }: { machine: DrivenMachine }) {
   const supported = useAtomValue(drivenRpcVersionAtom) >= REMOTE_UPDATES_RPC_VERSION;
   const account = AsyncResult.getOrElse(useAtomValue(accountAtom), () => undefined);
   const [choosing, setChoosing] = useState(false);
+  const headless =
+    account?._tag === "SignedIn" && account.devices.find((device) => device.id === machine.id)?.headless;
   const canSwitch =
     account?._tag === "SignedIn" &&
     account.devices.some((device) => device.kind === "desktop" && device.id !== machine.id);
@@ -48,14 +50,14 @@ export function RemoteUpdateSettings({ machine }: { machine: DrivenMachine }) {
       ) : !supported ? (
         <SettingsNote>Update Cerium on {machine.name} once to enable updates from this device.</SettingsNote>
       ) : (
-        <RemoteUpdateRow machine={machine} />
+        <RemoteUpdateRow machine={machine} headless={headless === true} />
       )}
     </SettingsPage>
   );
 }
 
-function RemoteUpdateRow({ machine }: { machine: DrivenMachine }) {
-  const result = useAtomValue(remoteUpdates(machine.id));
+function RemoteUpdateRow({ machine, headless }: { machine: DrivenMachine; headless: boolean }) {
+  const result = useAtomValue(remoteUpdatesAtom(machine.id));
   const send = useAtomSet(runUpdate, { mode: "promise" });
   const [error, setError] = useState<string>();
   const [sending, setSending] = useState(false);
@@ -68,6 +70,13 @@ function RemoteUpdateRow({ machine }: { machine: DrivenMachine }) {
   };
   if (!AsyncResult.isSuccess(result)) return <SettingsNote>Reading update status…</SettingsNote>;
   const updates = result.value;
+  if (headless && updates?.status.kind === "unsupported")
+    return (
+      <SettingsNote>
+        Run <code>cerium-host update</code> in the terminal on {machine.name}. For npm installs, it prints the
+        npm command for your release.
+      </SettingsNote>
+    );
   if (!updates || updates.status.kind === "unsupported")
     return <SettingsNote>This installation needs to be updated on {machine.name}.</SettingsNote>;
   const { status, restart } = updates;

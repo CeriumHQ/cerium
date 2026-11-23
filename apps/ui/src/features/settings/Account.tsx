@@ -4,17 +4,7 @@ import { buttonClass } from "../../components/ui/Button.tsx";
 import { MAX_DEVICE_NAME, type AccountState, type DeviceId, type DeviceInfo } from "@cerium/protocol";
 import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
-import {
-  Ellipsis,
-  ExternalLink,
-  Globe,
-  LogIn,
-  Monitor,
-  Pencil,
-  RefreshCw,
-  Smartphone,
-  Trash2,
-} from "lucide-react";
+import { Ellipsis, ExternalLink, LogIn, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import {
@@ -47,6 +37,7 @@ import {
   selfNoun,
   thisDevice,
 } from "../account/model.ts";
+import { DeviceIcon } from "../account/DeviceIcon.tsx";
 import { TitleField } from "../threads/Rename.tsx";
 import { SettingsCard, SettingsNote, SettingsPage } from "./parts.tsx";
 
@@ -329,12 +320,6 @@ function DeviceRow({ device, self, live }: { device: DeviceInfo; self: boolean; 
   // The build number is for telling builds apart when something's wrong: it waits in the menu.
   const version = deviceVersion(device);
   const details = deviceDetails(device);
-  const Icon =
-    device.kind === "desktop"
-      ? Monitor
-      : device.platform === "ios" || device.platform === "android"
-        ? Smartphone
-        : Globe;
   // A desktop too old to be driven is online, but no more reachable than an offline one.
   const outdated = device.kind === "desktop" && reachOf(device).kind === "outdated";
   // What the row says after its details: nothing while the device is simply there, a dot instead.
@@ -362,7 +347,7 @@ function DeviceRow({ device, self, live }: { device: DeviceInfo; self: boolean; 
   return (
     <div className="flex flex-col gap-1.5 py-3 pr-3 pl-4">
       <div className="flex items-center gap-3">
-        <Icon size={16} strokeWidth={1.75} className="shrink-0 text-fg-tertiary" />
+        <DeviceIcon device={device} size={16} strokeWidth={1.75} className="shrink-0 text-fg-tertiary" />
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="flex min-w-0 items-center gap-2">
             {editing ? (

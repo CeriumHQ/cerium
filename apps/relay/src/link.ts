@@ -3,6 +3,7 @@ import {
   type AccountId,
   type ClaimLinkResponse,
   type ConfirmLinkRequest,
+  type ConfirmLinkResponse,
   type CreateLinkRequest,
   type LinkId,
   type LinkView,
@@ -10,16 +11,16 @@ import {
 import { DurableObject } from "cloudflare:workers";
 
 import type { Env } from "./env.ts";
-import { approve, claim, handoffUrl, startLink, viewOf, type Pending, type Refusal } from "./linking.ts";
+import { approve, claim, confirmation, startLink, viewOf, type Pending, type Refusal } from "./linking.ts";
 
 // One pending sign-in, named by its unguessable id. The user confirms it in their browser, whose page
-// hands the code that finishes it to the machine beside it; the machine claims it with that code and
+// hands the code that finishes it to the device. The device claims it with that code and
 // its device secret (linking.ts). It stays claimable until it expires, so a claim whose answer was
 // lost can be made again.
 
 export type CreateOutcome = { readonly ok: true; readonly expiresAt: number } | Refusal;
 
-export type ConfirmOutcome = { readonly ok: true; readonly next: string } | Refusal;
+export type ConfirmOutcome = { readonly ok: true; readonly response: ConfirmLinkResponse } | Refusal;
 
 export type ClaimOutcome = ClaimLinkResponse | "expired" | "forbidden";
 
@@ -53,7 +54,7 @@ export class Link extends DurableObject<Env> {
       const approved = await approve(link, accountId, profile);
       if (!approved.ok) return approved;
       await this.ctx.storage.put<Pending>("link", approved.link);
-      return { ok: true, next: handoffUrl(id, approved.link, approved.code) };
+      return { ok: true, response: confirmation(id, approved.link, approved.code) };
     });
   }
 

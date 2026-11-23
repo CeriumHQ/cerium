@@ -6,7 +6,7 @@
     <title>Download Cerium for Windows, macOS, and Linux</title>
     <meta
       name="description"
-      content="Download Cerium for Windows 11 (x64), macOS (Apple silicon), and Linux (x64). Free, local-first, and open source under Apache 2.0."
+      content="Get the Cerium desktop app for Windows, macOS, or Linux, or install the headless CLI on an x64 or ARM64 server."
     />
     <meta name="theme-color" content="#1b1a18" />
     <meta property="og:type" content="website" />
@@ -14,7 +14,7 @@
     <meta property="og:title" content="Download Cerium for Windows, macOS, and Linux" />
     <meta
       property="og:description"
-      content="Download Cerium for Windows 11 (x64), macOS (Apple silicon), and Linux (x64). Free, local-first, and open source under Apache 2.0."
+      content="Get the Cerium desktop app for Windows, macOS, or Linux, or install the headless CLI on an x64 or ARM64 server."
     />
     <meta property="og:site_name" content="Cerium" />
     <meta property="og:image" content="https://cerium.nonlooped.xyz/og.jpg" />
@@ -28,7 +28,7 @@
     <meta name="twitter:title" content="Download Cerium for Windows, macOS, and Linux" />
     <meta
       name="twitter:description"
-      content="Download Cerium for Windows 11 (x64), macOS (Apple silicon), and Linux (x64). Free, local-first, and open source under Apache 2.0."
+      content="Get the Cerium desktop app for Windows, macOS, or Linux, or install the headless CLI on an x64 or ARM64 server."
     />
     <meta name="twitter:image" content="https://cerium.nonlooped.xyz/og.jpg" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
@@ -64,7 +64,7 @@
         </p>
       </section>
 
-      <section aria-label="All builds">
+      <section aria-label="Desktop builds">
         <ul class="systems pane">
           <li class="system" data-system="windows">
             <svg class="system-mark" aria-hidden="true"><use href="/icons.svg#mark-windows" /></svg>
@@ -104,6 +104,28 @@
           <a class="link" href="https://github.com/CeriumHQ/cerium/releases/latest">release notes</a>, or
           <a class="link" href="https://github.com/CeriumHQ/cerium#build-from-source">build from source</a>.
         </p>
+      </section>
+      <section class="host-cli" aria-labelledby="host-title" id="headless">
+        <h2 class="display" id="host-title">Headless / Server CLI</h2>
+        <p class="lede">Run Cerium on an x64 or ARM64 machine and connect from the web app.</p>
+        <dl class="host-commands pane">
+          <div>
+            <dt>Linux &amp; macOS</dt>
+            <dd><code>curl -fsSL https://cerium.nonlooped.xyz/install.sh | sh</code></dd>
+          </div>
+          <div>
+            <dt>Windows PowerShell</dt>
+            <dd><code>irm https://cerium.nonlooped.xyz/install.ps1 | iex</code></dd>
+          </div>
+          <div>
+            <dt>npm <span>Node 24.11+</span></dt>
+            <dd><code>npm install -g @cerium/host</code></dd>
+          </div>
+        </dl>
+        <h3 class="subtitle">Start your host</h3>
+        <p>Sign in, then install Cerium as a background service.</p>
+        <pre><code>cerium-host login
+cerium-host service install</code></pre>
       </section>
     </main>
 

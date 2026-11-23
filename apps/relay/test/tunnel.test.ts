@@ -7,6 +7,7 @@ import { routeFrame, type Live } from "../src/tunnel.ts";
 const row = (id: string, extra: Partial<DeviceRow> = {}): DeviceRow => ({
   id,
   kind: "desktop",
+  headless: null,
   name: id,
   platform: "win32",
   channel: "stable",

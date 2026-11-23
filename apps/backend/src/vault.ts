@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { Vault, VaultError } from "@cerium/account";
-import { Context, Deferred, Effect, FileSystem, Layer, Option, Path } from "effect";
+import { Context, Deferred, Effect, FileSystem, Layer, Path } from "effect";
 
 import type { ParentPort } from "./shell.ts";
 
@@ -90,17 +90,33 @@ const fileSecret = (file: string, what: string) =>
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
     const failed = (message: string) => () => new VaultError({ message });
+    const directory = path.dirname(file);
+    const secureDirectory = fs
+      .makeDirectory(directory, { recursive: true, mode: 0o700 })
+      .pipe(Effect.andThen(process.platform === "win32" ? Effect.void : fs.chmod(directory, 0o700)));
     return Vault.of({
-      read: fs.readFileString(file).pipe(Effect.option, Effect.map(Option.getOrUndefined)),
+      read: Effect.gen(function* () {
+        if (!(yield* fs.exists(file))) return undefined;
+        // Tighten files written by older releases before using the saved credentials.
+        if (process.platform !== "win32") {
+          yield* fs.chmod(directory, 0o700);
+          yield* fs.chmod(file, 0o600);
+        }
+        return yield* fs.readFileString(file);
+      }).pipe(Effect.mapError(failed(`Couldn't read ${what}.`))),
       write: (value) =>
         value === undefined
           ? fs.remove(file, { force: true }).pipe(Effect.mapError(failed(`Couldn't forget ${what}.`)))
-          : fs
-              .makeDirectory(path.dirname(file), { recursive: true })
-              .pipe(
-                Effect.andThen(fs.writeFileString(file, value)),
-                Effect.mapError(failed(`Couldn't save ${what}.`)),
-              ),
+          : Effect.gen(function* () {
+              yield* secureDirectory;
+              const pending = file + "." + randomUUID();
+              yield* fs
+                .writeFileString(pending, value, { flag: "wx", mode: 0o600 })
+                .pipe(
+                  Effect.andThen(fs.rename(pending, file)),
+                  Effect.ensuring(fs.remove(pending, { force: true }).pipe(Effect.ignore)),
+                );
+            }).pipe(Effect.mapError(failed(`Couldn't save ${what}.`))),
     });
   });
 

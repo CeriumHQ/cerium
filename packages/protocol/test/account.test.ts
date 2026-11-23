@@ -68,6 +68,11 @@ describe("DeviceDraft", () => {
   };
   const decode = Schema.decodeUnknownOption(DeviceDraft);
 
+  it("accepts headless metadata and preserves the existing device kind", () => {
+    const cli = { ...draft, headless: true };
+    expect(Option.getOrUndefined(decode(cli))).toEqual(cli);
+  });
+
   it("refuses names that are empty, padded or longer than 64 characters", () => {
     expect(Option.isSome(decode(draft))).toBe(true);
     expect(Option.isNone(decode({ ...draft, name: "" }))).toBe(true);
@@ -78,7 +83,7 @@ describe("DeviceDraft", () => {
 
 describe("a device's build", () => {
   it("travels in the query it connects with", () => {
-    const build = { version: "0.3.0-nightly.14", rpcVersion: 2 };
+    const build = { version: "0.3.0-nightly.14", rpcVersion: 2, headless: true };
     expect(buildFromQuery(new URLSearchParams(buildQuery(build)))).toEqual(build);
     expect(buildFromQuery(new URLSearchParams(buildQuery({ version: "0.3.0" })))).toEqual({
       version: "0.3.0",

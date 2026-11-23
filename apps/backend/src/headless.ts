@@ -23,12 +23,22 @@ export interface HeadlessFlags {
   readonly signIn: boolean;
   /** Say how the saved sign-in stands, and exit. */
   readonly status: boolean;
+  readonly headless: boolean;
+  readonly name?: string;
 }
 
-export const headlessFlags = (argv: ReadonlyArray<string>): HeadlessFlags => ({
-  signIn: argv.includes("--sign-in"),
-  status: argv.includes("--status"),
-});
+export const headlessFlags = (argv: ReadonlyArray<string>): HeadlessFlags => {
+  const name = argv
+    .find((arg) => arg.startsWith("--name="))
+    ?.slice("--name=".length)
+    .trim();
+  return {
+    signIn: argv.includes("--sign-in"),
+    status: argv.includes("--status"),
+    headless: argv.includes("--headless"),
+    ...(name ? { name } : {}),
+  };
+};
 
 const who = (profile: AccountProfile) => profile.email ?? profile.name ?? profile.id;
 
@@ -44,6 +54,8 @@ export interface DescribeOptions {
   readonly port?: number | undefined;
   /** Whether the address the page lands on can be pasted here. */
   readonly paste?: boolean;
+  /** The relay displays a code for this terminal. */
+  readonly manual?: boolean;
 }
 
 /** How the account stands, as the terminal says it. */
@@ -59,6 +71,7 @@ export const describeAccount = (state: AccountState, options: DescribeOptions): 
         "",
         `    ${state.url}`,
         "",
+        ...(options.manual ? ["Paste the confirmation code from that page here."] : []),
         ...(options.paste
           ? [
               "No browser on this machine? Once you confirm, the page goes to a 127.0.0.1 address",
@@ -129,6 +142,20 @@ export const terminalLines = (onLine: (line: string) => void) => {
   reader.on("line", onLine);
   return () => reader.close();
 };
+
+/** A headless host reads the code displayed in a browser on any machine. */
+export const manualHandoff = (lines = terminalLines): LinkHandoff => ({
+  mode: "manual",
+  listen: () =>
+    Effect.gen(function* () {
+      const input = yield* Queue.unbounded<string>();
+      yield* Effect.acquireRelease(
+        Effect.sync(() => lines((line) => Queue.offerUnsafe(input, line))),
+        (stop) => Effect.sync(stop),
+      );
+      return { next: Queue.take(input) };
+    }),
+});
 
 /**
  * Says how the account stands whenever that changes, and with `signIn` starts signing in: once at

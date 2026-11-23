@@ -111,6 +111,7 @@ jobs:
     permissions:
       contents: write
     outputs:
+      published: ${{ steps.publish.outcome == 'success' }}
       fallback: >-
         ${{ steps.checkout.outcome != 'success' || steps.node.outcome != 'success' ||
         (steps.notes.outputs.publish == 'true' && steps.reserve.outcome != 'success') }}
@@ -193,7 +194,8 @@ jobs:
           fi
           gh api "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=$ref" -f "sha=$COMMIT" --jq .ref
           echo "created=true" >> "$GITHUB_OUTPUT"
-      - name: Publish the verified draft as stable
+      - id: publish
+        name: Publish the verified draft as stable
         if: ${{ steps.reserve.outcome == 'success' }}
         run: node scripts/stable-candidate.ts publish
         env:
@@ -241,11 +243,13 @@ jobs:
   # package and the web UI, which installed apps update from.
   publish:
     name: Publish
+    outputs:
+      published: ${{ steps.release.outcome == 'success' }}
     needs: [plan, build]
     if: ${{ !cancelled() && needs.build.result == 'success' }}
     concurrency: cerium-relay-release
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     permissions:
       contents: write
     steps:
@@ -264,6 +268,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           HAS_STABLE_TAG_TOKEN: ${{ secrets.STABLE_TAG_TOKEN != '' }}
+      - if: ${{ steps.notes.outputs.publish == 'true' }}
+        uses: ./.github/actions/collect-cli
+        with:
+          version: ${{ needs.plan.outputs.version }}
       # Each runner's packages in a folder of their own, then all in one, with the update files two
       # runners both wrote merged (scripts/merge-update-files.ts).
       - name: Fetch the packages
@@ -312,7 +320,8 @@ jobs:
         if: ${{ steps.notes.outputs.publish == 'true' }}
         env: *stable-tag-env
         run: *create-stable-tag
-      - name: Publish
+      - id: release
+        name: Publish
         if: ${{ steps.notes.outputs.publish == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
@@ -320,9 +329,53 @@ jobs:
           TAG: ${{ steps.notes.outputs.tag }}
           TITLE: ${{ steps.notes.outputs.title }}
         run: |
-          gh release create "$TAG" apps/desktop/out/* apps/relay/dist/cerium-web-*.tar.gz \
+          gh release create "$TAG" apps/desktop/out/* apps/relay/dist/cerium-web-*.tar.gz "$RUNNER_TEMP"/cli-release/* \
             --verify-tag --title "$TITLE" --notes-file "$RUNNER_TEMP/notes.md" --latest
       - name: Remove the tag if publication failed
         if: ${{ failure() && steps.tag.outputs.created == 'true' }}
         env: *rollback-tag-env
         run: *rollback-stable-tag
+
+  npm:
+    name: Publish @cerium/host to npm
+    needs: [plan, promote, publish]
+    if: ${{ !cancelled() && (needs.promote.outputs.published == 'true' || needs.publish.outputs.published == 'true') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - id: credentials
+        env:
+          CONFIGURED: ${{ secrets.NPM_TOKEN != '' }}
+        run: |
+          echo "configured=$CONFIGURED" >> "$GITHUB_OUTPUT"
+          if [[ "$CONFIGURED" != true ]]; then
+            echo "::notice::NPM_TOKEN is unset. Skipping publication of @cerium/host."
+          fi
+      - if: steps.credentials.outputs.configured == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.plan.outputs.commit }}
+          persist-credentials: false
+      - if: steps.credentials.outputs.configured == 'true'
+        uses: ./.github/actions/setup
+        with:
+          filter: "cerium @cerium/host"
+      - name: Stage the public npm package
+        if: steps.credentials.outputs.configured == 'true'
+        env:
+          CERIUM_VERSION: ${{ needs.plan.outputs.version }}
+        run: bun run --cwd apps/cli build:npm
+      - name: Publish the stable version
+        if: steps.credentials.outputs.configured == 'true'
+        working-directory: apps/cli/out/npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        # The maintainer configures token authentication for this registry.
+        run: | # zizmor: ignore[use-trusted-publishing]
+          # npm expands the environment variable only when reading this job-local config.
+          export NPM_CONFIG_USERCONFIG="$RUNNER_TEMP/cerium-host.npmrc"
+          # shellcheck disable=SC2016
+          printf '%s\n' '//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}' > "$NPM_CONFIG_USERCONFIG"
+          npm publish --access public --ignore-scripts --registry https://registry.npmjs.org

@@ -9,7 +9,7 @@ import {
 } from "@cerium/protocol";
 import { describe, expect, it } from "@effect/vitest";
 
-import { approve, claim, handoffUrl, startLink, viewOf, type Pending } from "../src/linking.ts";
+import { approve, claim, confirmation, startLink, viewOf, type Pending } from "../src/linking.ts";
 
 const desktop: DeviceDraft = {
   kind: "desktop",
@@ -25,12 +25,12 @@ const victim = "user_victim" as AccountId;
 const other = "user_other" as AccountId;
 
 /** A sign-in anyone could start: no account, just a device and the hash of its own secret. */
-const started = async (device: DeviceDraft = desktop) => {
+const started = async (device: DeviceDraft = desktop, manual = false) => {
   const secret = randomToken(32);
   const request: CreateLinkRequest = {
     device,
     secretHash: await hashSecret(secret),
-    ...(device.kind === "desktop" ? { callback: { port: 49152 } } : {}),
+    ...(manual ? { handoff: "manual" } : device.kind === "desktop" ? { callback: { port: 49152 } } : {}),
   };
   const link = startLink(request, Date.now() + 60_000);
   if ("ok" in link) throw new Error(link.message);
@@ -41,6 +41,12 @@ const approved = async (link: Pending, account = victim) => {
   const outcome = await approve(link, account, { email: "victim@example.com" });
   if (!outcome.ok) throw new Error(outcome.message);
   return outcome;
+};
+
+const handoffUrl = (id: LinkId, link: Pending, code: string) => {
+  const result = confirmation(id, link, code);
+  if (!("next" in result)) throw new Error("Expected a redirect");
+  return result.next;
 };
 
 const codeIn = (next: string) =>
@@ -130,6 +136,34 @@ describe("a sign-in started on the user's own machine", () => {
     });
     expect(viewOf(linked).status).toBe("confirmed");
     expect((await approve(linked, victim, {})).ok).toBe(false);
+  });
+});
+
+describe("a manual handoff", () => {
+  it("exposes the code only in the authenticated confirmation and requires both factors to join", async () => {
+    const { link, secret } = await started({ ...desktop, headless: true }, true);
+    const { link: confirmed, code } = await approved(link);
+    expect(confirmation(id, confirmed, code)).toEqual({ code });
+    expect(viewOf(confirmed)).toEqual({
+      device: { ...desktop, headless: true },
+      status: "approved",
+      expiresAt: link.expiresAt,
+      handoff: "manual",
+    });
+    expect(await claim(confirmed, secret, undefined)).toEqual({ _tag: "wait" });
+    expect(await claim(confirmed, randomToken(32), code)).toEqual({ _tag: "forbidden" });
+    expect(await claim(confirmed, secret, randomToken(32))).toEqual({ _tag: "burn" });
+    expect(await claim(confirmed, secret, code)).toEqual({
+      _tag: "join",
+      account: confirmed.approved!.account,
+    });
+  });
+
+  it("refuses ambiguous handoffs and browser manual handoffs", () => {
+    for (const request of [{ device: desktop, callback: { port: 4567 } }, { device: browser }]) {
+      const outcome = startLink({ ...request, secretHash: "0".repeat(64), handoff: "manual" }, 0);
+      expect("ok" in outcome && outcome.status).toBe(400);
+    }
   });
 });
 

@@ -267,6 +267,29 @@ body {
   color: var(--fg-secondary);
 }
 
+.handoff-code {
+  display: block;
+  margin: 20px 0;
+  padding: 14px 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--surface-sunken);
+  font-family: ui-monospace, monospace;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.copy-status {
+  margin: 8px 0 0;
+  color: var(--fg-secondary);
+  font-size: 13px;
+  text-align: center;
+}
+
+.copy-status:empty {
+  margin: 0;
+}
+
 .machine-name {
   font-weight: 600;
   overflow-wrap: anywhere;

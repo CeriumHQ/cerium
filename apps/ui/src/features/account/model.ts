@@ -18,6 +18,9 @@ const PLATFORMS: Readonly<Record<string, string>> = {
 
 export const platformLabel = (platform: string) => PLATFORMS[platform] ?? platform;
 
+export const machinePlatform = (device: DeviceInfo) =>
+  device.headless ? `${platformLabel(device.platform)} · Headless CLI` : platformLabel(device.platform);
+
 /**
  * "Windows · Nightly": a desktop's platform, and its channel when it isn't stable, since a nightly
  * keeps its own data and is a machine of its own. A browser's name ("Edge on Windows", "iPhone")
@@ -25,7 +28,7 @@ export const platformLabel = (platform: string) => PLATFORMS[platform] ?? platfo
  */
 export const deviceDetails = (device: DeviceInfo): string =>
   [
-    device.kind === "desktop" ? platformLabel(device.platform) : undefined,
+    device.kind === "desktop" ? machinePlatform(device) : undefined,
     device.kind !== "desktop"
       ? undefined
       : device.channel === "nightly"

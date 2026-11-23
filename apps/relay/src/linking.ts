@@ -5,27 +5,27 @@ import {
   type AccountId,
   type AccountProfile,
   type ConfirmLinkRequest,
+  type ConfirmLinkResponse,
   type CreateLinkRequest,
   type DeviceDraft,
   type DeviceId,
   type Installation,
   type LinkCallback,
   type LinkId,
+  type LinkHandoffMode,
   type LinkView,
 } from "@cerium/protocol";
 
-// What a pending sign-in may do, as plain functions over its record, so they're tested without the
-// Workers runtime. Anyone can start a sign-in, so confirming one in a browser doesn't let the device
-// in: it hands the page a one-time code, which the page passes only to a device beside it (a
-// desktop's loopback listener, or the web client on this origin), and the device joins once it
-// claims the link with its secret and that code. A link someone else started and sent the user
-// takes the code to the user's own computer, where nothing is waiting for it.
+// Anyone can start a sign-in. Only the confirming page learns its one-time code. The device must
+// receive that code over loopback, on the web client's own origin, or from its user's terminal,
+// and present it with its original secret before it can join the account.
 
 export interface Pending {
   readonly device: DeviceDraft;
   readonly secretHash: string;
   readonly installation?: Installation;
   readonly callback?: LinkCallback;
+  readonly handoff?: LinkHandoffMode;
   readonly expiresAt: number;
   /** Confirmed in a browser: by whom, and the hash of the code that finishes it. */
   readonly approved?: {
@@ -44,13 +44,18 @@ const refusal = (status: number, message: string): Refusal => ({ ok: false, stat
 
 /** A new sign-in, or why the relay won't start it. */
 export const startLink = (request: CreateLinkRequest, expiresAt: number): Pending | Refusal => {
-  if (request.device.kind === "desktop" && request.callback === undefined)
+  if (request.device.kind === "desktop" && request.callback === undefined && request.handoff !== "manual")
     return refusal(426, "This version of Cerium can't sign in anymore. Update Cerium, then sign in again.");
-  if (request.device.kind === "browser" && request.callback !== undefined)
+  if (
+    (request.device.kind === "browser" &&
+      (request.callback !== undefined || request.handoff !== undefined)) ||
+    (request.handoff === "manual" && request.callback !== undefined)
+  )
     return refusal(400, "That sign-in request isn't one the relay understands.");
   return {
     device: request.device,
     secretHash: request.secretHash,
+    ...(request.handoff === undefined ? {} : { handoff: request.handoff }),
     ...(request.installation === undefined ? {} : { installation: request.installation }),
     ...(request.callback === undefined ? {} : { callback: request.callback }),
     expiresAt,
@@ -59,20 +64,23 @@ export const startLink = (request: CreateLinkRequest, expiresAt: number): Pendin
 
 export const viewOf = (link: Pending): LinkView => ({
   device: link.device,
+  ...(link.handoff === undefined ? {} : { handoff: link.handoff }),
   status: link.linked !== undefined ? "confirmed" : link.approved !== undefined ? "approved" : "pending",
   expiresAt: link.expiresAt,
 });
 
 /**
- * Where the page takes the code once the user confirms: the desktop's loopback listener, or the web
- * client on the page's own origin. Built here from what the link was started with, never from what
- * the page is told, so no link can send its code anywhere else.
+ * The confirming page shows a terminal code or redirects to a trusted destination derived from
+ * the original request: a desktop's loopback listener or the web client on the page's origin.
  */
-export const handoffUrl = (id: LinkId, link: Pending, code: string): string => {
+export const confirmation = (id: LinkId, link: Pending, code: string): ConfirmLinkResponse => {
+  if (link.handoff === "manual") return { code };
   const query = `link=${encodeURIComponent(id)}&code=${encodeURIComponent(code)}`;
-  return link.callback === undefined
-    ? `/app/#cerium-link=${encodeURIComponent(id)}.${encodeURIComponent(code)}`
-    : `http://127.0.0.1:${link.callback.port}${LINK_CALLBACK_PATH}?${query}`;
+  const next =
+    link.callback === undefined
+      ? `/app/#cerium-link=${encodeURIComponent(id)}.${encodeURIComponent(code)}`
+      : `http://127.0.0.1:${link.callback.port}${LINK_CALLBACK_PATH}?${query}`;
+  return { next };
 };
 
 /**

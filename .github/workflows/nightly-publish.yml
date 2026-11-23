@@ -30,7 +30,7 @@ jobs:
     name: Deploy and publish
     concurrency: cerium-relay-release
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     outputs:
       published: ${{ steps.publish.outcome == 'success' }}
     steps:
@@ -60,6 +60,10 @@ jobs:
           RELEASE: ${{ inputs.release }}
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+      - if: ${{ steps.plan.outputs.publish == 'true' }}
+        uses: ./.github/actions/collect-cli
+        with:
+          version: ${{ inputs.version }}
       # Each native runner supplies one platform feed.
       - name: Fetch the update files
         if: ${{ steps.plan.outputs.publish == 'true' }}
@@ -100,7 +104,7 @@ jobs:
           TITLE: ${{ steps.replan.outputs.title }}
           COMMIT: ${{ steps.replan.outputs.commit }}
         run: |
-          gh release upload "$RELEASE" apps/desktop/out/*.yml apps/relay/dist/cerium-web-*.tar.gz --clobber
+          gh release upload "$RELEASE" apps/desktop/out/*.yml apps/relay/dist/cerium-web-*.tar.gz "$RUNNER_TEMP"/cli-release/* --clobber
           gh release edit "$RELEASE" --draft=false --prerelease --latest=false --target "$COMMIT" \
             --title "$TITLE" --notes-file "$RUNNER_TEMP/notes.md"
       # Drafts from runs that never published, which a later push's nightly replaced or a failed check

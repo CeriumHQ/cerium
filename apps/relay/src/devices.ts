@@ -22,6 +22,7 @@ export const toDeviceInfo = (
 ): DeviceInfo => ({
   id: row.id as DeviceId,
   kind: row.kind,
+  ...(row.headless === null ? {} : { headless: row.headless }),
   name: row.name,
   platform: row.platform,
   channel: row.channel,

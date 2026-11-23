@@ -6,6 +6,8 @@ import { createHash } from "node:crypto";
 import { appendFileSync, closeSync, createReadStream, openSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { hostAssets } from "./host-release.ts";
+
 const PREFIX = "cerium-stable-candidate-";
 const MARKER = "cerium stable candidate v3";
 const BOT = "github-actions[bot]";
@@ -153,6 +155,7 @@ const publicNames = () =>
       return [...files, update];
     }),
     webTar(),
+    ...hostAssets(version()),
   ]);
 
 async function digest(path: string, name: string): Promise<FileDigest> {
@@ -243,14 +246,14 @@ async function download(asset: Asset, path: string) {
   );
 }
 
-function upload(paths: string[]) {
+function upload(paths: string[], timeout = 240_000) {
   requireCandidate(
     env("GITHUB_RUN_ATTEMPT") === "1" && candidate() === candidateTag(env("GITHUB_RUN_ID")),
     "Only the original preparation run may upload candidate files.",
   );
   execFileSync("gh", ["release", "upload", candidate(), ...paths, "--repo", env("GITHUB_REPOSITORY")], {
     stdio: "inherit",
-    timeout: 240_000,
+    timeout,
   });
 }
 
@@ -292,8 +295,12 @@ function prepare() {
   }
   if (
     !sameFiles(commit(), head, [
+      ".github/actions/collect-cli",
       ".github/actions/package",
       ".github/actions/web",
+      ".github/workflows/package-cli.yml",
+      "apps/cli/src/release.ts",
+      "scripts/host-release.ts",
       "scripts/stable-candidate.ts",
     ])
   ) {
@@ -367,6 +374,10 @@ function find() {
       !sameFiles(run.head_sha, env("GITHUB_SHA"), [
         CANDIDATE_WORKFLOW,
         ".github/workflows/stable-build.yml",
+        ".github/workflows/package-cli.yml",
+        ".github/actions/collect-cli",
+        "apps/cli/src/release.ts",
+        "scripts/host-release.ts",
         "scripts/stable-candidate.ts",
       ]) ||
       !sameFiles(commit(), env("GITHUB_SHA"), ["scripts/stable-candidate.ts"])
@@ -457,13 +468,19 @@ async function seal() {
   }
   checkFiles(await readRecord<FileDigest[]>("web"), [DEPLOY_ARCHIVE, webTar()]);
 
-  const merged = new Map<string, FileDigest>();
+  const localAssets = new Map<string, FileDigest>();
   for (const [name, text] of updates) {
     const path = temp(name);
     writeFileSync(path, text);
-    merged.set(name, await digest(path, name));
+    localAssets.set(name, await digest(path, name));
   }
-  upload([...updates.keys()].map(temp));
+  const cliPaths: string[] = [];
+  for (const name of hostAssets(version())) {
+    const path = join(temp("cli-release"), name);
+    localAssets.set(name, await digest(path, name));
+    cliPaths.push(path);
+  }
+  upload([...updates.keys()].map(temp).concat(cliPaths), 600_000);
   for (const key of recordKeys)
     api(`${repo()}/releases/assets/${initial.get(recordName(key))!.id}`, "DELETE");
 
@@ -471,7 +488,7 @@ async function seal() {
   exactDraft(sealed);
   const final = assets(sealed, new Set([...publicNames(), DEPLOY_ARCHIVE]));
   for (const asset of final) {
-    const expected = merged.get(asset.name) ?? initial.get(asset.name)!;
+    const expected = localAssets.get(asset.name) ?? initial.get(asset.name)!;
     requireCandidate(
       same(fileDigest(asset), fileDigest(expected)),
       "An asset changed while sealing the draft.",

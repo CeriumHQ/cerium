@@ -6,6 +6,7 @@ import { leftBehind, stateFor, type DeviceRow } from "../src/devices.ts";
 const row = (id: string, extra: Partial<DeviceRow> = {}): DeviceRow => ({
   id,
   kind: "desktop",
+  headless: null,
   name: `Machine ${id}`,
   platform: "win32",
   channel: "stable",
@@ -22,6 +23,12 @@ const account: AccountProfile = { id: "user_1" as AccountId, email: "me@example.
 
 describe("state sent to a device", () => {
   const rows = [row("a", { lastSeenAt: 5_000 }), row("b")];
+
+  it("includes CLI metadata only for machines that reported it", () => {
+    const state = stateFor(rows[0]!, [rows[0]!, row("cli", { headless: true })], new Set(), account);
+    expect(state.devices[0]).not.toHaveProperty("headless");
+    expect(state.devices[1]).toMatchObject({ kind: "desktop", headless: true });
+  });
 
   it("lists every device, with who is online", () => {
     const state = stateFor(rows[1]!, rows, new Set(["a"]), account);

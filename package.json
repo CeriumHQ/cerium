@@ -18,6 +18,8 @@
     "typecheck": "tsc -b",
     "build": "vp run -r build",
     "build:desktop": "vp run --filter @cerium/ui --filter @cerium/desktop build",
+    "build:cli": "bun run --cwd apps/cli build",
+    "package:cli": "bun run --cwd apps/cli package",
     "package": "bun run build:desktop && bun run --cwd apps/desktop package",
     "verify": "bun run check && bun run typecheck && bun run test --run",
     "lint:workflows": "node scripts/lint-workflows.ts",

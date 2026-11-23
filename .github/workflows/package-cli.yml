@@ -1,0 +1,88 @@
+name: Package the headless CLI
+
+on:
+  workflow_call:
+    inputs:
+      commit: { type: string, required: true }
+      version: { type: string, required: true }
+      keep:
+        description: Upload the verified archives for publication.
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: CLI (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: linux-x64, runner: ubuntu-latest }
+          - { target: linux-arm64, runner: ubuntu-24.04-arm }
+          - { target: darwin-arm64, runner: macos-15 }
+          - { target: darwin-x64, runner: macos-15-intel }
+          - { target: win32-x64, runner: windows-latest }
+          - { target: win32-arm64, runner: windows-11-arm }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.commit }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          filter: "cerium @cerium/host"
+      - run: bun run --cwd apps/cli build
+      - name: Package the native host
+        env:
+          VERSION: ${{ inputs.version }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          bun run --cwd apps/cli package -- --target="$TARGET" --version="$VERSION" --out="$RUNNER_TEMP/cli-release"
+      - name: Install and start the Unix archive
+        if: runner.os != 'Windows'
+        env:
+          VERSION: ${{ inputs.version }}
+          CERIUM_HOST_DIR: ${{ runner.temp }}/installed host
+        run: |
+          # Exercise the public installer with this run's assets before they exist on GitHub.
+          mkdir -p "$RUNNER_TEMP/offline"
+          cat > "$RUNNER_TEMP/offline/curl" <<'SH'
+          #!/bin/sh
+          set -eu
+          test "$3" = -o
+          cp "$RUNNER_TEMP/cli-release/${2##*/}" "$4"
+          SH
+          chmod +x "$RUNNER_TEMP/offline/curl"
+          PATH="$RUNNER_TEMP/offline:$PATH" sh apps/site/public/install.sh --version "$VERSION"
+          test "$("$HOME/.local/bin/cerium-host" --version)" = "$VERSION"
+      - name: Install and start the Windows archive
+        if: runner.os == 'Windows'
+        shell: powershell
+        env:
+          VERSION: ${{ inputs.version }}
+          CERIUM_HOST_DIR: ${{ runner.temp }}/installed host
+        run: |
+          function Invoke-WebRequest {
+            param([switch]$UseBasicParsing, [uri]$Uri, [string]$OutFile)
+            $name = [IO.Path]::GetFileName($Uri.AbsolutePath)
+            Copy-Item -LiteralPath (Join-Path $env:RUNNER_TEMP "cli-release/$name") -Destination $OutFile
+          }
+          & ./apps/site/public/install.ps1 -Version $env:VERSION
+          $reported = & cerium-host.cmd --version
+          if ($LASTEXITCODE -ne 0 -or $reported -ne $env:VERSION) { throw "Installed host reports $reported" }
+      - if: inputs.keep
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cli-${{ matrix.target }}
+          path: ${{ runner.temp }}/cli-release/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 3

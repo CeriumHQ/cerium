@@ -3,7 +3,7 @@
 // the user's session token. Confirming hands the page a one-time code, which it takes where the
 // relay says: to Cerium on this computer, listening on its loopback address, which sends the page
 // back here; or to the web client on this origin. The device joins once it claims the link with that
-// code, so a link someone else started and sent the user can't join their account. The link's id
+// code. A CLI user can instead copy the code into their terminal. The link's id
 // rides in the URL's fragment, so it never reaches a server log; it's kept for the tab in case a
 // sign-in redirect drops it.
 
@@ -38,6 +38,7 @@ const describe = (device) =>
   [
     PLATFORMS[device.platform] ?? device.platform,
     device.kind === "browser" ? "Web app" : undefined,
+    device.headless ? "Headless CLI" : undefined,
     CHANNELS[device.channel],
     device.version,
   ]
@@ -72,7 +73,7 @@ const showOutcome = (title, text) => {
 };
 
 const showExpired = () =>
-  showOutcome("This sign-in link has expired", "Start again from Settings → Account in Cerium.");
+  showOutcome("This sign-in link has expired", "Start sign-in again on the device you want to connect.");
 
 const linkId = () => {
   const fromUrl = location.hash.slice(1);
@@ -106,25 +107,55 @@ const main = async () => {
       "Connected",
       `${device.name} is now part of your account. You can close this tab and go back to Cerium.`,
     );
-  let status = link.body.status;
-  let error;
-  // Cerium on this computer took the code and sent the page back: it joins in a moment.
-  if (status === "approved" && !isBrowser(device)) {
-    showOutcome("Finishing in Cerium", `${device.name} is joining your account…`);
-    const until = Date.now() + FINISH_WITHIN_MS;
-    while (status === "approved" && Date.now() < until) {
+  const waitForClaim = async (until) => {
+    while (Date.now() < until) {
       await new Promise((resolve) => setTimeout(resolve, FINISH_POLL_MS));
       const again = await request(`/api/links/${id}`).catch(() => undefined);
-      if (again?.status === 404) return showExpired();
-      if (again?.ok) status = again.body.status;
+      if (again?.status === 404) return "expired";
+      if (again?.ok && again.body.status === "confirmed") return "connected";
     }
-    if (status === "approved")
-      error =
-        "Cerium on this computer didn't take this sign-in. If you started it here, make sure Cerium is open and connect again.";
-  }
-  if (status === "confirmed") {
+    return "timeout";
+  };
+
+  const showCode = async (code) => {
+    panel.innerHTML = `
+      <h1>Finish in your terminal</h1>
+      <p class="lead">Paste this code into the terminal where you started signing in on <strong>${escapeHtml(device.name)}</strong>.</p>
+      <code class="handoff-code" tabindex="0" id="code">${escapeHtml(code)}</code>
+      <button type="button" class="button" id="copy">Copy code</button>
+      <p class="copy-status" role="status" id="copy-status"></p>`;
+    const status = document.getElementById("copy-status");
+    const displayedCode = document.getElementById("code");
+    document.getElementById("copy").addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(code);
+        status.textContent = "Code copied.";
+      } catch {
+        const range = document.createRange();
+        range.selectNodeContents(displayedCode);
+        const selection = window.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+        status.textContent = "Copy the selected code.";
+      }
+    });
+    const outcome = await waitForClaim(link.body.expiresAt);
+    return outcome === "connected" ? showConnected() : showExpired();
+  };
+
+  let error;
+  if (link.body.status === "confirmed") {
     if (isBrowser(device)) return location.replace("/app/");
     return showConnected();
+  }
+  // A loopback listener sent the page back. A reloaded manual link can issue a fresh code.
+  if (link.body.status === "approved" && !isBrowser(device) && link.body.handoff !== "manual") {
+    showOutcome("Finishing in Cerium", `${device.name} is joining your account…`);
+    const outcome = await waitForClaim(Date.now() + FINISH_WITHIN_MS);
+    if (outcome === "connected") return showConnected();
+    if (outcome === "expired") return showExpired();
+    error =
+      "Cerium on this computer didn't take this sign-in. If you started it here, make sure Cerium is open and connect again.";
   }
 
   const clerk = await loadClerk(config.body.publishableKey);
@@ -210,8 +241,9 @@ const main = async () => {
         error = result.body.message ?? `The relay couldn't connect this ${noun(device)}. Try again.`;
         return;
       }
-      const next = result.body.next;
-      if (typeof next !== "string") {
+      const { next, code } = result.body;
+      const manual = link.body.handoff === "manual";
+      if (manual ? typeof code !== "string" : typeof next !== "string") {
         error = `The relay couldn't connect this ${noun(device)}. Try again.`;
         return;
       }
@@ -221,6 +253,7 @@ const main = async () => {
       } catch {
         // Storage is off; nothing was kept.
       }
+      if (manual) return await showCode(code);
       // A browser signs in from its own tab: back to the app, which finishes signing in with the
       // code. A machine's Cerium takes it on this computer and sends the page back here.
       if (isBrowser(device)) {

@@ -6,6 +6,7 @@ import { isShowing, kindsOf, PRESENCE_FRESH_MS, recipients, threadKey, type Push
 const device = (id: string, kind: DeviceRow["kind"]): DeviceRow => ({
   id,
   kind,
+  headless: null,
   name: id,
   platform: kind === "browser" ? "ios" : "win32",
   channel: "stable",

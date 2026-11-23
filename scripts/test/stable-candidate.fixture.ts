@@ -9,6 +9,8 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { hostAssets } from "../host-release.ts";
+
 const bot = { login: "github-actions[bot]" };
 const hour = 3_600_000;
 const tag = "cerium-stable-candidate-502";
@@ -258,6 +260,9 @@ function runFixture() {
       writeFileSync(output, "");
       rmSync(runnerTemp, { force: true, recursive: true });
       mkdirSync(runnerTemp);
+      if (command === "seal") {
+        for (const name of hostAssets(version)) file(`runner-temp/cli-release/${name}`, name);
+      }
       const result = spawnSync(process.execPath, [helper, command], {
         cwd: workspace,
         encoding: "utf8",
@@ -398,8 +403,9 @@ function runFixture() {
     assert.equal(published.draft, false);
     assert.equal(published.tag_name, `v${version}`);
     assert.equal(published.body, "The current release notes.\n");
-    assert.equal(published.assets.length, 11);
+    assert.equal(published.assets.length, 11 + hostAssets(version).length);
     const publicAssets = new Map(published.assets.map((asset) => [asset.name, asset]));
+    for (const name of hostAssets(version)) assert.ok(publicAssets.has(name));
     assert.ok(publicAssets.has(`cerium-dictation-${version}.wasm`));
     for (const [, , update, files] of native) {
       for (const file of files) assert.ok(publicAssets.has(file));

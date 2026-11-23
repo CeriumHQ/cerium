@@ -12,6 +12,9 @@ import {
   formatCredential,
   hashSecret,
   LinkCallback,
+  LINK_CALLBACK_PATH,
+  LinkCode,
+  LinkHandoffMode,
   parseCredential,
   randomToken,
   RelayMessage,
@@ -87,6 +90,8 @@ export interface AccountOptions {
   readonly relayUrl: string;
   /** How this device describes itself when it signs in; its build, again each time it connects. */
   readonly device: DeviceDraft;
+  /** Open the live device socket after sign-in. Account-only CLI commands set this to false. */
+  readonly connect?: boolean;
   /** This install, so signing in again takes back its place in the account instead of adding it twice. */
   readonly installation?: Installation | undefined;
   /**
@@ -105,11 +110,12 @@ export interface HandedCode {
 }
 
 /**
- * How the sign-in page hands this device the code that finishes signing in, which only a device
- * beside the browser the user confirmed in can take: a desktop listens on its loopback address,
- * which the relay records with the link; the web client is sent back to its own page with the code.
+ * A desktop listens on its loopback address, a CLI takes a code pasted into its terminal, and
+ * the web client receives the code on its own page.
  */
 export interface LinkHandoff {
+  /** A manual listener supplies terminal input and needs no loopback callback. */
+  readonly mode?: LinkHandoffMode;
   /**
    * Starts taking codes, for as long as the scope lasts: on `callback`, the one a link made before a
    * restart named, or on a new one. The page goes to `returnTo(link)` once it handed one over.
@@ -118,7 +124,7 @@ export interface LinkHandoff {
     readonly callback?: LinkCallback | undefined;
     readonly returnTo: (link: string) => string;
   }): Effect.Effect<
-    { readonly callback?: LinkCallback; readonly next: Effect.Effect<HandedCode> },
+    { readonly callback?: LinkCallback; readonly next: Effect.Effect<HandedCode | string> },
     AccountError,
     Scope.Scope
   >;
@@ -141,10 +147,29 @@ const Pending = Schema.TaggedStruct("Pending", {
   relayUrl: Schema.String,
   link: CreateLinkResponse,
   secret: Schema.String,
+  handoff: Schema.optionalKey(LinkHandoffMode),
   /** Where the page hands a desktop its code, listened on again after a restart. */
   callback: Schema.optionalKey(LinkCallback),
 });
 type Pending = typeof Pending.Type;
+
+const isLinkCode = Schema.is(LinkCode);
+
+/** A terminal may receive either the displayed code or a loopback address from an older link. */
+const pastedCode = (line: string, pending: Pending): string | undefined => {
+  const input = line.trim();
+  if (pending.handoff === "manual" && isLinkCode(input)) return input;
+  const url = URL.parse(input);
+  if (
+    url?.protocol !== "http:" ||
+    url.hostname !== "127.0.0.1" ||
+    url.pathname !== LINK_CALLBACK_PATH ||
+    url.searchParams.get("link") !== pending.link.id
+  )
+    return undefined;
+  const code = url.searchParams.get("code");
+  return isLinkCode(code) ? code : undefined;
+};
 
 const SavedJson = Schema.fromJsonString(Schema.Union([Linked, Pending]));
 
@@ -490,6 +515,7 @@ export class Account extends Context.Service<
           Effect.gen(function* () {
             const credential = parseCredential(linked.credential);
             if (credential === undefined) return yield* forget(signedOffMessage.invalid);
+            if (options.connect === false) return;
             let failures = 0;
             while (true) {
               const online = yield* SubscriptionRef.get(state).pipe(
@@ -513,14 +539,20 @@ export class Account extends Context.Service<
             }
           });
 
-        const start = (linked: Linked) =>
+        const setSignedIn = (linked: Linked) =>
           SubscriptionRef.set(state, {
             _tag: "SignedIn",
             account: linked.account,
             deviceId: linked.deviceId,
-            connection: "connecting",
+            connection: options.connect === false ? "offline" : "connecting",
             devices: [],
-          }).pipe(Effect.andThen(FiberHandle.run(session, stayConnected(linked))), Effect.asVoid);
+          });
+
+        const start = (linked: Linked) =>
+          setSignedIn(linked).pipe(
+            Effect.andThen(FiberHandle.run(session, stayConnected(linked))),
+            Effect.asVoid,
+          );
 
         // ---- Signing in ----------------------------------------------------------------------
 
@@ -528,13 +560,19 @@ export class Account extends Context.Service<
          * Waits for the page to hand over this link's code once the user confirms, claims the link
          * with it, then saves the sign-in and connects.
          */
-        const waitForBrowser = ({ link, secret }: Pending, next: Effect.Effect<HandedCode>) =>
+        const waitForBrowser = (pending: Pending, next: Effect.Effect<HandedCode | string>) =>
           Effect.gen(function* () {
+            const { link, secret } = pending;
             // Codes for other links, which a page someone else sent the user might bring, are no use.
             const handed = yield* Effect.gen(function* () {
               while (true) {
                 const got = yield* next;
-                if (got.link === link.id) return got.code;
+                if (typeof got === "string") {
+                  if (options.handoff?.mode === "manual") {
+                    const code = pastedCode(got, pending);
+                    if (code !== undefined) return code;
+                  }
+                } else if (got.link === link.id) return got.code;
               }
             }).pipe(Effect.timeoutOption(Math.max(0, link.expiresAt - Date.now())));
             if (Option.isNone(handed))
@@ -563,14 +601,8 @@ export class Account extends Context.Service<
                     error: saved.failure.message,
                   });
                 }
-                yield* SubscriptionRef.set(state, {
-                  _tag: "SignedIn",
-                  account: linked.account,
-                  deviceId: linked.deviceId,
-                  connection: "connecting",
-                  devices: [],
-                });
-                return yield* stayConnected(linked);
+                yield* setSignedIn(linked);
+                return linked;
               }
               // Gone or refused: this link won't be confirmed. Anything else is worth asking again.
               if ("error" in claim && (claim.error.status === 410 || claim.error.status === 403)) break;
@@ -595,7 +627,7 @@ export class Account extends Context.Service<
 
         /** Waits for the browser again on a link a reload or restart found. */
         const resumeLink = (pending: Pending) =>
-          handoff === undefined
+          handoff === undefined || (pending.handoff === "manual" && handoff.mode !== "manual")
             ? forget()
             : signingIn(pending).pipe(
                 Effect.andThen(
@@ -605,6 +637,9 @@ export class Account extends Context.Service<
                       Effect.flatMap((listening) => waitForBrowser(pending, listening.next)),
                       Effect.catch((error: AccountError) => forget(error.message)),
                       Effect.scoped,
+                      Effect.flatMap((linked) =>
+                        linked === undefined ? Effect.void : stayConnected(linked),
+                      ),
                     ),
                   ),
                 ),
@@ -632,6 +667,7 @@ export class Account extends Context.Service<
               const link = yield* createLink({
                 device: options.device,
                 secretHash,
+                ...(handoff.mode === undefined ? {} : { handoff: handoff.mode }),
                 ...(options.installation === undefined ? {} : { installation: options.installation }),
                 ...(listening.callback === undefined ? {} : { callback: listening.callback }),
               });
@@ -640,21 +676,22 @@ export class Account extends Context.Service<
                 relayUrl: relay,
                 link,
                 secret,
+                ...(handoff.mode === undefined ? {} : { handoff: handoff.mode }),
                 ...(listening.callback === undefined ? {} : { callback: listening.callback }),
               };
               // Best effort: without it, the sign-in still finishes unless this device restarts first.
               yield* save(pending).pipe(Effect.ignore);
               yield* signingIn(pending);
               yield* Deferred.succeed(started, { url: link.url });
-              yield* waitForBrowser(pending, listening.next);
+              return yield* waitForBrowser(pending, listening.next);
             }).pipe(
-              Effect.catch((error: AccountError) => Deferred.fail(started, error)),
+              Effect.catch((error: AccountError) => Deferred.fail(started, error).pipe(Effect.asVoid)),
               // Cancelled before the link was made, the caller hears so; done, this does nothing.
               Effect.ensuring(
                 Deferred.fail(started, new AccountError({ message: "Signing in was cancelled." })),
               ),
               Effect.scoped,
-              Effect.asVoid,
+              Effect.flatMap((linked) => (linked === undefined ? Effect.void : stayConnected(linked))),
             ),
           );
           return yield* Deferred.await(started);

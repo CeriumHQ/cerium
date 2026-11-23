@@ -1,9 +1,10 @@
 import { describe, expect, it } from "@effect/vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
+  loginShellPath,
   pathBetweenMarks,
   rememberedPath,
   rememberPath,
@@ -93,3 +94,29 @@ describe("rememberedPath", () => {
     }
   });
 });
+
+it.skipIf(process.platform === "win32")(
+  "hydrates a minimal service environment from the configured login shell",
+  async () => {
+    const directory = mkdtempSync(join(tmpdir(), "cerium-login-shell-"));
+    try {
+      const shell = join(directory, "profile-shell");
+      writeFileSync(
+        shell,
+        [
+          "#!/bin/sh",
+          '[ "$1" = "-ilc" ] || exit 1',
+          'export PATH="/profile/bin:$PATH"',
+          'printf "profile banner\\n"',
+          'exec /bin/sh -c "$2"',
+        ].join("\n"),
+        { mode: 0o700 },
+      );
+      const env = { SHELL: shell, PATH: "/usr/bin:/bin" };
+      const path = await loginShellPath(env);
+      expect(withShellPath(env, path).PATH).toBe("/profile/bin:/usr/bin:/bin");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  },
+);

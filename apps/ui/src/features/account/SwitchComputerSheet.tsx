@@ -1,12 +1,12 @@
 import type { AccountState } from "@cerium/protocol";
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
-import { Monitor } from "lucide-react";
 import { useContext } from "react";
 
 import { driveMachine, machineAtom } from "../../backend/machine.ts";
 import { WEB } from "../../backend/target.ts";
 import { Sheet, SheetRow } from "../../components/ui/Sheet.tsx";
-import { platformLabel, thisDevice, whyUnreachable } from "./model.ts";
+import { DeviceIcon } from "./DeviceIcon.tsx";
+import { machinePlatform, thisDevice, whyUnreachable } from "./model.ts";
 
 /**
  * The compact window's way to drive another of the account's computers, from the Thread sheet's
@@ -32,11 +32,11 @@ export function SwitchComputerSheet({
   const driving = driven?.id ?? (WEB ? undefined : account.deviceId);
   const rows = [
     ...(self
-      ? [{ device: self, detail: `This computer · ${platformLabel(self.platform)}`, reason: undefined }]
+      ? [{ device: self, detail: `This computer · ${machinePlatform(self)}`, reason: undefined }]
       : []),
     ...others.map((device) => {
       const reason = whyUnreachable(device);
-      return { device, detail: reason ?? platformLabel(device.platform), reason };
+      return { device, detail: reason ?? machinePlatform(device), reason };
     }),
   ];
 
@@ -58,7 +58,7 @@ export function SwitchComputerSheet({
                     device.id === account.deviceId ? undefined : { id: device.id, name: device.name },
                   );
                 }}
-                icon={<Monitor size={16} strokeWidth={1.75} />}
+                icon={<DeviceIcon device={device} size={16} strokeWidth={1.75} />}
                 trailing={current ? <span className="text-meta text-fg-secondary">Current</span> : undefined}
                 className="h-14"
               >

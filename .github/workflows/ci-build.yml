@@ -305,6 +305,16 @@ jobs:
         with:
           version: ${{ needs.plan.outputs.version }}
 
+  package-cli:
+    name: Package the headless CLI
+    needs: plan
+    if: ${{ needs.plan.outputs.package == 'true' }}
+    uses: ./.github/workflows/package-cli.yml
+    with:
+      commit: ${{ github.sha }}
+      version: ${{ needs.plan.outputs.version }}
+      keep: ${{ needs.plan.outputs.release != '' }}
+
   # The merge queue smoke-tests every shipped package on its native runner.
   package-linux:
     name: Package (Linux x64)
@@ -397,6 +407,7 @@ jobs:
         test-windows,
         test-macos,
         web,
+        package-cli,
         package-linux,
         package-windows,
         package-macos,

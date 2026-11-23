@@ -5,7 +5,12 @@
   "license": "Apache-2.0",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./device": "./src/device.ts",
+    "./headless": "./src/headless.ts",
+    "./vault": "./src/vault.ts",
+    "./runtime": "./src/runtime.ts",
+    "./shellPath": "./src/shellPath.ts"
   },
   "dependencies": {
     "@cerium/account": "workspace:*",
