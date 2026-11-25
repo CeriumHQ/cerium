@@ -24,7 +24,8 @@ import {
   useStartCommand,
 } from "./ActionDialog.tsx";
 import { useHarnessUpdates, type HarnessUpdate } from "./harnessUpdates.ts";
-import { SettingsNote, SettingsPage, SettingsSwitch } from "./parts.tsx";
+import { partitionHarnesses } from "./harnessModel.ts";
+import { SettingsNote, SettingsPage, SettingsSection, SettingsSwitch } from "./parts.tsx";
 import { useSetting } from "./useSetting.ts";
 import { buttonClass } from "../../components/ui/Button.tsx";
 import { InstalledMenu, RowButton, RowLink, ToolRow } from "./ToolRow.tsx";
@@ -82,8 +83,28 @@ export function HarnessSettings() {
   const outdated = (statuses ?? []).filter(
     (status): status is Installed =>
       status._tag === "HarnessInstalled" &&
+      status.auth._tag === "LoggedIn" &&
+      !disabled.value.includes(status.provider) &&
       status.latestVersion !== undefined &&
       status.updateCommand !== undefined,
+  );
+  const groups =
+    statuses === undefined ? undefined : partitionHarnesses(OFFERED_PROVIDERS, statuses, disabled.value);
+  const renderList = (providers: ReadonlyArray<ProviderId>) => (
+    <ul className="divide-y divide-line-subtle rounded-lg border border-line-subtle bg-surface-pane">
+      {providers.map((provider) => (
+        <li key={provider}>
+          <HarnessRow
+            provider={provider}
+            status={statuses?.find((status) => status.provider === provider)}
+            local={machine === undefined}
+            onChanged={check}
+            unknown={statuses === undefined}
+            use={useOf(provider)}
+          />
+        </li>
+      ))}
+    </ul>
   );
 
   return (
@@ -119,20 +140,40 @@ export function HarnessSettings() {
           {keepsChoice ? null : (
             <SettingsNote>Update Cerium on this machine to turn harnesses off.</SettingsNote>
           )}
-          <ul className="divide-y divide-line-subtle rounded-lg border border-line-subtle bg-surface-pane">
-            {OFFERED_PROVIDERS.map((provider) => (
-              <li key={provider}>
-                <HarnessRow
-                  provider={provider}
-                  status={statuses?.find((status) => status.provider === provider)}
-                  local={machine === undefined}
-                  onChanged={check}
-                  unknown={statuses === undefined}
-                  use={useOf(provider)}
-                />
-              </li>
-            ))}
-          </ul>
+          {groups === undefined ? (
+            renderList(OFFERED_PROVIDERS)
+          ) : (
+            <>
+              {groups.enabled.length > 0 ? (
+                <SettingsSection
+                  title={
+                    <>
+                      Enabled{" "}
+                      <span className="font-normal text-fg-tertiary tabular-nums">
+                        {groups.enabled.length}
+                      </span>
+                    </>
+                  }
+                >
+                  {renderList(groups.enabled)}
+                </SettingsSection>
+              ) : null}
+              {groups.disabled.length > 0 ? (
+                <SettingsSection
+                  title={
+                    <>
+                      Disabled{" "}
+                      <span className="font-normal text-fg-tertiary tabular-nums">
+                        {groups.disabled.length}
+                      </span>
+                    </>
+                  }
+                >
+                  {renderList(groups.disabled)}
+                </SettingsSection>
+              ) : null}
+            </>
+          )}
         </>
       )}
     </SettingsPage>

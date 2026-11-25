@@ -1,5 +1,5 @@
 import { HarnessFailure, type HarnessAdapter } from "@cerium/harness";
-import { Adapters, Orchestrator } from "@cerium/orchestrator";
+import { Adapters, Orchestrator, UserSettings } from "@cerium/orchestrator";
 import type { AgentEvent, AgentId, ProviderId, ProviderUsage, UsageSnapshot } from "@cerium/protocol";
 import {
   Clock,
@@ -88,6 +88,8 @@ interface State {
   readonly readings: ReadonlyMap<ProviderId, ProviderUsage>;
   /** The harnesses being read right now. */
   readonly reading: ReadonlySet<ProviderId>;
+  /** The harnesses the user turned off, omitted from reads and snapshots. */
+  readonly disabled: ReadonlySet<ProviderId>;
 }
 
 /**
@@ -99,24 +101,35 @@ interface State {
 export const makeSubscriptionUsage = Effect.fn("SubscriptionUsage.make")(function* (
   adapters: ReadonlyMap<ProviderId, HarnessAdapter>,
   events: Stream.Stream<AgentEvent>,
+  disabled?: {
+    readonly initial: ReadonlySet<ProviderId>;
+    readonly changes: Stream.Stream<ReadonlySet<ProviderId>>;
+  },
 ) {
-  const state = yield* SubscriptionRef.make<State>({ readings: new Map(), reading: new Set() });
+  const state = yield* SubscriptionRef.make<State>({
+    readings: new Map(),
+    reading: new Set(),
+    disabled: disabled?.initial ?? new Set(),
+  });
   const watchers = yield* Ref.make(0);
   const watched = Ref.get(watchers).pipe(Effect.map((count) => count > 0));
   const order = [...adapters.keys()];
-  const snapshot = ({ readings, reading }: State): UsageSnapshot => ({
+  const snapshot = ({ readings, reading, disabled: off }: State): UsageSnapshot => ({
     usage: order.flatMap((provider) => {
+      if (off.has(provider)) return [];
       const each = readings.get(provider);
       return each === undefined ? [] : [each];
     }),
-    checking: reading.size > 0,
+    checking: [...reading].some((provider) => !off.has(provider)),
   });
 
-  /** Reads one harness, unless a read of it is already under way. */
+  /** Reads one harness, unless a read of it is already under way or it is turned off. */
   const readOne = (adapter: HarnessAdapter) =>
     Effect.gen(function* () {
       const started = yield* SubscriptionRef.modify(state, (current): [boolean, State] =>
-        adapter.usage === undefined || current.reading.has(adapter.provider)
+        adapter.usage === undefined ||
+        current.disabled.has(adapter.provider) ||
+        current.reading.has(adapter.provider)
           ? [false, current]
           : [true, { ...current, reading: new Set([...current.reading, adapter.provider]) }],
       );
@@ -124,12 +137,14 @@ export const makeSubscriptionUsage = Effect.fn("SubscriptionUsage.make")(functio
       const read = yield* readProviderUsage(adapter);
       yield* SubscriptionRef.update(state, (current) => {
         const readings = new Map(current.readings);
-        const next = nextReading(readings.get(adapter.provider), read);
+        const next = current.disabled.has(adapter.provider)
+          ? undefined
+          : nextReading(readings.get(adapter.provider), read);
         if (next === undefined) readings.delete(adapter.provider);
         else readings.set(adapter.provider, next);
         const reading = new Set(current.reading);
         reading.delete(adapter.provider);
-        return { readings, reading };
+        return { ...current, readings, reading };
       });
     });
   const readSome = (providers: Iterable<ProviderId>) =>
@@ -142,6 +157,30 @@ export const makeSubscriptionUsage = Effect.fn("SubscriptionUsage.make")(functio
       { concurrency: "unbounded", discard: true },
     );
   const readAll = readSome(order);
+
+  if (disabled !== undefined) {
+    yield* disabled.changes.pipe(
+      Stream.runForEach((nextOff) =>
+        Effect.gen(function* () {
+          const reEnabled = yield* SubscriptionRef.modify(
+            state,
+            (current): [ReadonlyArray<ProviderId>, State] => {
+              const readings = new Map(current.readings);
+              for (const provider of nextOff) readings.delete(provider);
+              const turnedOn = order.filter(
+                (provider) => current.disabled.has(provider) && !nextOff.has(provider),
+              );
+              return [turnedOn, { ...current, readings, disabled: nextOff }];
+            },
+          );
+          if (reEnabled.length > 0 && (yield* watched)) {
+            yield* Effect.forkDetach(readSome(reEnabled));
+          }
+        }),
+      ),
+      Effect.forkScoped,
+    );
+  }
 
   // A harness's turns spend its limits: once they settle, its meters are read again for whoever
   // watches, and then not for its turns again for a minute. Turns that end meanwhile ask for one read
@@ -199,7 +238,16 @@ export class SubscriptionUsage extends Context.Service<
     Effect.gen(function* () {
       const adapters = yield* Adapters;
       const orchestrator = yield* Orchestrator;
-      return SubscriptionUsage.of(yield* makeSubscriptionUsage(adapters, orchestrator.activity));
+      const settings = yield* Effect.serviceOption(UserSettings);
+      const disabled = Option.isSome(settings)
+        ? {
+            initial: new Set((yield* settings.value.get).disabledProviders),
+            changes: settings.value.changes.pipe(
+              Stream.map((current) => new Set<ProviderId>(current.disabledProviders)),
+            ),
+          }
+        : undefined;
+      return SubscriptionUsage.of(yield* makeSubscriptionUsage(adapters, orchestrator.activity, disabled));
     }),
   );
 }

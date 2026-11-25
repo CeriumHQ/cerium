@@ -3,7 +3,7 @@ import { useAtom, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
 import { Check, LoaderCircle } from "lucide-react";
 
-import { pastSessionsAtom } from "../../backend/atoms.ts";
+import { pastSessionsAtom, settingsAtom } from "../../backend/atoms.ts";
 import { DialogButton, FormDialog } from "../../components/ui/FormDialog.tsx";
 import { ScrollArea } from "../../components/ui/ScrollArea.tsx";
 import { SessionPicker, useSessionImport } from "./SessionPicker.tsx";
@@ -20,7 +20,11 @@ export function ImportDialogHost() {
 
 function ImportDialog({ onClose }: { readonly onClose: () => void }) {
   const result = useAtomValue(pastSessionsAtom);
-  const sessions = AsyncResult.getOrElse(result, (): ReadonlyArray<PastSession> => []);
+  const settings = useAtomValue(settingsAtom);
+  const disabled = new Set(AsyncResult.isSuccess(settings) ? settings.value.disabledProviders : []);
+  const sessions = AsyncResult.getOrElse(result, (): ReadonlyArray<PastSession> => []).filter(
+    (session) => !disabled.has(session.provider),
+  );
   const importer = useSessionImport(sessions);
   const { state, picked } = importer;
   const done = state._tag === "done";

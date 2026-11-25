@@ -52,9 +52,12 @@ export const useReviewers = (
   const harnesses = AsyncResult.getOrElse(useAtomValue(harnessesAtom), () => []);
   const threads = AsyncResult.getOrElse(useAtomValue(threadsAtom), () => []);
   const [picked, setPicked] = useAtom(pickedReviewerAtom);
+  const disabled = new Set(settings?.disabledProviders ?? []);
   const ready = new Set(
     harnesses.flatMap((status) =>
-      status._tag === "HarnessMissing" || status.auth._tag === "LoggedOut" ? [] : [status.provider],
+      status._tag === "HarnessMissing" || status.auth._tag === "LoggedOut" || disabled.has(status.provider)
+        ? []
+        : [status.provider],
     ),
   );
   const lead = leadOf(threads.find((overview) => overview.thread.id === threadId)?.agents ?? []);

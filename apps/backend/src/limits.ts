@@ -11,6 +11,7 @@ import {
   type ThreadNotification,
   type UsageMeter,
 } from "@cerium/protocol";
+import { UserSettings } from "@cerium/orchestrator";
 import { Store } from "@cerium/store";
 import { Clock, Effect, Layer, Option, Ref, Schema, Stream } from "effect";
 
@@ -162,6 +163,7 @@ export const limitWarnings = Layer.effectDiscard(
     const store = yield* Store;
     const usage = yield* SubscriptionUsage;
     const notifications = yield* Notifications;
+    const settings = yield* Effect.serviceOption(UserSettings);
     const told = yield* Ref.make<Announcements>(
       decodeAnnounced(
         yield* store.readSettings.pipe(
@@ -174,8 +176,15 @@ export const limitWarnings = Layer.effectDiscard(
       Stream.runForEach((snapshot) =>
         Effect.gen(function* () {
           const now = yield* Clock.currentTimeMillis;
+          const off = Option.isSome(settings)
+            ? new Set((yield* settings.value.get).disabledProviders)
+            : new Set();
           const before = yield* Ref.get(told);
-          const { warnings, announced } = assess(snapshot.usage, before, now);
+          const { warnings, announced } = assess(
+            snapshot.usage.filter((each) => !off.has(each.provider)),
+            before,
+            now,
+          );
           yield* Ref.set(told, announced);
           yield* Effect.forEach(warnings, notifications.tell, { discard: true });
           // Remembered when something was told or a window moved, not each time a meter creeps up.

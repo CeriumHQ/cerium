@@ -381,12 +381,18 @@ export const makeAgentTeam = (ctx: OrchestratorContext, sessions: AgentSessions)
     if (isAdvisor(asker.info)) {
       return yield* notAllowed("You are the advisor: answer the question you were asked.");
     }
-    const { advisor: chosen } = yield* settings.get;
+    const { advisor: chosen, disabledProviders } = yield* settings.get;
     if (!chosen.enabled || chosen.model === undefined) {
       return yield* new OrchestratorError({
         reason: "unavailable",
         message:
           "The user hasn't turned on an advisor (Settings → Tools). Carry on, or ask the user instead.",
+      });
+    }
+    if (disabledProviders.includes(chosen.model.provider)) {
+      return yield* new OrchestratorError({
+        reason: "unavailable",
+        message: `The advisor runs on ${chosen.model.provider}, which is turned off in Settings → Harnesses.`,
       });
     }
     if (!adapters.has(chosen.model.provider)) {

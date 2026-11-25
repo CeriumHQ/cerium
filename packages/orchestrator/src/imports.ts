@@ -14,11 +14,12 @@ import {
   type ThreadInfo,
 } from "@cerium/protocol";
 import { Store, type StoreError } from "@cerium/store";
-import { Clock, Context, Crypto, Duration, Effect, FileSystem, Layer, Path, Semaphore } from "effect";
+import { Clock, Context, Crypto, Duration, Effect, FileSystem, Layer, Option, Path, Semaphore } from "effect";
 import { tmpdir } from "node:os";
 
 import { OrchestratorError } from "./errors.ts";
 import { Adapters, Catalog, OrchestratorConfig } from "./services.ts";
+import { UserSettings } from "./settings.ts";
 
 // Bringing the user's own harness sessions into Cerium: each becomes a thread whose lead is stopped on
 // that session, so the user's next message resumes it in place, with its history translated before it.
@@ -163,6 +164,7 @@ export class SessionImports extends Context.Service<
       const adapters = yield* Adapters;
       const catalog = yield* Catalog;
       const config = yield* OrchestratorConfig;
+      const settings = yield* Effect.serviceOption(UserSettings);
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const crypto = yield* Crypto.Crypto;
@@ -201,8 +203,11 @@ export class SessionImports extends Context.Service<
 
       const list = Effect.gen(function* () {
         const held = yield* heldSessions;
+        const off = Option.isSome(settings)
+          ? new Set((yield* settings.value.get).disabledProviders)
+          : new Set<ProviderId>();
         const listed = yield* Effect.forEach(
-          [...adapters.values()],
+          [...adapters.values()].filter((adapter) => !off.has(adapter.provider)),
           (adapter) =>
             adapter.listSessions === undefined
               ? Effect.succeed([])

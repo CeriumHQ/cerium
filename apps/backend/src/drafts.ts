@@ -69,9 +69,15 @@ export class QuickWriter extends Context.Service<
 
       return QuickWriter.of({
         write: Effect.fn("QuickWriter.write")(function* (instructions: string, prompt: string) {
-          const { titles } = yield* settings.get;
+          const { titles, disabledProviders } = yield* settings.get;
+          const off = new Set(disabledProviders);
+          const effectiveTitles: TitleSettings =
+            titles.model !== undefined && off.has(titles.model.provider)
+              ? { enabled: titles.enabled }
+              : titles;
           yield* fs.makeDirectory(cwd, { recursive: true }).pipe(Effect.ignore);
-          for (const choice of draftModels(titles, yield* offeredModels(catalog))) {
+          for (const choice of draftModels(effectiveTitles, yield* offeredModels(catalog))) {
+            if (off.has(choice.provider)) continue;
             const reply = yield* ask(choice, instructions, prompt);
             if (reply !== undefined) return Option.some(reply);
           }

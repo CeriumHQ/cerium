@@ -137,11 +137,13 @@ export class ThreadTitles extends Context.Service<
 
       return ThreadTitles.of({
         name: Effect.fn("ThreadTitles.name")(function* (input: TitleInput) {
-          const { titles } = yield* settings.get;
+          const { titles, disabledProviders } = yield* settings.get;
           if (!titles.enabled) return Option.none();
+          const off = new Set(disabledProviders);
           yield* fs.makeDirectory(cwd, { recursive: true }).pipe(Effect.ignore);
           const models = yield* offeredModels(catalog);
           for (const choice of titleModels(titles, offered(models), input.lead)) {
+            if (off.has(choice.provider)) continue;
             const title = yield* ask(choice, input);
             if (title !== undefined) return Option.some(title);
           }

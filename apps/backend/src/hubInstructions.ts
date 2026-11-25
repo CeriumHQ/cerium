@@ -305,137 +305,148 @@ const run = <A>(work: () => Promise<A>) =>
   Effect.tryPromise({ try: work, catch: (error) => new CeriumError({ message: messageOf(error) }) });
 
 /** One snapshot and compare-and-check workflow for all harnesses, serialized across Hub requests. */
-export const makeHubInstructions = Effect.fn("Hub.makeInstructions")(function* (definitions: Definitions) {
+export const makeHubInstructions = Effect.fn("Hub.makeInstructions")(function* (
+  definitions: Definitions,
+  disabled?: Effect.Effect<ReadonlySet<ProviderId>>,
+) {
   const lock = yield* Semaphore.make(1);
+  const activeDefinitions =
+    disabled === undefined
+      ? Effect.succeed(definitions)
+      : Effect.map(disabled, (off) => definitions.filter(([provider]) => !off.has(provider)));
 
   const read = (project: string) =>
     lock.withPermit(
-      run(async () => {
-        const root = await projectRoot(project);
-        const catalog = await catalogOf(root, definitions, true);
-        const files: HubInstructionFile[] = [];
-        const references = new Set<string>();
-        for (const location of catalog.values()) {
-          const { mode: _mode, ...file } = await inspect(root, location, catalog);
-          if (location.primary || file.revision !== MISSING) files.push(file);
-          if (!location.supplemental && file.reference !== undefined && file.problem === undefined) {
-            references.add(file.reference);
+      Effect.flatMap(activeDefinitions, (active) =>
+        run(async () => {
+          const root = await projectRoot(project);
+          const catalog = await catalogOf(root, active, true);
+          const files: HubInstructionFile[] = [];
+          const references = new Set<string>();
+          for (const location of catalog.values()) {
+            const { mode: _mode, ...file } = await inspect(root, location, catalog);
+            if (location.primary || file.revision !== MISSING) files.push(file);
+            if (!location.supplemental && file.reference !== undefined && file.problem === undefined) {
+              references.add(file.reference);
+            }
           }
-        }
-        for (const file of references) {
-          if (!canExposeReference(file, catalog, definitions)) continue;
-          const { mode: _mode, ...current } = await inspect(root, referenceSource(file), catalog);
-          if (current.content !== undefined && current.reference === undefined)
-            files.push({ ...current, sourceOnly: true });
-        }
-        return files.sort((a, b) => a.path.localeCompare(b.path));
-      }),
+          for (const file of references) {
+            if (!canExposeReference(file, catalog, active)) continue;
+            const { mode: _mode, ...current } = await inspect(root, referenceSource(file), catalog);
+            if (current.content !== undefined && current.reference === undefined)
+              files.push({ ...current, sourceOnly: true });
+          }
+          return files.sort((a, b) => a.path.localeCompare(b.path));
+        }),
+      ),
     );
 
   const sync = ({ project, source, targets, mode }: HubInstructionSync) =>
     lock.withPermit(
-      run(async () => {
-        const root = await projectRoot(project);
-        const catalog = await catalogOf(root, definitions, false);
-        const sourceLocation = catalog.get(source.path) ?? referenceSource(source.path);
-        if (canExposeReference(source.path, catalog, definitions)) {
-          for (const location of catalog.values()) {
-            if (location.supplemental) continue;
-            const current = await inspect(root, location, catalog);
-            if (current.reference === source.path && current.problem === undefined) {
-              catalog.set(source.path, sourceLocation);
-              break;
+      Effect.flatMap(activeDefinitions, (active) =>
+        run(async () => {
+          const root = await projectRoot(project);
+          const catalog = await catalogOf(root, active, false);
+          const sourceLocation = catalog.get(source.path) ?? referenceSource(source.path);
+          if (canExposeReference(source.path, catalog, active)) {
+            for (const location of catalog.values()) {
+              if (location.supplemental) continue;
+              const current = await inspect(root, location, catalog);
+              if (current.reference === source.path && current.problem === undefined) {
+                catalog.set(source.path, sourceLocation);
+                break;
+              }
             }
           }
-        }
-        const locationOf = (file: string) => {
-          const location = catalog.get(file);
-          if (location === undefined || location.supplemental) {
-            throw new Error(`${file} is not a shared project instruction path.`);
-          }
-          return location;
-        };
-        const readFile = (file: string) => inspect(root, locationOf(file), catalog);
-        const check = async (file: string, revision: string, allowReference = false) =>
-          expectRevision(await readFile(file), revision, allowReference);
-
-        const canonical = await readFile(source.path);
-        expectRevision(canonical, source.revision);
-        if (canonical.reference !== undefined)
-          throw new Error("Choose the file that supplies the instructions.");
-        const text = source.content ?? canonical.content;
-        if (text === undefined) throw new Error("Enter instructions to create the canonical file.");
-        const bytes = Buffer.from(text, "utf8");
-        if (bytes.length > MAX_BYTES || text.includes("\0") || bytes.toString("utf8") !== text) {
-          throw new Error("Instructions must be UTF-8 text of at most 128 KiB.");
-        }
-        if (locationOf(source.path).imports && importedPath(text) !== undefined) {
-          throw new Error("Choose the imported file as the canonical file.");
-        }
-
-        // Validate the full batch before saving the source or touching any destination.
-        const seen = new Set([source.path]);
-        const destinations = [];
-        for (const target of targets) {
-          if (seen.has(target.path)) throw new Error(`${target.path} is already in this sync.`);
-          seen.add(target.path);
-          const file = await readFile(target.path);
-          expectRevision(file, target.revision, true);
-          const status = hubInstructionStatus(file, canonical);
-          if (status === "diverged" && target.replace !== true) {
-            throw new Error(
-              `${target.path} differs from the canonical file. Approve its replacement to sync it.`,
-            );
-          }
-          destinations.push({ file, status });
-        }
-
-        let savedRevision = canonical.revision;
-        if (text !== canonical.content) {
-          await writeInstruction(root, canonical, { text }, () => check(source.path, canonical.revision));
-          const saved = await readFile(source.path);
-          if (saved.content !== text || saved.reference !== undefined || saved.problem !== undefined) {
-            throw new Error(`${source.path} changed after it was saved. Read again before syncing.`);
-          }
-          savedRevision = saved.revision;
-        }
-
-        const outcomes: HubInstructionOutcome[] = [];
-        for (const { file, status } of destinations) {
-          // Matching links already see the new source. Keep them even when syncing copies.
-          if (
-            status === "linked" ||
-            (mode === "copy" && file.content === text && file.reference === undefined)
-          ) {
-            outcomes.push({ path: file.path, result: "unchanged" });
-            continue;
-          }
-          const from = path.dirname(path.join(root, file.path));
-          const target = relative(from, path.join(root, source.path));
-          const importText = `@${target.replaceAll(" ", "\\ ")}\n`;
-          const location = locationOf(file.path);
-          // Prefer native Claude imports where the other readers can load the canonical file directly.
-          const native =
-            location.imports &&
-            (location.providers.every((provider) => provider === "claude") ||
-              (file.path === "CLAUDE.md" && source.path === HUB_CANONICAL_INSTRUCTIONS)) &&
-            importedPath(importText) !== undefined;
-          const value = mode === "copy" ? { text } : native ? { text: importText } : { symlink: target };
-          try {
-            if (mode === "copy" && location.imports && importedPath(text) !== undefined) {
-              throw new Error("This harness would interpret the copy as an import. Sync it as a link.");
+          const locationOf = (file: string) => {
+            const location = catalog.get(file);
+            if (location === undefined || location.supplemental) {
+              throw new Error(`${file} is not a shared project instruction path.`);
             }
-            await writeInstruction(root, file, value, async () => {
-              await check(source.path, savedRevision);
-              await check(file.path, file.revision, true);
-            });
-            outcomes.push({ path: file.path, result: mode === "copy" ? "copied" : "linked" });
-          } catch (error) {
-            outcomes.push({ path: file.path, result: "skipped", problem: messageOf(error) });
+            return location;
+          };
+          const readFile = (file: string) => inspect(root, locationOf(file), catalog);
+          const check = async (file: string, revision: string, allowReference = false) =>
+            expectRevision(await readFile(file), revision, allowReference);
+
+          const canonical = await readFile(source.path);
+          expectRevision(canonical, source.revision);
+          if (canonical.reference !== undefined)
+            throw new Error("Choose the file that supplies the instructions.");
+          const text = source.content ?? canonical.content;
+          if (text === undefined) throw new Error("Enter instructions to create the canonical file.");
+          const bytes = Buffer.from(text, "utf8");
+          if (bytes.length > MAX_BYTES || text.includes("\0") || bytes.toString("utf8") !== text) {
+            throw new Error("Instructions must be UTF-8 text of at most 128 KiB.");
           }
-        }
-        return outcomes;
-      }).pipe(Effect.uninterruptible),
+          if (locationOf(source.path).imports && importedPath(text) !== undefined) {
+            throw new Error("Choose the imported file as the canonical file.");
+          }
+
+          // Validate the full batch before saving the source or touching any destination.
+          const seen = new Set([source.path]);
+          const destinations = [];
+          for (const target of targets) {
+            if (seen.has(target.path)) throw new Error(`${target.path} is already in this sync.`);
+            seen.add(target.path);
+            const file = await readFile(target.path);
+            expectRevision(file, target.revision, true);
+            const status = hubInstructionStatus(file, canonical);
+            if (status === "diverged" && target.replace !== true) {
+              throw new Error(
+                `${target.path} differs from the canonical file. Approve its replacement to sync it.`,
+              );
+            }
+            destinations.push({ file, status });
+          }
+
+          let savedRevision = canonical.revision;
+          if (text !== canonical.content) {
+            await writeInstruction(root, canonical, { text }, () => check(source.path, canonical.revision));
+            const saved = await readFile(source.path);
+            if (saved.content !== text || saved.reference !== undefined || saved.problem !== undefined) {
+              throw new Error(`${source.path} changed after it was saved. Read again before syncing.`);
+            }
+            savedRevision = saved.revision;
+          }
+
+          const outcomes: HubInstructionOutcome[] = [];
+          for (const { file, status } of destinations) {
+            // Matching links already see the new source. Keep them even when syncing copies.
+            if (
+              status === "linked" ||
+              (mode === "copy" && file.content === text && file.reference === undefined)
+            ) {
+              outcomes.push({ path: file.path, result: "unchanged" });
+              continue;
+            }
+            const from = path.dirname(path.join(root, file.path));
+            const target = relative(from, path.join(root, source.path));
+            const importText = `@${target.replaceAll(" ", "\\ ")}\n`;
+            const location = locationOf(file.path);
+            // Prefer native Claude imports where the other readers can load the canonical file directly.
+            const native =
+              location.imports &&
+              (location.providers.every((provider) => provider === "claude") ||
+                (file.path === "CLAUDE.md" && source.path === HUB_CANONICAL_INSTRUCTIONS)) &&
+              importedPath(importText) !== undefined;
+            const value = mode === "copy" ? { text } : native ? { text: importText } : { symlink: target };
+            try {
+              if (mode === "copy" && location.imports && importedPath(text) !== undefined) {
+                throw new Error("This harness would interpret the copy as an import. Sync it as a link.");
+              }
+              await writeInstruction(root, file, value, async () => {
+                await check(source.path, savedRevision);
+                await check(file.path, file.revision, true);
+              });
+              outcomes.push({ path: file.path, result: mode === "copy" ? "copied" : "linked" });
+            } catch (error) {
+              outcomes.push({ path: file.path, result: "skipped", problem: messageOf(error) });
+            }
+          }
+          return outcomes;
+        }).pipe(Effect.uninterruptible),
+      ),
     );
 
   return { read, sync };

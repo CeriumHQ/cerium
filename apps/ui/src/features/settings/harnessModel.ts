@@ -1,4 +1,4 @@
-import type { AuthStatus } from "@cerium/protocol";
+import type { AuthStatus, HarnessStatus, ProviderId } from "@cerium/protocol";
 
 /**
  * Whose account each harness's sign-in method is, as people name it before their plan: "Claude Max",
@@ -29,3 +29,31 @@ export const accountLabel = (auth: Extract<AuthStatus, { _tag: "LoggedIn" }>): s
   const brand = known?.brand ?? auth.method;
   return brand === undefined ? `${planName(auth.plan)} plan` : `${brand} ${planName(auth.plan)}`;
 };
+
+export const isHarnessEnabled = (
+  status: HarnessStatus | undefined,
+  disabled: ReadonlySet<ProviderId>,
+): boolean =>
+  status?._tag === "HarnessInstalled" && status.auth._tag === "LoggedIn" && !disabled.has(status.provider);
+
+const disabledRank = (status: HarnessStatus | undefined): number => {
+  if (status?._tag !== "HarnessInstalled") return 2;
+  return status.auth._tag === "LoggedIn" ? 0 : 1;
+};
+
+export function partitionHarnesses(
+  providers: ReadonlyArray<ProviderId>,
+  statuses: ReadonlyArray<HarnessStatus>,
+  disabled: ReadonlyArray<ProviderId>,
+): { readonly enabled: ReadonlyArray<ProviderId>; readonly disabled: ReadonlyArray<ProviderId> } {
+  const byProvider = new Map(statuses.map((status) => [status.provider, status]));
+  const off = new Set(disabled);
+  const enabled: Array<ProviderId> = [];
+  const rest: Array<ProviderId> = [];
+  for (const provider of providers) {
+    if (isHarnessEnabled(byProvider.get(provider), off)) enabled.push(provider);
+    else rest.push(provider);
+  }
+  rest.sort((a, b) => disabledRank(byProvider.get(a)) - disabledRank(byProvider.get(b)));
+  return { enabled, disabled: rest };
+}

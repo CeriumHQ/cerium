@@ -3,8 +3,32 @@ import {
   hubInstructionStatus,
   type HubInstructionFile,
   type HubInstructionMode,
+  type ProviderId,
 } from "@cerium/protocol";
 import type { HubInstructionSync } from "@cerium/rpc";
+
+export function visibleInstructionFiles(
+  files: ReadonlyArray<HubInstructionFile>,
+  enabled: ReadonlySet<ProviderId>,
+): ReadonlyArray<HubInstructionFile> {
+  const primary: Array<HubInstructionFile> = [];
+  for (const file of files) {
+    if (file.sourceOnly === true) continue;
+    const providers = file.providers.filter((provider) => enabled.has(provider));
+    if (file.path === HUB_CANONICAL_INSTRUCTIONS || providers.length > 0) {
+      primary.push({ ...file, providers });
+    }
+  }
+  const referenced = new Set(
+    primary.flatMap((file) => (file.reference === undefined ? [] : [file.reference])),
+  );
+  const sources = files.flatMap((file) =>
+    file.sourceOnly === true && referenced.has(file.path)
+      ? [{ ...file, providers: file.providers.filter((provider) => enabled.has(provider)) }]
+      : [],
+  );
+  return [...primary, ...sources].sort((a, b) => a.path.localeCompare(b.path));
+}
 
 export const canBeCanonical = (file: HubInstructionFile) =>
   !file.supplemental && file.problem === undefined && file.reference === undefined;

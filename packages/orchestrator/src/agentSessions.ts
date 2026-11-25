@@ -157,7 +157,7 @@ export const makeAgentSessions = (ctx: OrchestratorContext, turns: Turns, worksp
         const sessionScope = yield* Scope.fork(scope);
         rt.sessionScope = sessionScope;
         return yield* Effect.gen(function* () {
-          const { advisor } = yield* settings.get;
+          const { advisor, disabledProviders } = yield* settings.get;
           if (rt.instructions === undefined) {
             const previous =
               options.resume === undefined
@@ -176,7 +176,10 @@ export const makeAgentSessions = (ctx: OrchestratorContext, turns: Turns, worksp
             const mode = threadModes.get(info.threadId) ?? "work";
             rt.instructions ??= systemPrompt(info, bus.serverName, {
               mode,
-              advisor: advisor.enabled && advisor.model !== undefined,
+              advisor:
+                advisor.enabled &&
+                advisor.model !== undefined &&
+                !disabledProviders.includes(advisor.model.provider),
               neighbours: yield* neighboursOf(info, cwd),
               worktree: threadWorktrees.get(info.threadId),
             });

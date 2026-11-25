@@ -188,4 +188,61 @@ describe("makeSubscriptionUsage", () => {
       assert.strictEqual(reads, 3);
     }),
   );
+
+  it.effect("skips disabled harnesses, drops them when disabled, and reads them when re-enabled", () =>
+    Effect.gen(function* () {
+      const reads: Array<ProviderId> = [];
+      const counted = (provider: ProviderId) =>
+        withUsage(
+          provider,
+          Effect.sync(() => {
+            reads.push(provider);
+            return Option.some({ meters: [meter] });
+          }),
+        );
+      const events = yield* PubSub.unbounded<AgentEvent>();
+      const disabledChanges = yield* PubSub.unbounded<ReadonlySet<ProviderId>>();
+      const adapters = [counted("claude"), counted("codex")];
+      const usage = yield* makeSubscriptionUsage(
+        new Map(adapters.map((adapter) => [adapter.provider, adapter])),
+        Stream.fromPubSub(events),
+        {
+          initial: new Set<ProviderId>(["codex"]),
+          changes: Stream.fromPubSub(disabledChanges),
+        },
+      );
+
+      const seen: Array<UsageSnapshot> = [];
+      yield* usage.watch.pipe(
+        Stream.runForEach((snapshot) => Effect.sync(() => seen.push(snapshot))),
+        Effect.forkChild,
+      );
+      yield* Effect.yieldNow;
+      yield* TestClock.adjust("1 second");
+      assert.deepStrictEqual(reads, ["claude"]);
+      assert.deepStrictEqual(
+        seen.at(-1)?.usage.map((each) => each.provider),
+        ["claude"],
+      );
+
+      // Disabling Claude removes it from the snapshot immediately.
+      yield* PubSub.publish(disabledChanges, new Set<ProviderId>(["claude", "codex"]));
+      yield* Effect.yieldNow;
+      yield* TestClock.adjust("1 second");
+      assert.deepStrictEqual(
+        seen.at(-1)?.usage.map((each) => each.provider),
+        [],
+      );
+
+      // Re-enabling Codex triggers a read for it.
+      yield* PubSub.publish(disabledChanges, new Set<ProviderId>(["claude"]));
+      yield* Effect.yieldNow;
+      yield* TestClock.adjust("1 second");
+      assert.deepStrictEqual(reads, ["claude", "codex"]);
+      assert.deepStrictEqual(
+        seen.at(-1)?.usage.map((each) => each.provider),
+        ["codex"],
+      );
+    }),
+  );
 });

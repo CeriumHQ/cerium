@@ -107,22 +107,23 @@ function useBrowse(
   const [ownOpen, setOwnOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [favorites, setFavorites] = useAtom(favoriteModelsAtom);
-  const listed = models.filter(
-    (model) => providers.includes(model.provider) && available.has(model.provider),
-  );
+  const visibleProviders = providers.filter((provider) => available.has(provider));
+  const listed = models.filter((model) => visibleProviders.includes(model.provider));
   const byKey = new Map(listed.map((model) => [modelKey(model), model]));
   const starred = favorites.filter((key) => byKey.has(key));
-  const railed = providers.length > 1;
+  const railed = visibleProviders.length > 1;
   /** The tab picked since the menu opened; until then the starred models when they hold the one in
    * use, else its harness. */
   const [picked, setPicked] = useState<Tab>();
+  const activePicked =
+    picked === "favorites" || (picked !== undefined && available.has(picked)) ? picked : undefined;
+  const homeProvider = home?.provider && available.has(home.provider) ? home.provider : undefined;
   const tab: Tab | undefined =
-    picked ??
-    (railed && home?.key !== undefined && starred.includes(home.key) ? "favorites" : home?.provider) ??
-    providers.find((provider) => available.has(provider)) ??
-    providers[0];
+    activePicked ??
+    (railed && home?.key !== undefined && starred.includes(home.key) ? "favorites" : homeProvider) ??
+    visibleProviders[0];
   const grouped = (list: ReadonlyArray<ModelInfo>): ReadonlyArray<ModelGroup> =>
-    providers.flatMap((provider) => {
+    visibleProviders.flatMap((provider) => {
       const items = list.filter((model) => model.provider === provider).map(modelKey);
       return items.length === 0 ? [] : [{ value: provider, items }];
     });
@@ -147,6 +148,7 @@ function useBrowse(
     setTab: setPicked,
     searching,
     railed,
+    visibleProviders,
     byKey,
     groups: grouped(listed),
     shown,
@@ -410,7 +412,6 @@ function EffortTrail({ effort }: { readonly effort: EffortPick | undefined }) {
 }
 
 function MenuPopup({
-  providers,
   available,
   note,
   onUseWorktrees,
@@ -444,7 +445,7 @@ function MenuPopup({
   /** Multi agent's count, beside its switch at the menu's foot. */
   readonly picked?: { readonly picked: number; readonly max: number };
 }) {
-  const tabs: ReadonlyArray<Tab> = ["favorites", ...providers];
+  const tabs: ReadonlyArray<Tab> = ["favorites", ...browse.visibleProviders];
   const waits = (key: string) => full && chosen?.includes(key) !== true;
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     // Ctrl and a digit picks a row, before the window's own Ctrl digits (the sidebar's) see it.
@@ -477,8 +478,8 @@ function MenuPopup({
     ? "No model matches."
     : browse.tab === "favorites"
       ? "Star a model to keep it here"
-      : browse.tab && !available.has(browse.tab)
-        ? `${providerName[browse.tab]} isn't ready. Settings → Harnesses says why.`
+      : browse.visibleProviders.length === 0
+        ? "No harness is enabled. Turn one on in Settings → Harnesses."
         : "No models listed yet.";
   const tunes = offersChoice(effort) || offersSpeed(speed);
   // With a rail or a side panel the menu keeps one height, so switching tab or model doesn't move it.

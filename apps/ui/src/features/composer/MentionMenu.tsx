@@ -11,7 +11,7 @@ import { FolderGit2, LoaderCircle } from "lucide-react";
 import { AsyncResult, Atom } from "effect/reactivity";
 import { useEffect, useRef, useState } from "react";
 
-import { settingsAtom } from "../../backend/atoms.ts";
+import { harnessesAtom, settingsAtom } from "../../backend/atoms.ts";
 import { skillsAtom, skillsKey, workspaceSearchAtom, workspaceSearchKey } from "../../backend/files.ts";
 import { savedProjectsAtom } from "../../backend/projects.ts";
 import { FileIcon } from "../../components/FileIcon.tsx";
@@ -170,11 +170,21 @@ export function useMentionOptions(trigger: Trigger | undefined, sources: Mention
   );
   const savedProjects = AsyncResult.getOrElse(useAtomValue(savedProjectsAtom), () => []);
   const models = useModels();
+  const harnesses = AsyncResult.getOrElse(useAtomValue(harnessesAtom), () => undefined);
   const settings = useAtomValue(settingsAtom);
+  const disabled = new Set(AsyncResult.isSuccess(settings) ? settings.value.disabledProviders : []);
+  const enabledModels =
+    harnesses === undefined
+      ? models.filter((model) => !disabled.has(model.provider))
+      : models.filter((model) => {
+          if (disabled.has(model.provider)) return false;
+          const status = harnesses.find((each) => each.provider === model.provider);
+          return status?._tag === "HarnessInstalled" && status.auth._tag === "LoggedIn";
+        });
   const rosterKeys = new Set<string>();
   if (AsyncResult.isSuccess(settings)) {
     for (const entry of settings.value.roster.models) {
-      rosterKeys.add(`${entry.provider}:${entry.model}`);
+      if (!disabled.has(entry.provider)) rosterKeys.add(`${entry.provider}:${entry.model}`);
     }
   }
   // Tagged with the trigger it answered, so `$` never flashes the items a past `@` found.
@@ -209,7 +219,7 @@ export function useMentionOptions(trigger: Trigger | undefined, sources: Mention
   // `@` mentions:
   // - In Chat: saved projects + models
   // - In Work: workspace files & folders + models
-  const matchedModels = modelOptions(models, rosterKeys, trigger.query);
+  const matchedModels = modelOptions(enabledModels, rosterKeys, trigger.query);
 
   if (sources.chat) {
     const matchedProjects = projectOptions(savedProjects, trigger.query);

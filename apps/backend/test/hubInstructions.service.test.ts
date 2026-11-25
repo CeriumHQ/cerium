@@ -1,8 +1,14 @@
-import { hubInstructionStatus, type HubInstructionFile } from "@cerium/protocol";
+import { UserSettings } from "@cerium/orchestrator";
+import {
+  defaultSettings,
+  hubInstructionStatus,
+  type HubInstructionFile,
+  type ProviderId,
+} from "@cerium/protocol";
 import type { HubInstructionSync } from "@cerium/rpc";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, FileSystem, Layer, Path, Result } from "effect";
+import { Effect, FileSystem, Layer, Path, Result, Stream } from "effect";
 
 import { hubHandlers } from "../src/hub.ts";
 import { AdaptersLive } from "../src/layers.ts";
@@ -354,4 +360,34 @@ describe("Hub project instructions", () => {
         assert.match(refused.message, /not a shared project instruction path/);
       }).pipe(withAdapters),
   );
+
+  it.effect("omits disabled providers' instruction files, folders, and provider tags", () => {
+    const disabled: ReadonlyArray<ProviderId> = ["copilot", "cursor"];
+    const settingsLayer = Layer.succeed(UserSettings, {
+      get: Effect.succeed({ ...defaultSettings, disabledProviders: disabled }),
+      update: () => Effect.die("unused"),
+      changes: Stream.empty,
+    });
+    return Effect.gen(function* () {
+      const { project, fs, at, read } = yield* fixture;
+      yield* fs.makeDirectory(at(".cursor/rules"), { recursive: true });
+      yield* fs.makeDirectory(at(".github"), { recursive: true });
+      yield* fs.writeFileString(at(AGENTS), "Shared\n");
+      yield* fs.writeFileString(at(COPILOT), "Shared\n");
+      yield* fs.writeFileString(at(".cursor/rules/code.mdc"), "Cursor\n");
+      const files = yield* read({ project });
+      assert.isFalse(files.some((file) => file.path === COPILOT));
+      assert.isFalse(files.some((file) => file.path === ".cursor/rules/code.mdc"));
+      const canonical = find(files, AGENTS);
+      assert.isFalse(canonical.providers.includes("copilot"));
+      assert.isFalse(canonical.providers.includes("cursor"));
+      const claude = find(files, CLAUDE);
+      assert.isFalse(claude.providers.includes("copilot"));
+      assert.isFalse(claude.providers.includes("cursor"));
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(AdaptersLive, settingsLayer).pipe(Layer.provideMerge(NodeServices.layer)),
+      ),
+    );
+  });
 });

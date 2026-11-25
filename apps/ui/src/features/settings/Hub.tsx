@@ -15,7 +15,9 @@ import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { IconButton } from "../../components/ui/IconButton.tsx";
 import { SearchBar } from "../../components/ui/SearchBar.tsx";
 import { harnessName } from "./Harnesses.tsx";
+import type { HarnessIndicator } from "../threads/Sidebar.tsx";
 import { HubInstructions } from "./HubInstructions.tsx";
+import { readyProviders } from "./ModelGroups.tsx";
 import { filterHub, groupHub, type HubGroup, type HubPlace } from "./hubModel.ts";
 import { messageOf, type HubContext, type Kind, type Live } from "./hubRows.tsx";
 import { ServerGroupRow } from "./HubServers.tsx";
@@ -33,20 +35,17 @@ const pageCopy: Record<Kind, { title: string; description: string; empty: string
   servers: {
     title: "MCP servers",
     description:
-      "Every harness's servers for a project, edited in its own config. Secrets stay there: only whether one is set shows.",
-    empty: "No harness has an MCP server for this project.",
+      "Each enabled harness's servers for a project, edited in its own config. Secrets stay there: only whether one is set shows.",
+    empty: "No enabled harness has an MCP server for this project.",
     search: "Search servers",
   },
   skills: {
     title: "Skills",
-    description: "Every harness's skills for a project, read from its own folders.",
-    empty: "No harness has a skill for this project.",
+    description: "Each enabled harness's skills for a project, read from its own folders.",
+    empty: "No enabled harness has a skill for this project.",
     search: "Search skills",
   },
 };
-
-/** The answer a harness gives when its CLI isn't there, which the page lists in one line at the end. */
-const NOT_INSTALLED = "Not installed.";
 
 const placeTitle: Record<HubPlace, string> = {
   project: "This project",
@@ -54,11 +53,16 @@ const placeTitle: Record<HubPlace, string> = {
   bundled: "Built-in",
 };
 
-export const McpSettings = () => <HubSettings kind="servers" />;
-export const SkillsSettings = () => <HubSettings kind="skills" />;
-export const InstructionSettings = () => <HubSettings kind="instructions" />;
+interface HubPageProps {
+  readonly harnesses: ReadonlyArray<HarnessIndicator>;
+  readonly onOpen?: () => void;
+}
 
-function HubSettings({ kind }: { kind: Kind | "instructions" }) {
+export const McpSettings = (props: HubPageProps) => <HubSettings kind="servers" {...props} />;
+export const SkillsSettings = (props: HubPageProps) => <HubSettings kind="skills" {...props} />;
+export const InstructionSettings = (props: HubPageProps) => <HubSettings kind="instructions" {...props} />;
+
+function HubSettings({ kind, harnesses, onOpen }: HubPageProps & { kind: Kind | "instructions" }) {
   const listed = useAtomValue(savedProjectsAtom);
   const rpcVersion = useAtomValue(drivenRpcVersionAtom);
   const from = use(SettingsProject);
@@ -74,7 +78,7 @@ function HubSettings({ kind }: { kind: Kind | "instructions" }) {
       <SettingsPage
         perMachine
         title="Project instructions"
-        description="One canonical file for a project's instructions, synced to each harness's own file: AGENTS.md, CLAUDE.md and the rest."
+        description="One canonical file for a project's instructions, synced to each enabled harness's own file."
         action={
           shown === undefined || !supported ? null : (
             <ProjectSelect projects={paths} shown={shown} onPick={setPicked} />
@@ -88,7 +92,7 @@ function HubSettings({ kind }: { kind: Kind | "instructions" }) {
             No projects yet. Open a folder in a new thread to manage its instructions.
           </SettingsNote>
         ) : (
-          <HubInstructions key={shown} project={shown} />
+          <HubInstructions key={shown} project={shown} harnesses={harnesses} />
         )}
       </SettingsPage>
     );
@@ -113,7 +117,13 @@ function HubSettings({ kind }: { kind: Kind | "instructions" }) {
           {kind === "servers" ? "servers" : "skills"}.
         </SettingsNote>
       ) : (
-        <HubBody key={shown} project={shown} kind={kind} />
+        <HubBody
+          key={shown}
+          project={shown}
+          kind={kind}
+          harnesses={harnesses}
+          {...(onOpen ? { onOpen } : {})}
+        />
       )}
     </SettingsPage>
   );
@@ -125,23 +135,52 @@ function RefreshHub({ project }: { project: string }) {
   return <IconButton icon={RefreshCw} label="Read again" onClick={refresh} />;
 }
 
-/** The search and harness filter, the list under its places, then the harnesses not installed. */
-function HubBody({ project, kind }: { project: string; kind: Kind }) {
+/** The search and harness filter, and the list under its places. */
+function HubBody({
+  project,
+  kind,
+  harnesses: indicators,
+  onOpen,
+}: {
+  project: string;
+  kind: Kind;
+  harnesses: ReadonlyArray<HarnessIndicator>;
+  onOpen?: () => void;
+}) {
   const result = useAtomValue(hubAtom(project));
   const refresh = useAtomRefresh(hubAtom(project));
   const reports = useAtomValue(hubStatusesAtom(project));
   const [query, setQuery] = useState("");
   const [provider, setProvider] = useState<ProviderId>();
+  const checking = indicators.every((harness) => harness.state === "unsupported");
+  const ready = readyProviders(indicators);
   const harnesses = AsyncResult.getOrElse(result, (): ReadonlyArray<HubHarness> | undefined => undefined);
-  if (harnesses === undefined) {
-    return AsyncResult.isFailure(result) ? (
+  if (checking || harnesses === undefined) {
+    return AsyncResult.isFailure(result) && harnesses === undefined ? (
       <SettingsNote tone="error">{messageOf(result.cause)}</SettingsNote>
     ) : (
       <SettingsNote>Reading each harness's config…</SettingsNote>
     );
   }
-  const readable = harnesses.filter((harness) => harness.unavailable === undefined);
-  const missing = harnesses.filter((harness) => harness.unavailable === NOT_INSTALLED);
+  if (ready.size === 0) {
+    return (
+      <SettingsNote>
+        No harnesses are enabled.{" "}
+        {onOpen ? (
+          <button
+            type="button"
+            onClick={onOpen}
+            className="text-fg-secondary underline-offset-2 hover:underline"
+          >
+            Manage harnesses
+          </button>
+        ) : null}
+      </SettingsNote>
+    );
+  }
+  const readable = harnesses.filter(
+    (harness) => harness.unavailable === undefined && ready.has(harness.provider),
+  );
   const picked = readable.some((harness) => harness.provider === provider) ? provider : undefined;
   const live = new Map(
     [...reports].map(([each, report]): [ProviderId, Live] => [
@@ -193,11 +232,6 @@ function HubBody({ project, kind }: { project: string; kind: Kind }) {
           row={(group) => <SkillGroupRow key={group.key} group={group} context={context} />}
         />
       )}
-      {missing.length > 0 ? (
-        <p className="-mt-2 px-1 text-meta text-fg-tertiary">
-          Not installed: {missing.map((each) => harnessName[each.provider]).join(", ")}.
-        </p>
-      ) : null}
     </>
   );
 }

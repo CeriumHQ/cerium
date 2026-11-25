@@ -22,6 +22,8 @@ import { Tooltip } from "../../components/ui/Tooltip.tsx";
 import { modelLabel } from "../../backend/view.ts";
 import { effortLabel, speedLabel, useModels } from "../composer/models.ts";
 import { harnessName } from "./Harnesses.tsx";
+import type { HarnessIndicator } from "../threads/Sidebar.tsx";
+import { readyProviders } from "./ModelGroups.tsx";
 import { RefreshAction, SettingsCard, SettingsPage } from "./parts.tsx";
 import { tokenLabel, tokensOf } from "./spendModel.ts";
 import {
@@ -50,7 +52,13 @@ function useNow() {
 }
 
 /** What's left of each subscription's limits. */
-export function LimitsSettings({ onOpenHarnesses }: { onOpenHarnesses?: () => void }) {
+export function LimitsSettings({
+  harnesses,
+  onOpenHarnesses,
+}: {
+  harnesses: ReadonlyArray<HarnessIndicator>;
+  onOpenHarnesses?: () => void;
+}) {
   const result = useAtomValue(usageAtom);
   const refresh = useAtomRefresh(usageAtom);
   const driven = useAtomValue(machineAtom);
@@ -59,10 +67,14 @@ export function LimitsSettings({ onOpenHarnesses }: { onOpenHarnesses?: () => vo
   // The backend reads the harnesses again after their turns and every few minutes, and sends each
   // change; Refresh subscribes again, which reads them now.
   const snapshot = AsyncResult.getOrElse(result, (): UsageSnapshot | undefined => undefined);
+  const checkingHarnesses = harnesses.every((harness) => harness.state === "unsupported");
+  const ready = readyProviders(harnesses);
   const checking = snapshot === undefined ? result.waiting : snapshot.checking;
   // While the first read runs, the page waits for it rather than saying there's nothing to show.
   const usage =
-    snapshot === undefined || (snapshot.usage.length === 0 && snapshot.checking) ? undefined : snapshot.usage;
+    checkingHarnesses || snapshot === undefined || (snapshot.usage.length === 0 && snapshot.checking)
+      ? undefined
+      : snapshot.usage.filter((each) => ready.has(each.provider));
   const checkedAt = usage
     ?.flatMap((each) => (each._tag === "Subscribed" ? [each.checkedAt] : []))
     .reduce((latest, at) => Math.max(latest, at), 0);

@@ -6,6 +6,7 @@ import {
   defaultInstructionSource,
   instructionSync,
   instructionTarget,
+  visibleInstructionFiles,
   type InstructionSelection,
 } from "../src/features/settings/hubInstructionsModel.ts";
 
@@ -107,5 +108,59 @@ describe("Hub instruction model", () => {
     expect(request([[drift.path, { ...selection(drift, true), sourceRevision: "old" }]])).toBeUndefined();
     expect(request([[drift.path, { ...selection(drift, true), sourcePath: copy.path }]])).toBeUndefined();
     expect(request([["removed.md", selection(copy)]])).toBeUndefined();
+  });
+
+  it("hides files and provider marks for disabled harnesses while keeping canonical AGENTS.md", () => {
+    const listed: ReadonlyArray<HubInstructionFile> = [
+      file("AGENTS.md", {
+        content: "Shared",
+        revision: "agents",
+        providers: ["claude", "codex", "cursor", "copilot"],
+      }),
+      file("CLAUDE.md", {
+        content: "Shared",
+        revision: "claude",
+        providers: ["claude", "cursor", "copilot"],
+      }),
+      file(".github/copilot-instructions.md", {
+        content: "Copilot",
+        revision: "cop",
+        providers: ["copilot"],
+        reference: "docs/copilot-only.md",
+      }),
+      file(".cursor/rules/code.mdc", {
+        supplemental: true,
+        content: "Cursor rule",
+        revision: "cur",
+        providers: ["cursor"],
+      }),
+      file("docs/copilot-only.md", {
+        sourceOnly: true,
+        content: "Only copilot",
+        revision: "doc1",
+      }),
+      file("docs/shared.md", {
+        sourceOnly: true,
+        content: "Shared doc",
+        revision: "doc2",
+      }),
+      file("GEMINI.md", {
+        content: "Shared doc",
+        reference: "docs/shared.md",
+        revision: "gem",
+        providers: ["antigravity", "copilot"],
+      }),
+    ];
+
+    const visible = visibleInstructionFiles(listed, new Set(["claude", "codex", "antigravity"]));
+    expect(visible.map((entry) => [entry.path, entry.providers])).toEqual([
+      ["AGENTS.md", ["claude", "codex"]],
+      ["CLAUDE.md", ["claude"]],
+      ["docs/shared.md", []],
+      ["GEMINI.md", ["antigravity"]],
+    ]);
+
+    const noneEnabled = visibleInstructionFiles(listed, new Set());
+    expect(noneEnabled.map((entry) => [entry.path, entry.providers])).toEqual([["AGENTS.md", []]]);
   });
 });

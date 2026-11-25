@@ -1,5 +1,5 @@
 import { portable, unfilled, type HarnessHub } from "@cerium/harness";
-import { Adapters } from "@cerium/orchestrator";
+import { Adapters, UserSettings } from "@cerium/orchestrator";
 import type {
   HubCopyOutcome,
   HubHarness,
@@ -10,7 +10,7 @@ import type {
   ProviderId,
 } from "@cerium/protocol";
 import { CeriumError, HubRpcs, type HubCopyTarget } from "@cerium/rpc";
-import { Effect, FileSystem, Path } from "effect";
+import { Effect, FileSystem, Option, Path } from "effect";
 
 import { harnessName } from "./discord.ts";
 import { makeHubInstructions } from "./hubInstructions.ts";
@@ -45,10 +45,16 @@ export const hubHandlers = Effect.gen(function* () {
   const adapters = yield* Adapters;
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
+  const settings = yield* Effect.serviceOption(UserSettings);
+  const disabledProviders: Effect.Effect<ReadonlySet<ProviderId>> = Option.match(settings, {
+    onNone: () => Effect.succeed(new Set<ProviderId>()),
+    onSome: (user) => Effect.map(user.get, (current) => new Set(current.disabledProviders)),
+  });
   const instructions = yield* makeHubInstructions(
     [...adapters].flatMap(([provider, adapter]) =>
       adapter.hubInstructions === undefined ? [] : [[provider, adapter.hubInstructions] as const],
     ),
+    disabledProviders,
   );
 
   const hubOf = (provider: ProviderId) =>
@@ -208,9 +214,13 @@ export const hubHandlers = Effect.gen(function* () {
     ReadHubInstructions: ({ project }) => instructions.read(project),
     SyncHubInstructions: instructions.sync,
     ReadHub: ({ project }) =>
-      Effect.forEach([...adapters.keys()], (provider) => readHarness(provider, project), {
-        concurrency: "unbounded",
-      }),
+      Effect.flatMap(disabledProviders, (off) =>
+        Effect.forEach(
+          [...adapters.keys()].filter((provider) => !off.has(provider)),
+          (provider) => readHarness(provider, project),
+          { concurrency: "unbounded" },
+        ),
+      ),
     ReadHubStatus: ({ provider, project }) =>
       Effect.gen(function* () {
         const hub = yield* hubOf(provider);

@@ -25,12 +25,15 @@ import { SelectItem, SelectPopup, SelectRoot, SelectTrigger } from "../../compon
 import { segmentedTrackClass } from "../../components/ui/Segmented.tsx";
 import { remember, stored } from "../../lib/storage.ts";
 import { harnessName } from "./Harnesses.tsx";
+import type { HarnessIndicator } from "../threads/Sidebar.tsx";
+import { readyProviders } from "./ModelGroups.tsx";
 import {
   canBeCanonical,
   defaultInstructionSource,
   instructionSync,
   instructionTarget,
   isStaleInstructionDraft,
+  visibleInstructionFiles,
   type InstructionDraft,
   type InstructionSelection,
 } from "./hubInstructionsModel.ts";
@@ -75,20 +78,34 @@ const messageOf = (error: unknown) =>
     ? error.message
     : "The project instructions could not be read or saved.";
 
-export function HubInstructions({ project }: { project: string }) {
+export function HubInstructions({
+  project,
+  harnesses,
+}: {
+  project: string;
+  harnesses: ReadonlyArray<HarnessIndicator>;
+}) {
   const machine = useAtomValue(machineAtom);
   const sourceKey = machineKey(`cerium:instruction-source:${JSON.stringify(project)}`, machine);
   return (
-    <ProjectInstructions key={sourceKey} project={project} machine={machine?.id} sourceKey={sourceKey} />
+    <ProjectInstructions
+      key={sourceKey}
+      project={project}
+      harnesses={harnesses}
+      machine={machine?.id}
+      sourceKey={sourceKey}
+    />
   );
 }
 
 function ProjectInstructions({
   project,
+  harnesses,
   machine,
   sourceKey,
 }: {
   project: string;
+  harnesses: ReadonlyArray<HarnessIndicator>;
   machine: string | undefined;
   sourceKey: string;
 }) {
@@ -97,8 +114,9 @@ function ProjectInstructions({
   const refresh = useAtomRefresh(atom);
   const files = AsyncResult.getOrElse(state, () => undefined);
   const error = AsyncResult.isFailure(state) ? messageOf(Cause.squash(state.cause)) : undefined;
-  if (files === undefined) {
-    if (error !== undefined) {
+  const checking = harnesses.every((harness) => harness.state === "unsupported");
+  if (files === undefined || checking) {
+    if (error !== undefined && files === undefined) {
       return (
         <div className="flex flex-col items-start gap-3">
           <SettingsNote tone="error">
@@ -123,7 +141,7 @@ function ProjectInstructions({
   return (
     <InstructionEditor
       project={project}
-      files={files}
+      files={visibleInstructionFiles(files, readyProviders(harnesses))}
       sourceKey={sourceKey}
       refresh={refresh}
       waiting={state.waiting}

@@ -467,13 +467,18 @@ function SettingsContent({
     case "harnesses":
       return <HarnessSettings />;
     case "mcp":
-      return <McpSettings />;
+      return <McpSettings harnesses={harnesses} {...open("harnesses")} />;
     case "skills":
-      return <SkillsSettings />;
+      return <SkillsSettings harnesses={harnesses} {...open("harnesses")} />;
     case "instructions":
-      return <InstructionSettings />;
+      return <InstructionSettings harnesses={harnesses} {...open("harnesses")} />;
     case "limits":
-      return <LimitsSettings {...(onOpen ? { onOpenHarnesses: () => onOpen("harnesses") } : {})} />;
+      return (
+        <LimitsSettings
+          harnesses={harnesses}
+          {...(onOpen ? { onOpenHarnesses: () => onOpen("harnesses") } : {})}
+        />
+      );
     case "tokens":
       return <TokensSettings />;
     case "sourceControl":
