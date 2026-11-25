@@ -19,7 +19,8 @@ import { usageAtom } from "../../backend/usage.ts";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { InfoTip } from "../../components/ui/InfoTip.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
-import { effortLabel, speedLabel } from "../composer/models.ts";
+import { modelLabel } from "../../backend/view.ts";
+import { effortLabel, speedLabel, useModels } from "../composer/models.ts";
 import { harnessName } from "./Harnesses.tsx";
 import { RefreshAction, SettingsCard, SettingsPage } from "./parts.tsx";
 import { tokenLabel, tokensOf } from "./spendModel.ts";
@@ -213,6 +214,7 @@ function WindowShares({ provider, start }: { provider: ProviderId; start: number
     (): SpendReport | undefined => undefined,
   );
   const [focus, setFocus] = useState<string>();
+  const models = useModels();
   const combos = (report?.combos ?? [])
     .filter((each) => each.provider === provider && tokensOf(each) > 0)
     .sort((a, b) => tokensOf(b) - tokensOf(a));
@@ -225,7 +227,7 @@ function WindowShares({ provider, start }: { provider: ProviderId; start: number
   const shares: ReadonlyArray<Share> = [
     ...named.map((each) => ({
       key: `${each.model}\n${each.effort ?? ""}\n${each.speed ?? ""}`,
-      name: each.model,
+      name: modelLabel(models, provider, each.model),
       detail: comboDetail(each),
       share: percentOf(each),
     })),
@@ -307,7 +309,7 @@ function WindowShares({ provider, start }: { provider: ProviderId; start: number
                       className="flex gap-3"
                     >
                       <span className="min-w-0 flex-1 truncate">
-                        {combo.model}
+                        {modelLabel(models, provider, combo.model)}
                         {comboDetail(combo) ? (
                           <span className="text-fg-tertiary"> · {comboDetail(combo)}</span>
                         ) : null}

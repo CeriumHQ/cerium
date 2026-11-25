@@ -1,7 +1,7 @@
 import { Collapsible } from "@base-ui/react/collapsible";
 import { Toggle } from "@base-ui/react/toggle";
 import { ToggleGroup } from "@base-ui/react/toggle-group";
-import type { ProviderId, SpendReport, SpendTotals } from "@cerium/protocol";
+import type { ModelInfo, ProviderId, SpendReport, SpendTotals } from "@cerium/protocol";
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
 import { ChevronRight } from "lucide-react";
@@ -9,8 +9,10 @@ import { useState, type ReactNode } from "react";
 
 import { machineAtom } from "../../backend/machine.ts";
 import { spendAtom } from "../../backend/spend.ts";
+import { modelLabel } from "../../backend/view.ts";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
+import { useModels } from "../composer/models.ts";
 import { harnessName } from "./Harnesses.tsx";
 import { RefreshAction, SettingsCard, SettingsPage, SettingsSection } from "./parts.tsx";
 import {
@@ -40,12 +42,12 @@ interface Row {
   readonly totals: SpendTotals;
 }
 
-const rowsOf = (report: SpendReport, by: Breakdown): ReadonlyArray<Row> => {
+const rowsOf = (report: SpendReport, by: Breakdown, models: ReadonlyArray<ModelInfo>): ReadonlyArray<Row> => {
   switch (by) {
     case "model":
       return report.models.map((each) => ({
         key: `${each.provider}\n${each.model}`,
-        name: each.model,
+        name: modelLabel(models, each.provider, each.model),
         detail: harnessName[each.provider],
         provider: each.provider,
         totals: each,
@@ -69,6 +71,7 @@ export function TokensSettings() {
   const result = useAtomValue(spendAtom(range));
   const refresh = useAtomRefresh(spendAtom(range));
   const driven = useAtomValue(machineAtom);
+  const models = useModels();
   const report = AsyncResult.getOrElse(result, (): SpendReport | undefined => undefined);
 
   return (
@@ -143,7 +146,7 @@ export function TokensSettings() {
                 ))}
               </ToggleGroup>
             </div>
-            <Rows rows={rowsOf(report, by)} />
+            <Rows rows={rowsOf(report, by, models)} />
           </>
         )}
       </SettingsSection>
