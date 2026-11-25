@@ -134,13 +134,13 @@ function ProviderCard({ usage, now }: { usage: ProviderUsage; now: number }) {
         </div>
       ) : (
         <ul
-          className="grid border-t border-line-subtle @lg:grid-cols-[repeat(var(--columns),minmax(0,1fr))]"
-          style={{ "--columns": Math.min(usage.meters.length, COLUMNS) } as CSSProperties}
+          className="grid border-t border-line-subtle @lg:flex @lg:flex-wrap"
+          style={{ "--meter-width": `${100 / COLUMNS}%` } as CSSProperties}
         >
           {usage.meters.map((meter, index) => (
             <li
               key={`${index}:${meter.label}`}
-              className={`min-w-0 border-line-subtle ${index > 0 ? "border-t" : ""} ${
+              className={`min-w-0 border-line-subtle @lg:flex-[1_0_var(--meter-width)] ${index > 0 ? "border-t" : ""} ${
                 index % COLUMNS !== 0 ? "@lg:border-l" : ""
               } ${index > 0 && index < COLUMNS ? "@lg:border-t-0" : ""}`}
             >
