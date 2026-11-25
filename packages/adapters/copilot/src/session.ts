@@ -6,12 +6,20 @@ import {
   type SessionOptions,
   type TurnExtras,
 } from "@cerium/harness";
-import type { BackgroundTask, EventPayload, ModelInfo, ReasoningEffort, TodoItem } from "@cerium/protocol";
+import type {
+  BackgroundTask,
+  EventPayload,
+  ModelInfo,
+  ModelSpeed,
+  ReasoningEffort,
+  TodoItem,
+} from "@cerium/protocol";
 import { Cause, Deferred, Effect, Queue, Semaphore, Stream, type Duration } from "effect";
 import { randomUUID } from "node:crypto";
 import { basename } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 
+import { servedAs } from "./models.ts";
 import { classifyPermission, readTools, sessionPolicy } from "./policy.ts";
 import { failure, record, string, type CopilotHost } from "./rpc.ts";
 import { expandCopilotSkills } from "./skills.ts";
@@ -74,6 +82,9 @@ export const startCopilotSession = Effect.fn("CopilotAdapter.startCopilotSession
   const initialModel = models.find(({ id }) => id === model);
   let effort = options.effort;
   if (effort !== undefined && initialModel && !initialModel.efforts.includes(effort)) effort = undefined;
+  // Fast mode is a model of its own (`-fast`): the speed picks which id the session runs, where the
+  // model has one.
+  let speed = options.speed;
 
   const request = (method: string, params: Record<string, unknown> = {}, timeout?: Duration.Input) =>
     host.request(method, { ...params, sessionId }, timeout);
@@ -272,7 +283,7 @@ export const startCopilotSession = Effect.fn("CopilotAdapter.startCopilotSession
     ...policy,
     workingDirectory: options.cwd,
     clientName: CLIENT_NAME,
-    model,
+    model: servedAs(model, speed, models),
     inference: { reasoningEffort: effort },
     permissions: { request: true, mode: "manual" },
     hooks: { enableRepositoryHooks: false },
@@ -366,19 +377,20 @@ export const startCopilotSession = Effect.fn("CopilotAdapter.startCopilotSession
       }),
     );
 
-  const switchModel = (nextModel: string, nextEffort: ReasoningEffort | undefined) =>
+  const switchModel = (nextModel: string, nextEffort: ReasoningEffort | undefined, nextSpeed?: ModelSpeed) =>
     Effect.gen(function* () {
       if (active)
         return yield* failure("GitHub Copilot can switch models and effort between turns")(undefined);
+      const target = servedAs(nextModel, nextSpeed ?? speed, models);
       const result = record(
         yield* request("session.model.switchTo", {
-          modelId: nextModel,
+          modelId: target,
           reasoningEffort: nextEffort ?? null,
           requireAvailable: true,
         }),
       );
       if (
-        result?.["modelId"] !== nextModel ||
+        result?.["modelId"] !== target ||
         result["deferred"] === true ||
         ["cancelled", "confirmation_required", "failed", "rejected"].includes(String(result["status"]))
       ) {
@@ -388,6 +400,7 @@ export const startCopilotSession = Effect.fn("CopilotAdapter.startCopilotSession
       }
       model = nextModel;
       effort = nextEffort;
+      if (nextSpeed !== undefined) speed = nextSpeed;
     });
 
   return {
@@ -409,6 +422,16 @@ export const startCopilotSession = Effect.fn("CopilotAdapter.startCopilotSession
       ),
     setEffort: (next) =>
       serial.withPermit(Effect.suspend(() => (next === effort ? Effect.void : switchModel(model, next)))),
+    setSpeed: (next) =>
+      serial.withPermit(
+        Effect.suspend(() => {
+          if (servedAs(model, next, models) !== servedAs(model, speed, models))
+            return switchModel(model, effort, next);
+          // The same id serves it: kept for a later switch to a model with a `-fast` variant.
+          speed = next;
+          return Effect.void;
+        }),
+      ),
     // A turn of its own: Copilot reports the compaction in `session.compaction_complete`, and the turn
     // ends once `session.history.compact` answers, queued behind that event.
     compact: serial.withPermit(

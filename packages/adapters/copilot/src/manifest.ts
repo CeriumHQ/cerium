@@ -10,8 +10,8 @@ export const copilotManifest: CapabilityManifest = {
   releases: { npmPackage: "@github/copilot", updateCommand: "copilot update" },
   // `sessions.fork` copies a session's journal up to an event into a new local session.
   session: { resume: true, fork: true },
-  // Copilot has no faster tier to switch to.
-  switching: { model: true, effort: true, cacheSafeEffort: false },
+  // Copilot's fast mode is a model of its own (`-fast`), so switching speed is a model switch.
+  switching: { model: true, effort: true, cacheSafeEffort: false, speed: true },
   input: { images: true },
   permissions: { approvals: "protocol", readOnlyMode: true },
   mcpInjection: true,

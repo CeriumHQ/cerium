@@ -8,8 +8,9 @@ export type ReasoningEffort = typeof ReasoningEffort.Type;
 
 /**
  * How fast the provider serves a model: `standard`, or a faster tier it charges more for. `fast` is
- * Claude's fast mode, OpenAI's Fast (`priority`) tier and Cursor's Fast models; `ultrafast` is
- * OpenAI's Ultrafast tier, which a few models offer on some plans. Slowest first.
+ * Claude's fast mode, OpenAI's Fast (`priority`) tier, Cursor's Fast models and the `-fast` models
+ * Copilot and OpenCode list; `ultrafast` is OpenAI's Ultrafast tier, which a few models offer on
+ * some plans. Slowest first.
  */
 export const ModelSpeed = Schema.Literals(["standard", "fast", "ultrafast"]);
 export type ModelSpeed = typeof ModelSpeed.Type;

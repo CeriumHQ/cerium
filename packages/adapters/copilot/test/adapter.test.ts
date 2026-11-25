@@ -61,7 +61,13 @@ it.skipIf(process.platform === "win32")(
         delete process.env["CERIUM_COPILOT_E2E_LOGOUT"];
         expect(yield* adapter.listModels).toMatchObject([
           { id: "fixture/gpt-4o", efforts: [] },
-          { id: "fixture/gpt-4.1", efforts: ["low", "high"], defaultEffort: "high" },
+          {
+            id: "fixture/gpt-4.1",
+            efforts: ["low", "high"],
+            defaultEffort: "high",
+            speeds: ["standard", "fast"],
+            defaultSpeed: "standard",
+          },
         ]);
 
         const options: SessionOptions = {
@@ -135,6 +141,7 @@ it.skipIf(process.platform === "win32")(
             });
             yield* resumed.setModel("fixture/gpt-4.1");
             if (!liveCli) yield* resumed.setEffort("low");
+            if (!liveCli && resumed.setSpeed) yield* resumed.setSpeed("fast");
             const events = yield* turn(resumed, "write read-only.txt");
             expect(events).toContainEqual(
               expect.objectContaining({ _tag: "SessionStarted", providerSessionId: sessionId }),
@@ -213,6 +220,15 @@ it.skipIf(process.platform === "win32")(
             params: expect.objectContaining({ clientTurnId: "fixture-turn" }),
           }),
         );
+        // Fast speed runs the model's `-fast` variant.
+        if (!liveCli) {
+          expect(requests).toContainEqual(
+            expect.objectContaining({
+              method: "session.model.switchTo",
+              params: expect.objectContaining({ modelId: "fixture/gpt-4.1-fast" }),
+            }),
+          );
+        }
         expect(requests).toContainEqual(
           expect.objectContaining({
             method: "session.resume",

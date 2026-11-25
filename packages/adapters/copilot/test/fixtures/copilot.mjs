@@ -38,6 +38,12 @@ if (process.argv.includes("--version")) {
         supportedReasoningEfforts: ["high", "low", "future"],
         defaultReasoningEffort: "high",
       },
+      {
+        id: "fixture/gpt-4.1-fast",
+        name: "Fixture 4.1 (fast mode)",
+        supportedReasoningEfforts: ["high", "low"],
+        defaultReasoningEffort: "high",
+      },
       { id: "blocked", name: "Blocked", policy: { state: "disabled" } },
     ],
   };
