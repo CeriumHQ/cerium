@@ -1,4 +1,4 @@
-import type { ProviderId } from "@cerium/protocol";
+import type { ModelSpeed, ProviderId, ReasoningEffort } from "@cerium/protocol";
 import {
   AgentEvent,
   AgentInfo,
@@ -163,8 +163,9 @@ export interface MessageMatch {
 }
 
 /**
- * What the spend report reads of one event: the turns' usage, and the events that say which model
- * those turns ran on, including their session's provider. Counts are absent for any other event.
+ * What the spend report reads of one event: the turns' usage, and the events that say which model,
+ * effort and speed those turns ran with, including their session's provider. Counts are absent for
+ * any other event.
  */
 export interface SpendEvent {
   readonly provider?: ProviderId;
@@ -172,9 +173,13 @@ export interface SpendEvent {
   readonly agentId: AgentId;
   readonly threadId: ThreadId;
   readonly at: number;
-  readonly tag: "UsageReported" | "SessionStarted" | "ModelChanged" | "TurnInput";
+  readonly tag: "UsageReported" | "SessionStarted" | "ModelChanged" | "TurnInput" | "EffortRouted";
   /** On `SessionStarted` and `ModelChanged`. */
   readonly model?: string;
+  /** On `SessionStarted`, `ModelChanged` and `EffortRouted`. */
+  readonly effort?: ReasoningEffort;
+  /** On `ModelChanged`. */
+  readonly speed?: ModelSpeed;
   readonly inputTokens?: number;
   readonly outputTokens?: number;
   readonly cachedInputTokens?: number;
@@ -1091,9 +1096,12 @@ export class Store extends Context.Service<
                   CASE WHEN tag = 'UsageReported' THEN json_extract(payload, '$.costUsd') END,
                   CASE WHEN tag IN ('UsageReported', 'SessionStarted')
                     THEN json_extract(payload, '$.provider') END,
-                  CASE WHEN tag = 'UsageReported' THEN json_extract(payload, '$.unreported') END
+                  CASE WHEN tag = 'UsageReported' THEN json_extract(payload, '$.unreported') END,
+                  CASE WHEN tag IN ('SessionStarted', 'ModelChanged', 'EffortRouted')
+                    THEN json_extract(payload, '$.effort') END,
+                  CASE WHEN tag = 'ModelChanged' THEN json_extract(payload, '$.speed') END
                 FROM events
-                WHERE tag IN ('SessionStarted', 'ModelChanged', 'TurnInput')
+                WHERE tag IN ('SessionStarted', 'ModelChanged', 'TurnInput', 'EffortRouted')
                   OR (tag = 'UsageReported' AND at >= ${from} AND at < ${to})
                 ORDER BY agent_id, sequence`),
             ).pipe(
@@ -1111,6 +1119,8 @@ export class Store extends Context.Service<
                     cost,
                     provider,
                     unreported,
+                    effort,
+                    speed,
                   ]) => ({
                     agentId: agentId as AgentId,
                     threadId: threadId as ThreadId,
@@ -1123,6 +1133,8 @@ export class Store extends Context.Service<
                     ...(typeof output === "number" ? { outputTokens: output } : {}),
                     ...(typeof cached === "number" ? { cachedInputTokens: cached } : {}),
                     ...(typeof cost === "number" ? { costUsd: cost } : {}),
+                    ...(typeof effort === "string" ? { effort: effort as ReasoningEffort } : {}),
+                    ...(typeof speed === "string" ? { speed: speed as ModelSpeed } : {}),
                   }),
                 ),
               ),

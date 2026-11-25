@@ -1,5 +1,6 @@
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 
+import { ReasoningEffort, StoredSpeed } from "./capabilities.ts";
 import { LenientArray } from "./compat.ts";
 import { AgentId, EpochMillis, NonNegativeInt, ProviderId, ThreadId } from "./ids.ts";
 
@@ -37,6 +38,20 @@ export const ThreadSpend = Schema.Struct({
 });
 export type ThreadSpend = typeof ThreadSpend.Type;
 
+/**
+ * The turns that ran with one model at one reasoning effort and speed. `effort` is absent where the
+ * model has no effort setting or ran at its harness's own level, `speed` where it has no speed
+ * setting or none was ever picked.
+ */
+export const ComboSpend = Schema.Struct({
+  ...SpendTotals.fields,
+  provider: ProviderId,
+  model: Schema.NonEmptyString,
+  effort: Schema.optionalKey(ReasoningEffort),
+  speed: Schema.optionalKey(StoredSpeed),
+});
+export type ComboSpend = typeof ComboSpend.Type;
+
 export const AgentSpend = Schema.Struct({
   ...SpendTotals.fields,
   agentId: AgentId,
@@ -69,5 +84,7 @@ export const SpendReport = Schema.Struct({
   models: LenientArray(ModelSpend),
   threads: LenientArray(ThreadSpend),
   agents: LenientArray(AgentSpend),
+  /** Empty from a backend that predates combos. */
+  combos: LenientArray(ComboSpend).pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
 });
 export type SpendReport = typeof SpendReport.Type;

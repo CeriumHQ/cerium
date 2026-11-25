@@ -2,8 +2,11 @@ import type {
   AgentId,
   AgentInfo,
   AgentSpend,
+  ComboSpend,
+  ModelSpeed,
   ModelSpend,
   ProviderId,
+  ReasoningEffort,
   SpendBucket,
   SpendReport,
   SpendTotals,
@@ -56,43 +59,75 @@ class Groups<Key> {
   }
 }
 
+interface ComboKey {
+  readonly provider: ProviderId;
+  readonly model: string;
+  readonly effort: ReasoningEffort | undefined;
+  readonly speed: ModelSpeed | undefined;
+}
+
 /**
- * The model each turn ran on. A switch applies from the agent's next turn, so `ModelChanged` waits
- * for the `TurnInput` that starts it; a session starts on the model it names. Events given for an
- * agent in the order they happened. An agent whose events never say, such as one from before
- * sessions named their model, ran its current model.
+ * What each turn ran with: model, effort and speed. A switch applies from the agent's next turn, so
+ * `ModelChanged` waits for the `TurnInput` that starts it — its absent effort or speed is the model
+ * having no setting for it, not "unchanged". A session starts on the model it names; not every
+ * adapter records its effort, so only a present one reads. The effort router's word (`EffortRouted`)
+ * is the level the turn about to start runs at, a pending switch applied — absent, the harness's own
+ * — and holds until routing or a switch says again. Events given for an agent in the order they
+ * happened. For what an agent's events never say, such as one from before sessions named their
+ * model, its current setup stands in.
  */
-const modelsOf = (events: ReadonlyArray<SpendEvent>, agents: ReadonlyMap<AgentId, AgentInfo>) => {
-  const turns: Array<{ turn: SpendEvent; model: string; provider: ProviderId }> = [];
+const combosOf = (events: ReadonlyArray<SpendEvent>, agents: ReadonlyMap<AgentId, AgentInfo>) => {
+  const turns: Array<{ turn: SpendEvent } & ComboKey> = [];
+  type Setup = {
+    model: string | undefined;
+    effort: ReasoningEffort | undefined;
+    speed: ModelSpeed | undefined;
+  };
   let current:
-    | {
-        agentId: AgentId;
-        model: string | undefined;
-        provider: ProviderId | undefined;
-        pending: string | undefined;
-      }
+    | (Setup & { agentId: AgentId; provider: ProviderId | undefined; pending: Setup | undefined })
     | undefined;
   for (const event of events) {
     if (current?.agentId !== event.agentId) {
-      current = { agentId: event.agentId, model: undefined, provider: undefined, pending: undefined };
+      // The agent's current effort and speed hold until its events say otherwise, absent included.
+      const agent = agents.get(event.agentId);
+      current = {
+        agentId: event.agentId,
+        model: undefined,
+        provider: undefined,
+        effort: agent?.effort,
+        speed: agent?.speed,
+        pending: undefined,
+      };
     }
     switch (event.tag) {
       case "SessionStarted":
         current.model = event.model;
         current.provider = event.provider;
+        if (event.effort !== undefined) current.effort = event.effort;
         current.pending = undefined;
         break;
       case "ModelChanged":
-        current.pending = event.model;
+        current.pending = { model: event.model, effort: event.effort, speed: event.speed };
+        break;
+      case "EffortRouted":
+        // Recorded once a pending switch is applied, so it overrides the switch's effort.
+        if (current.pending === undefined) current.effort = event.effort;
+        else current.pending = { ...current.pending, effort: event.effort };
         break;
       case "TurnInput":
-        current.model = current.pending ?? current.model;
-        current.pending = undefined;
+        if (current.pending !== undefined) {
+          current.model = current.pending.model ?? current.model;
+          current.effort = current.pending.effort;
+          current.speed = current.pending.speed;
+          current.pending = undefined;
+        }
         break;
       case "UsageReported": {
-        const model = event.model ?? current.model ?? agents.get(event.agentId)?.model;
-        const provider = event.provider ?? current.provider ?? agents.get(event.agentId)?.provider;
-        if (model !== undefined && provider !== undefined) turns.push({ turn: event, model, provider });
+        const agent = agents.get(event.agentId);
+        const model = event.model ?? current.model ?? agent?.model;
+        const provider = event.provider ?? current.provider ?? agent?.provider;
+        if (model === undefined || provider === undefined) break;
+        turns.push({ turn: event, model, provider, effort: current.effort, speed: current.speed });
       }
     }
   }
@@ -101,8 +136,9 @@ const modelsOf = (events: ReadonlyArray<SpendEvent>, agents: ReadonlyMap<AgentId
 
 /**
  * What the agents used between the first and last of `edges`, summed from their turns' reported
- * usage: in total, in each bucket between two edges, and by harness, model, thread and agent.
- * `events` are `Store.listSpendEvents` for that span. Turns that reported nothing are not counted.
+ * usage: in total, in each bucket between two edges, and by harness, model, combo of model, effort
+ * and speed, thread and agent. `events` are `Store.listSpendEvents` for that span. Turns that
+ * reported nothing are not counted.
  */
 export const spendReport = (input: {
   readonly events: ReadonlyArray<SpendEvent>;
@@ -122,12 +158,15 @@ export const spendReport = (input: {
   const models = new Groups<{ provider: ProviderId; model: string }>(
     ({ provider, model }) => `${provider}\n${model}`,
   );
+  const combos = new Groups<ComboKey>(
+    ({ provider, model, effort, speed }) => `${provider}\n${model}\n${effort ?? ""}\n${speed ?? ""}`,
+  );
   const threads = new Groups<AgentInfo["threadId"]>((id) => id);
   const byAgent = new Groups<AgentId>((id) => id);
   // Each agent's models by the tokens they used, for the one it ran most.
   const agentModels = new Map<AgentId, Map<string, number>>();
 
-  for (const { turn, model, provider } of modelsOf(input.events, agents)) {
+  for (const { turn, model, provider, effort, speed } of combosOf(input.events, agents)) {
     const agent = agents.get(turn.agentId);
     const empty = (turn.inputTokens ?? 0) + (turn.outputTokens ?? 0) + (turn.cachedInputTokens ?? 0) === 0;
     if (
@@ -145,6 +184,7 @@ export const spendReport = (input: {
     if (bucket !== undefined) buckets[index] = { ...add(bucket, turn), start: bucket.start };
     providers.add(provider, turn);
     models.add({ provider, model }, turn);
+    combos.add({ provider, model, effort, speed }, turn);
     threads.add(agent.threadId, turn);
     byAgent.add(agent.id, turn);
     const used = agentModels.get(agent.id) ?? new Map<string, number>();
@@ -157,6 +197,13 @@ export const spendReport = (input: {
     buckets,
     providers: providers.rows.map(({ key, total }) => ({ provider: key, ...total })),
     models: models.rows.map(({ key, total }): ModelSpend => ({ ...key, ...total })),
+    combos: combos.rows.map(({ key, total }): ComboSpend => ({
+      provider: key.provider,
+      model: key.model,
+      ...(key.effort === undefined ? {} : { effort: key.effort }),
+      ...(key.speed === undefined ? {} : { speed: key.speed }),
+      ...total,
+    })),
     threads: threads.rows
       .slice(0, SPEND_ROWS)
       .map(({ key, total }): ThreadSpend => ({ threadId: key, title: titles.get(key) ?? "", ...total })),

@@ -1,7 +1,7 @@
 import { Collapsible } from "@base-ui/react/collapsible";
 import { Toggle } from "@base-ui/react/toggle";
 import { ToggleGroup } from "@base-ui/react/toggle-group";
-import type { ProviderId, SpendReport, SpendTotals, UsageSnapshot } from "@cerium/protocol";
+import type { ComboSpend, ProviderId, SpendReport, SpendTotals, UsageSnapshot } from "@cerium/protocol";
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
 import { ChevronRight } from "lucide-react";
@@ -12,6 +12,7 @@ import { spendAtom, spendSinceAtom } from "../../backend/spend.ts";
 import { usageAtom } from "../../backend/usage.ts";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
+import { effortLabel, speedLabel } from "../composer/models.ts";
 import { harnessName } from "./Harnesses.tsx";
 import { RefreshAction, SettingsCard, SettingsPage, SettingsSection } from "./parts.tsx";
 import {
@@ -26,10 +27,11 @@ import {
 } from "./spendModel.ts";
 import { lastResetOf } from "./usageModel.ts";
 
-type Breakdown = "model" | "thread" | "reset";
+type Breakdown = "model" | "combo" | "thread" | "reset";
 
 const breakdowns: ReadonlyArray<{ readonly id: Breakdown; readonly label: string }> = [
   { id: "model", label: "Model" },
+  { id: "combo", label: "Combo" },
   { id: "thread", label: "Thread" },
   { id: "reset", label: "Since reset" },
 ];
@@ -41,7 +43,17 @@ interface Row {
   readonly detail?: string;
   readonly provider?: ProviderId;
   readonly totals: SpendTotals;
+  /** The row's share of the report's tokens, from 0 to 1; shown where the breakdown answers in percent. */
+  readonly share?: number;
 }
+
+/** How a combo row names the effort and speed it ran at; the usual speed goes unsaid. */
+const comboDetail = (combo: ComboSpend): string =>
+  [
+    harnessName[combo.provider],
+    ...(combo.effort === undefined ? [] : [effortLabel[combo.effort]]),
+    ...(combo.speed === undefined || combo.speed === "standard" ? [] : [speedLabel[combo.speed]]),
+  ].join(" · ");
 
 const rowsOf = (report: SpendReport, by: Breakdown): ReadonlyArray<Row> => {
   switch (by) {
@@ -53,6 +65,17 @@ const rowsOf = (report: SpendReport, by: Breakdown): ReadonlyArray<Row> => {
         provider: each.provider,
         totals: each,
       }));
+    case "combo": {
+      const total = tokensOf(report.totals);
+      return report.combos.map((each) => ({
+        key: `${each.provider}\n${each.model}\n${each.effort ?? ""}\n${each.speed ?? ""}`,
+        name: each.model,
+        detail: comboDetail(each),
+        provider: each.provider,
+        totals: each,
+        ...(total === 0 ? {} : { share: tokensOf(each) / total }),
+      }));
+    }
     case "thread":
       return report.threads.map((each) => ({
         key: each.threadId,
@@ -325,7 +348,7 @@ function Bars({ report, range }: { report: SpendReport; range: SpendRange }) {
   );
 }
 
-/** The biggest first, each with a thin bar against the biggest; its detail unfolds on demand. */
+/** The biggest first, each with a thin bar; its detail unfolds on demand. */
 function Rows({ rows }: { rows: ReadonlyArray<Row> }) {
   const biggest = Math.max(1, ...rows.map((row) => tokensOf(row.totals)));
   return (
@@ -340,6 +363,10 @@ function Rows({ rows }: { rows: ReadonlyArray<Row> }) {
 function RowItem({ row, share }: { row: Row; share: number }) {
   const { totals } = row;
   const gap = costGap(totals);
+  // A row with a share of the whole answers in percent, and its bar fills to it; the rest measure
+  // against the biggest row.
+  const part = row.share;
+  const percent = part === undefined ? undefined : Math.round(part * 100);
   return (
     <Collapsible.Root>
       <Collapsible.Trigger className="group flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-surface-hover/60">
@@ -360,14 +387,23 @@ function RowItem({ row, share }: { row: Row; share: number }) {
           <span aria-hidden className="h-1 overflow-hidden rounded-full bg-surface-hover">
             <span
               className="block h-full rounded-full bg-fg-secondary"
-              style={{ width: `${Math.max(2, share * 100)}%` }}
+              style={{ width: `${Math.max(2, (part ?? share) * 100)}%` }}
             />
           </span>
         </span>
-        <span className="flex w-20 shrink-0 flex-col items-end text-body tabular-nums">
-          <span className="text-fg-primary">{tokenLabel(tokensOf(totals))}</span>
-          <span className="text-meta text-fg-tertiary">{costLabel(totals)}</span>
-        </span>
+        {percent === undefined ? (
+          <span className="flex w-20 shrink-0 flex-col items-end text-body tabular-nums">
+            <span className="text-fg-primary">{tokenLabel(tokensOf(totals))}</span>
+            <span className="text-meta text-fg-tertiary">{costLabel(totals)}</span>
+          </span>
+        ) : (
+          <span className="flex w-24 shrink-0 flex-col items-end text-body tabular-nums">
+            <span className="text-fg-primary">{percent < 1 ? "<1" : percent}%</span>
+            <span className="truncate text-meta text-fg-tertiary">
+              {tokenLabel(tokensOf(totals))} · {costLabel(totals)}
+            </span>
+          </span>
+        )}
         <ChevronRight
           size={14}
           strokeWidth={2}

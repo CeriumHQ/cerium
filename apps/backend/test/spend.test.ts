@@ -39,7 +39,7 @@ const usage = (
 
 const mark = (
   agentId: string,
-  tag: "SessionStarted" | "ModelChanged" | "TurnInput",
+  tag: "SessionStarted" | "ModelChanged" | "TurnInput" | "EffortRouted",
   at: number,
   model?: string,
 ): SpendEvent => ({
@@ -213,6 +213,137 @@ describe("spendReport", () => {
     assert.deepStrictEqual(
       report.agents.map(({ model }) => model),
       ["claude-sonnet"],
+    );
+  });
+
+  it("groups each turn by the combo of model, effort and speed it ran with", () => {
+    const report = spendReport({
+      agents: [agent("lead", "t1", "claude", "claude-opus")],
+      threads,
+      edges,
+      events: [
+        { ...mark("lead", "SessionStarted", 1, "claude-opus"), effort: "high" as const },
+        mark("lead", "TurnInput", 2),
+        usage("lead", "t1", 10, { inputTokens: 100, outputTokens: 10 }),
+        // The switch's effort and speed apply from the next turn, like its model.
+        {
+          ...mark("lead", "ModelChanged", 15, "claude-opus"),
+          effort: "max" as const,
+          speed: "fast" as const,
+        },
+        mark("lead", "TurnInput", 16),
+        usage("lead", "t1", 20, { inputTokens: 200, outputTokens: 20 }),
+      ],
+    });
+    assert.deepStrictEqual(
+      report.combos.map(({ model, effort, speed, inputTokens }) => [model, effort, speed, inputTokens]),
+      [
+        ["claude-opus", "max", "fast", 200],
+        ["claude-opus", "high", undefined, 100],
+      ],
+    );
+    // The model breakdown still sums the model as one.
+    assert.strictEqual(report.models.length, 1);
+    assert.strictEqual(report.models[0]?.inputTokens, 300);
+  });
+
+  it("runs the effort the router picked for the turn, and none where it kept the harness's own", () => {
+    const report = spendReport({
+      agents: [agent("lead", "t1", "claude", "claude-opus")],
+      threads,
+      edges,
+      events: [
+        { ...mark("lead", "SessionStarted", 1, "claude-opus"), effort: "high" as const },
+        mark("lead", "TurnInput", 2),
+        usage("lead", "t1", 10, { inputTokens: 100, outputTokens: 10 }),
+        { ...mark("lead", "EffortRouted", 18), effort: "low" as const },
+        mark("lead", "TurnInput", 19),
+        usage("lead", "t1", 20, { inputTokens: 200, outputTokens: 20 }),
+        mark("lead", "EffortRouted", 28),
+        mark("lead", "TurnInput", 29),
+        usage("lead", "t1", 30, { inputTokens: 300, outputTokens: 30 }),
+      ],
+    });
+    assert.deepStrictEqual(
+      report.combos.map(({ effort, inputTokens }) => [effort, inputTokens]),
+      [
+        [undefined, 300],
+        ["low", 200],
+        ["high", 100],
+      ],
+    );
+  });
+
+  it("drops the effort when a switch names a model its harness offers no setting for", () => {
+    const report = spendReport({
+      agents: [agent("lead", "t1", "claude", "claude-opus")],
+      threads,
+      edges,
+      events: [
+        { ...mark("lead", "SessionStarted", 1, "claude-opus"), effort: "high" as const },
+        mark("lead", "TurnInput", 2),
+        usage("lead", "t1", 10, { inputTokens: 100, outputTokens: 10 }),
+        mark("lead", "ModelChanged", 15, "claude-haiku"),
+        mark("lead", "TurnInput", 16),
+        usage("lead", "t1", 20, { inputTokens: 200, outputTokens: 20 }),
+      ],
+    });
+    assert.deepStrictEqual(
+      report.combos.map(({ model, effort }) => [model, effort]),
+      [
+        ["claude-haiku", undefined],
+        ["claude-opus", "high"],
+      ],
+    );
+  });
+
+  it("keeps a turn's absent effort and speed absent though the agent has one now", () => {
+    const report = spendReport({
+      agents: [
+        { ...agent("lead", "t1", "claude", "claude-opus"), effort: "max" as const, speed: "fast" as const },
+      ],
+      threads,
+      edges,
+      events: [
+        mark("lead", "SessionStarted", 1, "claude-opus"),
+        mark("lead", "ModelChanged", 2, "claude-haiku"),
+        mark("lead", "TurnInput", 3),
+        usage("lead", "t1", 10, { inputTokens: 100, outputTokens: 10 }),
+        {
+          ...mark("lead", "ModelChanged", 15, "claude-opus"),
+          effort: "max" as const,
+          speed: "fast" as const,
+        },
+        mark("lead", "EffortRouted", 18),
+        mark("lead", "TurnInput", 19),
+        usage("lead", "t1", 20, { inputTokens: 200, outputTokens: 20 }),
+      ],
+    });
+    assert.deepStrictEqual(
+      report.combos.map(({ model, effort, speed }) => [model, effort, speed]),
+      [
+        ["claude-opus", undefined, "fast"],
+        ["claude-haiku", undefined, undefined],
+      ],
+    );
+  });
+
+  it("stands the agent's current effort and speed in for events that never say", () => {
+    const report = spendReport({
+      agents: [
+        {
+          ...agent("solo", "t2", "opencode", "free-model"),
+          effort: "medium" as const,
+          speed: "fast" as const,
+        },
+      ],
+      threads,
+      edges,
+      events: [usage("solo", "t2", 10)],
+    });
+    assert.deepStrictEqual(
+      report.combos.map(({ effort, speed }) => [effort, speed]),
+      [["medium", "fast"]],
     );
   });
 });

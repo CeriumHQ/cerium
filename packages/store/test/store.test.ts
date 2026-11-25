@@ -1190,4 +1190,38 @@ describe("Store", () => {
       }),
     ),
   );
+
+  it.effect("reads the effort and speed each turn ran with for the spend report", () =>
+    withStore(
+      Effect.gen(function* () {
+        const store = yield* Store;
+        yield* store.createThread(thread);
+        yield* store.createAgent(lead);
+        const at = (sequence: number, time: number, payload: AgentEvent["payload"]): AgentEvent => ({
+          ...event(sequence),
+          at: time,
+          payload,
+        });
+        yield* store.appendEvents([
+          at(0, 1, {
+            _tag: "SessionStarted",
+            provider: "claude",
+            providerSessionId: "s",
+            model: "m1",
+            effort: "high",
+          }),
+          at(1, 2, { _tag: "EffortRouted", effort: "low" }),
+          at(2, 15, { _tag: "ModelChanged", model: "m2", effort: "max", speed: "fast" }),
+          at(3, 20, { _tag: "UsageReported", inputTokens: 3, outputTokens: 4 }),
+        ]);
+        const rest = { agentId: lead.id, threadId: thread.id };
+        assert.deepStrictEqual(yield* store.listSpendEvents(0, 100), [
+          { ...rest, at: 1, tag: "SessionStarted", model: "m1", provider: "claude", effort: "high" },
+          { ...rest, at: 2, tag: "EffortRouted", effort: "low" },
+          { ...rest, at: 15, tag: "ModelChanged", model: "m2", effort: "max", speed: "fast" },
+          { ...rest, at: 20, tag: "UsageReported", inputTokens: 3, outputTokens: 4 },
+        ]);
+      }),
+    ),
+  );
 });
