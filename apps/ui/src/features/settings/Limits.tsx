@@ -1,20 +1,24 @@
 import { Button } from "@base-ui/react/button";
 
 import { buttonClass } from "../../components/ui/Button.tsx";
-import type { ProviderUsage, UsageMeter, UsageSnapshot } from "@cerium/protocol";
+import type { ProviderId, ProviderUsage, SpendReport, UsageMeter, UsageSnapshot } from "@cerium/protocol";
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 
 import { machineAtom } from "../../backend/machine.ts";
+import { spendSinceAtom } from "../../backend/spend.ts";
 import { usageAtom } from "../../backend/usage.ts";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { InfoTip } from "../../components/ui/InfoTip.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
+import { effortLabel, speedLabel } from "../composer/models.ts";
 import { harnessName } from "./Harnesses.tsx";
 import { RefreshAction, SettingsCard, SettingsPage } from "./parts.tsx";
+import { tokensOf } from "./spendModel.ts";
 import {
   evenLeft,
+  lastResetOf,
   leftLabel,
   litSegments,
   meterLevel,
@@ -100,6 +104,7 @@ const COLUMNS = 3;
 function ProviderCard({ usage, now }: { usage: ProviderUsage; now: number }) {
   const name = harnessName[usage.provider];
   const credits = usage._tag === "Subscribed" ? usage.resetCredits : undefined;
+  const start = lastResetOf(usage, now);
   return (
     <SettingsCard className="@container">
       <div className="flex items-center gap-2.5 px-4 py-3">
@@ -149,6 +154,7 @@ function ProviderCard({ usage, now }: { usage: ProviderUsage; now: number }) {
           ))}
         </ul>
       )}
+      {start === undefined ? null : <WindowShares provider={usage.provider} start={start} />}
       {usage._tag === "Subscribed" && usage.refreshError ? (
         <p className="flex items-start gap-2 border-t border-line-subtle px-4 py-2.5 text-meta leading-relaxed text-fg-tertiary">
           <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-attention" />
@@ -159,6 +165,58 @@ function ProviderCard({ usage, now }: { usage: ProviderUsage; now: number }) {
         </p>
       ) : null}
     </SettingsCard>
+  );
+}
+
+/**
+ * What share of the window's use each combo — model, effort and speed — took since it reset, in
+ * percent of the harness's tokens over it. Hidden while it reads or when nothing ran yet.
+ */
+function WindowShares({ provider, start }: { provider: ProviderId; start: number }) {
+  const report = AsyncResult.getOrElse(
+    useAtomValue(spendSinceAtom(start)),
+    (): SpendReport | undefined => undefined,
+  );
+  const combos = (report?.combos ?? []).filter((each) => each.provider === provider && tokensOf(each) > 0);
+  const total = combos.reduce((sum, each) => sum + tokensOf(each), 0);
+  if (total === 0) return null;
+  return (
+    <div className="border-t border-line-subtle px-4 py-3">
+      <p className="text-meta text-fg-tertiary">In this window</p>
+      <ul className="flex flex-col gap-2.5 pt-2">
+        {combos.map((each) => {
+          const share = (tokensOf(each) / total) * 100;
+          const detail = [
+            ...(each.effort === undefined ? [] : [effortLabel[each.effort]]),
+            ...(each.speed === undefined || each.speed === "standard" ? [] : [speedLabel[each.speed]]),
+          ].join(" · ");
+          return (
+            <li
+              key={`${each.model}\n${each.effort ?? ""}\n${each.speed ?? ""}`}
+              className="flex items-center gap-3"
+            >
+              <span className="flex min-w-0 flex-1 flex-col gap-1.5">
+                <span className="flex min-w-0 items-baseline gap-2">
+                  <span className="truncate text-body font-medium text-fg-primary">{each.model}</span>
+                  {detail ? (
+                    <span className="shrink-0 truncate text-meta text-fg-tertiary">{detail}</span>
+                  ) : null}
+                </span>
+                <span aria-hidden className="h-1 overflow-hidden rounded-full bg-surface-hover">
+                  <span
+                    className="block h-full rounded-full bg-fg-secondary"
+                    style={{ width: `${Math.max(2, share)}%` }}
+                  />
+                </span>
+              </span>
+              <span className="w-12 shrink-0 text-right text-body text-fg-primary tabular-nums">
+                {share < 1 ? "<1" : Math.round(share)}%
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
 

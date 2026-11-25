@@ -1,18 +1,16 @@
 import { Collapsible } from "@base-ui/react/collapsible";
 import { Toggle } from "@base-ui/react/toggle";
 import { ToggleGroup } from "@base-ui/react/toggle-group";
-import type { ComboSpend, ProviderId, SpendReport, SpendTotals, UsageSnapshot } from "@cerium/protocol";
+import type { ProviderId, SpendReport, SpendTotals } from "@cerium/protocol";
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
 import { ChevronRight } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { machineAtom } from "../../backend/machine.ts";
-import { spendAtom, spendSinceAtom } from "../../backend/spend.ts";
-import { usageAtom } from "../../backend/usage.ts";
+import { spendAtom } from "../../backend/spend.ts";
 import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
-import { effortLabel, speedLabel } from "../composer/models.ts";
 import { harnessName } from "./Harnesses.tsx";
 import { RefreshAction, SettingsCard, SettingsPage, SettingsSection } from "./parts.tsx";
 import {
@@ -25,15 +23,12 @@ import {
   tokensOf,
   type SpendRange,
 } from "./spendModel.ts";
-import { lastResetOf } from "./usageModel.ts";
 
-type Breakdown = "model" | "combo" | "thread" | "reset";
+type Breakdown = "model" | "thread";
 
 const breakdowns: ReadonlyArray<{ readonly id: Breakdown; readonly label: string }> = [
   { id: "model", label: "Model" },
-  { id: "combo", label: "Combo" },
   { id: "thread", label: "Thread" },
-  { id: "reset", label: "Since reset" },
 ];
 
 /** One line of a breakdown: who, what to call them, and what they used. */
@@ -43,17 +38,7 @@ interface Row {
   readonly detail?: string;
   readonly provider?: ProviderId;
   readonly totals: SpendTotals;
-  /** The row's share of the report's tokens, from 0 to 1; shown where the breakdown answers in percent. */
-  readonly share?: number;
 }
-
-/** How a combo row names the effort and speed it ran at; the usual speed goes unsaid. */
-const comboDetail = (combo: ComboSpend): string =>
-  [
-    harnessName[combo.provider],
-    ...(combo.effort === undefined ? [] : [effortLabel[combo.effort]]),
-    ...(combo.speed === undefined || combo.speed === "standard" ? [] : [speedLabel[combo.speed]]),
-  ].join(" · ");
 
 const rowsOf = (report: SpendReport, by: Breakdown): ReadonlyArray<Row> => {
   switch (by) {
@@ -65,25 +50,12 @@ const rowsOf = (report: SpendReport, by: Breakdown): ReadonlyArray<Row> => {
         provider: each.provider,
         totals: each,
       }));
-    case "combo": {
-      const total = tokensOf(report.totals);
-      return report.combos.map((each) => ({
-        key: `${each.provider}\n${each.model}\n${each.effort ?? ""}\n${each.speed ?? ""}`,
-        name: each.model,
-        detail: comboDetail(each),
-        provider: each.provider,
-        totals: each,
-        ...(total === 0 ? {} : { share: tokensOf(each) / total }),
-      }));
-    }
     case "thread":
       return report.threads.map((each) => ({
         key: each.threadId,
         name: each.title || "Untitled",
         totals: each,
       }));
-    case "reset":
-      return [];
   }
 };
 
@@ -171,85 +143,11 @@ export function TokensSettings() {
                 ))}
               </ToggleGroup>
             </div>
-            {by === "reset" ? <ResetShares /> : <Rows rows={rowsOf(report, by)} />}
+            <Rows rows={rowsOf(report, by)} />
           </>
         )}
       </SettingsSection>
     </SettingsPage>
-  );
-}
-
-/** Each subscribed harness's models by the share of its tokens they took since its limits last reset. */
-function ResetShares() {
-  const snapshot = AsyncResult.getOrElse(useAtomValue(usageAtom), (): UsageSnapshot | undefined => undefined);
-  const [now] = useState(() => Date.now());
-  const sections = (snapshot?.usage ?? []).flatMap((usage) => {
-    const start = lastResetOf(usage, now);
-    return start === undefined ? [] : [{ provider: usage.provider, start }];
-  });
-  if (sections.length === 0) {
-    return (
-      <SettingsCard className="px-4 py-3.5 text-meta text-fg-tertiary">
-        No subscription reports when its limits reset.
-      </SettingsCard>
-    );
-  }
-  return sections.map(({ provider, start }) => (
-    <ResetCard key={provider} provider={provider} start={start} />
-  ));
-}
-
-function ResetCard({ provider, start }: { provider: ProviderId; start: number }) {
-  const report = AsyncResult.getOrElse(
-    useAtomValue(spendSinceAtom(start)),
-    (): SpendReport | undefined => undefined,
-  );
-  const models = (report?.models ?? [])
-    .filter((each) => each.provider === provider && tokensOf(each) > 0)
-    .sort((a, b) => tokensOf(b) - tokensOf(a));
-  const total = models.reduce((sum, each) => sum + tokensOf(each), 0);
-  return (
-    <SettingsCard className="divide-y divide-line-subtle overflow-hidden">
-      <div className="flex items-center gap-2.5 px-4 py-2.5">
-        <ProviderLogo provider={provider} size={14} className="shrink-0 text-fg-secondary" />
-        <span className="min-w-0 flex-1 truncate text-body font-medium text-fg-primary">
-          {harnessName[provider]}
-        </span>
-        <span className="shrink-0 text-meta text-fg-tertiary">
-          since{" "}
-          {new Date(start).toLocaleString([], {
-            weekday: "short",
-            hour: "numeric",
-            minute: "2-digit",
-          })}
-        </span>
-      </div>
-      {report === undefined ? (
-        <p className="px-4 py-2.5 text-meta text-fg-tertiary">Reading…</p>
-      ) : models.length === 0 ? (
-        <p className="px-4 py-2.5 text-meta text-fg-tertiary">Nothing used since.</p>
-      ) : (
-        models.map((each) => {
-          const share = (tokensOf(each) / total) * 100;
-          return (
-            <div key={each.model} className="flex items-center gap-3 px-4 py-2.5">
-              <span className="flex min-w-0 flex-1 flex-col gap-1.5">
-                <span className="truncate text-body font-medium text-fg-primary">{each.model}</span>
-                <span aria-hidden className="h-1 overflow-hidden rounded-full bg-surface-hover">
-                  <span
-                    className="block h-full rounded-full bg-fg-secondary"
-                    style={{ width: `${Math.max(2, share)}%` }}
-                  />
-                </span>
-              </span>
-              <span className="w-12 shrink-0 text-right text-body text-fg-primary tabular-nums">
-                {share < 1 ? "<1" : Math.round(share)}%
-              </span>
-            </div>
-          );
-        })
-      )}
-    </SettingsCard>
   );
 }
 
@@ -348,7 +246,7 @@ function Bars({ report, range }: { report: SpendReport; range: SpendRange }) {
   );
 }
 
-/** The biggest first, each with a thin bar; its detail unfolds on demand. */
+/** The biggest first, each with a thin bar against the biggest; its detail unfolds on demand. */
 function Rows({ rows }: { rows: ReadonlyArray<Row> }) {
   const biggest = Math.max(1, ...rows.map((row) => tokensOf(row.totals)));
   return (
@@ -363,10 +261,6 @@ function Rows({ rows }: { rows: ReadonlyArray<Row> }) {
 function RowItem({ row, share }: { row: Row; share: number }) {
   const { totals } = row;
   const gap = costGap(totals);
-  // A row with a share of the whole answers in percent, and its bar fills to it; the rest measure
-  // against the biggest row.
-  const part = row.share;
-  const percent = part === undefined ? undefined : Math.round(part * 100);
   return (
     <Collapsible.Root>
       <Collapsible.Trigger className="group flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-surface-hover/60">
@@ -387,23 +281,14 @@ function RowItem({ row, share }: { row: Row; share: number }) {
           <span aria-hidden className="h-1 overflow-hidden rounded-full bg-surface-hover">
             <span
               className="block h-full rounded-full bg-fg-secondary"
-              style={{ width: `${Math.max(2, (part ?? share) * 100)}%` }}
+              style={{ width: `${Math.max(2, share * 100)}%` }}
             />
           </span>
         </span>
-        {percent === undefined ? (
-          <span className="flex w-20 shrink-0 flex-col items-end text-body tabular-nums">
-            <span className="text-fg-primary">{tokenLabel(tokensOf(totals))}</span>
-            <span className="text-meta text-fg-tertiary">{costLabel(totals)}</span>
-          </span>
-        ) : (
-          <span className="flex w-24 shrink-0 flex-col items-end text-body tabular-nums">
-            <span className="text-fg-primary">{percent < 1 ? "<1" : percent}%</span>
-            <span className="truncate text-meta text-fg-tertiary">
-              {tokenLabel(tokensOf(totals))} · {costLabel(totals)}
-            </span>
-          </span>
-        )}
+        <span className="flex w-20 shrink-0 flex-col items-end text-body tabular-nums">
+          <span className="text-fg-primary">{tokenLabel(tokensOf(totals))}</span>
+          <span className="text-meta text-fg-tertiary">{costLabel(totals)}</span>
+        </span>
         <ChevronRight
           size={14}
           strokeWidth={2}
