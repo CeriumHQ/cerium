@@ -1,5 +1,10 @@
 import { type AgentId } from "@cerium/protocol";
-import { FORK_THREAD_RPC_VERSION, PER_FILE_TURN_REVERT_RPC_VERSION, RPC_VERSION } from "@cerium/rpc";
+import {
+  FORK_THREAD_RPC_VERSION,
+  MOVE_CHAT_TO_WORK_RPC_VERSION,
+  PER_FILE_TURN_REVERT_RPC_VERSION,
+  RPC_VERSION,
+} from "@cerium/rpc";
 import { RegistryContext, useAtomSet, useAtomValue } from "@effect/atom-react";
 import { useContext, useState } from "react";
 
@@ -11,6 +16,7 @@ import {
   createThread,
   editMessage,
   forkThread,
+  moveChatToWork,
   previewForkThread,
   interruptAgent,
   previewRestore,
@@ -37,6 +43,7 @@ import {
 import { STOP_THREAD_VERSION, stopAllScope } from "../features/agents/model.ts";
 import { StopAllDialog } from "../features/agents/StopAllDialog.tsx";
 import type { OutgoingMessage, ThreadSetup } from "../features/composer/Composer.tsx";
+import { draftModeOf, draftsAtom } from "../features/composer/drafts.ts";
 import { HANDOFF_VERSION, LIMIT_POLICY_VERSION } from "../features/composer/models.ts";
 import { linkTaskThreads, tasksAtom } from "../features/tasks/tasks.ts";
 import { SCRIPT_BOOT_VERSION } from "../features/terminal/model.ts";
@@ -116,7 +123,7 @@ export function useThreadPaneActions({
   readonly openSettings: (category?: SettingsCategory) => void;
 }) {
   const registry = useContext(RegistryContext);
-  const { mode, blank, setOpenThread, setPanesByMode, setPane, chooseFolder } = sessionState;
+  const { blank, setOpenThread, setStoredPanes, setPane, chooseFolder } = sessionState;
   const { drivenDevice, connection, refreshThreads, agents, selected, cloudSelected, noHarness } = threads;
   const { tabs, panesArea } = tabView;
   const { openKey, focusComposer } = composer;
@@ -125,6 +132,7 @@ export function useThreadPaneActions({
   const { attempt, setActionError } = errors;
   const create = useAtomSet(createThread, { mode: "promise" });
   const fork = useAtomSet(forkThread, { mode: "promise" });
+  const moveToWorkMutation = useAtomSet(moveChatToWork, { mode: "promise" });
   const checkFork = useAtomSet(previewForkThread, { mode: "promise" });
   const send = useAtomSet(sendMessage, { mode: "promise" });
   const edit = useAtomSet(editMessage, { mode: "promise" });
@@ -187,15 +195,20 @@ export function useThreadPaneActions({
     newFolder: string | undefined,
     taskId: string | undefined,
   ) => {
-    const title = (message.text.split("\n")[0] || message.attachments[0]?.name || "New thread").slice(0, 80);
+    const threadMode = draftModeOf(draft, registry.get(draftsAtom)[draft]?.start?.mode);
+    const title = (
+      message.text.split("\n")[0] ||
+      message.attachments[0]?.name ||
+      (threadMode === "work" ? "New thread" : "New chat")
+    ).slice(0, 80);
     // The threads of one multi-agent run share an id, so the sidebar shows them as one.
     const runId = setups.length > 1 ? crypto.randomUUID() : undefined;
     const created = await settleInTurn(setups, ({ worktree, workspace, ...lead }) =>
       create({
         payload: {
           title,
-          mode,
-          ...(mode === "work" && newFolder ? { cwd: newFolder } : {}),
+          mode: threadMode,
+          ...(threadMode === "work" && newFolder ? { cwd: newFolder } : {}),
           ...(worktree ? { worktree } : {}),
           ...(workspace ? { workspace } : {}),
           ...(runId ? { runId } : {}),
@@ -220,25 +233,22 @@ export function useThreadPaneActions({
     const beside = others.map(({ thread }) => thread.id as string);
     tabs.started(draft, first.thread.id, beside);
     const shownBefore = openKey.current ?? draft;
-    setPanesByMode((all) => {
-      const stored = all[mode];
+    setStoredPanes((stored) => {
       const before = stored ?? (beside.length > 0 ? singlePane(MAIN_PANE, shownBefore) : undefined);
-      if (before === undefined) return all;
+      if (before === undefined) return stored;
       const renamed = renameKey(before, draft, first.thread.id);
       const target = paneShowing(renamed.root, first.thread.id);
       if (target === undefined || beside.length === 0 || compact) {
-        return stored === undefined ? all : { ...all, [mode]: renamed };
+        return stored === undefined ? stored : renamed;
       }
       // Each pane keeps the least room a pane has; the threads past what fits wait in their tabs.
       const box = layoutOf(renamed.root).panes.find(({ leaf }) => leaf.id === target.id)?.box;
       const width = (box?.width ?? 0) * (panesArea.current?.getBoundingClientRect().width ?? 0);
       const fit = Math.max(0, Math.floor(width / MIN_PANE.width) - 1);
       const placed = beside.slice(0, fit).map((key) => ({ key, id: newPaneId() }));
-      return { ...all, [mode]: spreadBeside(renamed, target.id, placed) };
+      return spreadBeside(renamed, target.id, placed);
     });
-    setOpenThread((open) =>
-      (open[mode] ?? blank[mode]) === draft ? { ...open, [mode]: first.thread.id } : open,
-    );
+    setOpenThread((open) => ((open ?? blank) === draft ? first.thread.id : open));
     refreshThreads();
     const sent = await settleInTurn(started, ({ lead }) =>
       send({ payload: { agentId: lead.id, ...message } }),
@@ -278,10 +288,20 @@ export function useThreadPaneActions({
               // Rejects with the backend's reason, which the fork dialog says in place.
               const { thread } = await fork({ payload: { threadId, turn, ...choice } });
               refreshThreads();
-              // The sibling opens where this thread is, in its own mode.
-              setOpenThread((open) => ({ ...open, [thread.mode]: thread.id }));
+              // The sibling opens right in the unified tab strip.
+              setOpenThread(thread.id);
               setPane("main");
             },
+          }
+        : undefined,
+    moveToWork:
+      drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= MOVE_CHAT_TO_WORK_RPC_VERSION
+        ? async (threadId, choice) => {
+            await moveToWorkMutation({ payload: { threadId, ...choice } });
+            chooseFolder(choice.cwd);
+            refreshThreads();
+            setOpenThread(threadId);
+            setPane("main");
           }
         : undefined,
     turnFiles:

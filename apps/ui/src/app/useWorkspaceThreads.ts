@@ -41,7 +41,6 @@ import { useMatchingBuild } from "../web/builds.ts";
 import { cachedThreads, cachedThreadsOf, useThreadsCache } from "../web/cache.ts";
 import { tappedMachine } from "../web/push.ts";
 import { useLaunched } from "./launch.ts";
-import type { AppMode } from "./mode.ts";
 import { useBackendFailure } from "../features/crash/BackendFailureNotice.tsx";
 import { threadWindowOpener } from "./threadWindow.ts";
 
@@ -55,13 +54,11 @@ const noThreads: AccountThreads = { threads: [], read: [] };
 export function useWorkspaceThreads({
   driven,
   solo,
-  mode,
   active,
   filesOpen,
 }: {
   readonly driven: DrivenMachine | undefined;
   readonly solo: SoloThread | undefined;
-  readonly mode: AppMode;
   readonly active: string | undefined;
   readonly filesOpen: boolean;
 }) {
@@ -124,11 +121,9 @@ export function useWorkspaceThreads({
   );
   /** The thread `key` names: live from the driven machine, or another machine's from the cloud copy. */
   const resolve = (key: string | undefined) => {
-    const listed = overviews.find((overview) => overview.thread.id === key && overview.thread.mode === mode);
+    const listed = overviews.find((overview) => overview.thread.id === key);
     /** Another machine's thread open from the cloud copy, read-only, while that machine can't be reached. */
-    const cloud = listed
-      ? undefined
-      : elsewhere.find((each) => each.overview.thread.id === key && each.overview.thread.mode === mode);
+    const cloud = listed ? undefined : elsewhere.find((each) => each.overview.thread.id === key);
     const shown = listed ?? cloud?.overview;
     /**
      * The thread isn't listed yet because the list hasn't loaded (just after a reload): it holds

@@ -3,7 +3,7 @@ import { type ReactNode } from "react";
 import { WEB } from "../backend/target.ts";
 import { leadOf, modelLabel } from "../backend/view.ts";
 import { reachOf } from "../features/account/model.ts";
-import { isNewDraftKey } from "../features/composer/drafts.ts";
+import { draftModeOf, isNewDraftKey } from "../features/composer/drafts.ts";
 import { taskFromIssue } from "../features/tasks/tasks.ts";
 import type { PaletteCommand } from "../features/palette/palette.ts";
 import { GitHubTabView } from "../features/github/GitHubTab.tsx";
@@ -71,7 +71,7 @@ export function workspacePaneViews({
   /** Opens what the window knows of the open thread's connection, from its box's machine chip. */
   readonly onOpenConnection?: (() => void) | undefined;
 }) {
-  const { current, mode, openDraft, defaultFolder } = sessionState;
+  const { current, mode, openDraft, defaultFolder, projects } = sessionState;
   const { resolve, drivenId, nameOf, deviceOf, available, models, projectOf } = threads;
   const { tabs, openOn, startNew, startThreadFrom, openThreadById, worktreesOk } = tabView;
   const { messageBox, routedDraftKey, onPaneHandles } = composer;
@@ -114,18 +114,21 @@ export function workspacePaneViews({
     const lead = resolved.shown ? leadOf(resolved.shown.agents) !== undefined : false;
     // A thread's own window keeps them with its thread, whichever pane has the focus.
     const opened = key === (solo?.id ?? current);
+    const paneDraftKey = isNewDraftKey(key) ? key : opened ? openDraft : key;
+    const paneMode = resolved.shown?.thread.mode ?? (isNewDraftKey(key) ? draftModeOf(key) : mode);
     return (
       <ThreadPane
         inspectedAgent={inspectedAgent}
         onLeaveAgent={() => setInspectedAgent(undefined)}
         onOpenTask={openTask}
         onAddTask={openCapturedTask}
-        mode={mode}
+        mode={paneMode}
         selected={resolved.listed}
         cloud={resolved.cloud ? cloudOf(resolved.cloud) : undefined}
         loading={resolved.loading}
-        draftKey={isNewDraftKey(key) ? key : opened ? openDraft : key}
+        draftKey={paneDraftKey}
         folder={defaultFolder}
+        projects={projects}
         available={available}
         worktrees={worktreesOk}
         bar={barFor(resolved, lead)}
@@ -251,7 +254,13 @@ export function workspacePaneViews({
         ownHeader: true,
       };
     }
-    const newTitle = mode === "work" ? "New thread" : "New chat";
+    const newTitle = isNewDraftKey(leaf.key)
+      ? draftModeOf(leaf.key) === "work"
+        ? "New thread"
+        : "New chat"
+      : mode === "work"
+        ? "New thread"
+        : "New chat";
     if (tab === undefined) return { title: newTitle };
     // Threads side by side often differ only in their model (multi agent), so it leads the detail.
     const shownLead = resolve(leaf.key).shown;

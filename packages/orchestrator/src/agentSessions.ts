@@ -173,13 +173,19 @@ export const makeAgentSessions = (ctx: OrchestratorContext, turns: Turns, worksp
             );
             rt.instructions =
               saved?.payload._tag === "SessionStarted" ? saved.payload.ceriumInstructions : undefined;
+            const mode = threadModes.get(info.threadId) ?? "work";
             rt.instructions ??= systemPrompt(info, bus.serverName, {
+              mode,
               advisor: advisor.enabled && advisor.model !== undefined,
               neighbours: yield* neighboursOf(info, cwd),
               worktree: threadWorktrees.get(info.threadId),
             });
           }
-          const busSpec = yield* bus.register(info.id, info.parentId === undefined ? "lead" : "child");
+          const mode = threadModes.get(info.threadId) ?? "work";
+          const busSpec = yield* bus.register(
+            info.id,
+            info.parentId === undefined ? (mode === "chat" ? "chatLead" : "lead") : "child",
+          );
           yield* Scope.addFinalizer(sessionScope, bus.unregister(info.id));
           const session = yield* adapter
             .startSession({

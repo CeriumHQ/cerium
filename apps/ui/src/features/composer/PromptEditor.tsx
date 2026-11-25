@@ -77,21 +77,44 @@ interface PromptEditorProps {
 
 const MENTION = "mention";
 
+const MODEL_ICON_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/></svg>';
+
 /** A chip the browser treats as one character: the caret steps over it and Backspace removes it whole. */
 const chipElement = (mention: Mention): HTMLElement => {
   const chip = document.createElement("span");
   chip.contentEditable = "false";
   chip.dataset[MENTION] = JSON.stringify(mention);
   chip.className = `${chipClass} mx-px cursor-default select-none`;
-  chip.title = mention._tag === "FileMention" ? mention.path : `Skill: ${mention.name}`;
+  chip.title =
+    mention._tag === "FileMention"
+      ? mention.path
+      : mention._tag === "ProjectMention"
+        ? `Project: ${mention.path}`
+        : mention._tag === "ModelMention"
+          ? `${mention.label} (${mention.provider}/${mention.model})`
+          : `Skill: ${mention.name}`;
   const icon = document.createElement("span");
   icon.className = "inline-grid size-[1.1em] shrink-0 place-items-center [&>svg]:size-full";
   // Cerium's own bundled icons.
   icon.innerHTML =
-    mention._tag === "FileMention" ? fileIconSvg(mention.path, mention.folder) : skillIconSvg();
+    mention._tag === "FileMention"
+      ? fileIconSvg(mention.path, mention.folder)
+      : mention._tag === "ProjectMention"
+        ? fileIconSvg(mention.path, true)
+        : mention._tag === "ModelMention"
+          ? MODEL_ICON_SVG
+          : skillIconSvg();
   const label = document.createElement("span");
   label.className = "min-w-0 truncate";
-  label.textContent = mention._tag === "FileMention" ? baseName(mention.path) : mention.name;
+  label.textContent =
+    mention._tag === "FileMention"
+      ? baseName(mention.path)
+      : mention._tag === "ProjectMention"
+        ? mention.name
+        : mention._tag === "ModelMention"
+          ? mention.label
+          : mention.name;
   chip.append(icon, label);
   return chip;
 };

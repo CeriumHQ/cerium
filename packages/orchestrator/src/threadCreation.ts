@@ -475,18 +475,25 @@ export const makeThreadCreation = (
         `Agents have started ${recent} threads recently, the most allowed. Ask the user to start the rest.`,
     );
     // A thread in a worktree starts from the project, not from the worktree's folder.
-    const folder = origin.worktree?.project ?? origin.cwd;
+    // A chat lead that specifies `folder` starts a work thread in that project.
+    const requestedFolder = request.folder?.trim() || undefined;
+    const folder = requestedFolder ?? origin.worktree?.project ?? origin.cwd;
+    const targetMode = requestedFolder !== undefined ? "work" : origin.mode;
+    const targetAccess =
+      origin.mode === "chat" && targetMode === "work"
+        ? (request.access ?? "ask")
+        : narrowAccess(caller.info.access, request.access ?? caller.info.access);
     const started = yield* createThread({
-      title: title ?? (origin.mode === "work" ? "New thread" : "New chat"),
-      mode: origin.mode,
+      title: title ?? (targetMode === "work" ? "New thread" : "New chat"),
+      mode: targetMode,
       ...(folder !== undefined ? { cwd: folder } : {}),
-      worktree: request.worktree ?? origin.worktree !== undefined,
+      worktree: request.worktree ?? (targetMode === "work" && origin.worktree !== undefined),
       ...(request.workspace === undefined ? {} : { workspace: request.workspace }),
       lead: {
         ...target,
         // A new lead starts on Auto while the router is on, unless the caller named an effort.
         ...(request.effort === undefined && (yield* routerOn) ? { autoEffort: true } : {}),
-        access: narrowAccess(caller.info.access, request.access ?? caller.info.access),
+        access: targetAccess,
       },
     });
     if (title !== undefined) untitled.delete(started.thread.id);

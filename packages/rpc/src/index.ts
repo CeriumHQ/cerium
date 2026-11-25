@@ -116,7 +116,8 @@ export const HUB_INSTRUCTIONS_RPC_VERSION = 56;
 /** Settings' `disabledProviders`: the harnesses the user turned off. */
 export const DISABLED_PROVIDERS_RPC_VERSION = 57;
 export const REMOTE_UPDATES_RPC_VERSION = 58;
-export const RPC_VERSION = REMOTE_UPDATES_RPC_VERSION;
+export const MOVE_CHAT_TO_WORK_RPC_VERSION = 59;
+export const RPC_VERSION = MOVE_CHAT_TO_WORK_RPC_VERSION;
 export const SCOPED_EVENTS_RPC_VERSION = 50;
 
 /** Status readers send the provider ids their schema can decode. */
@@ -190,6 +191,28 @@ export const ForkThreadPayload = Schema.Struct({
   model: Schema.optionalKey(Schema.NonEmptyString),
 });
 export type ForkThreadPayload = typeof ForkThreadPayload.Type;
+
+export const MoveChatToWorkPayload = Schema.Struct({
+  threadId: ThreadId,
+  cwd: Schema.NonEmptyString,
+  worktree: Schema.optionalKey(Schema.Boolean),
+  workspace: Schema.optionalKey(WorkspaceChoice),
+  lead: Schema.Struct({
+    provider: ProviderId,
+    model: Schema.NonEmptyString,
+    effort: Schema.optionalKey(ReasoningEffort),
+    autoEffort: Schema.optionalKey(Schema.Boolean),
+    speed: Schema.optionalKey(ModelSpeed),
+    access: AccessMode,
+  }),
+  implement: Schema.optionalKey(
+    Schema.Struct({
+      message: Schema.optionalKey(Schema.String),
+      note: Schema.optionalKey(Schema.String),
+    }),
+  ),
+});
+export type MoveChatToWorkPayload = typeof MoveChatToWorkPayload.Type;
 
 /**
  * The effort router's key and what it has spent. The key is never sent back: only its last four
@@ -311,6 +334,12 @@ export const MachineRpcs = RpcGroup.make(
   /** Starts a sibling with the lead's conversation through the selected turn. Since RPC_VERSION 53. */
   Rpc.make("ForkThread", {
     payload: ForkThreadPayload,
+    success: Schema.Struct({ thread: ThreadInfo, lead: AgentInfo }),
+    error: CeriumError,
+  }),
+  /** Moves an existing chat thread into a project as a work thread, optionally starting implementation. Since RPC_VERSION 59. */
+  Rpc.make("MoveChatToWork", {
+    payload: MoveChatToWorkPayload,
     success: Schema.Struct({ thread: ThreadInfo, lead: AgentInfo }),
     error: CeriumError,
   }),

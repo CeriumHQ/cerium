@@ -31,6 +31,13 @@ import {
   LinkIssue,
 } from "./sourceControl.ts";
 import { BusRegistry } from "./registry.ts";
+import {
+  ListIssues,
+  ListProjects,
+  ListPullRequests,
+  ReadThread,
+  WorkspaceDataHost,
+} from "./workspaceData.ts";
 
 // The tools every Cerium-managed session sees under the `cerium` MCP server.
 
@@ -111,10 +118,14 @@ export const ContinueAgent = Tool.make("continue_agent", {
 
 export const CreateThread = Tool.make("create_thread", {
   description:
-    "Start a new thread for the user, in your folder, whose lead takes `prompt` as the user's request; the" +
-    " user follows it in its own tab. Use it when the user asks you to start threads, e.g. one per feature." +
-    " Returns at once. Leads only.",
+    "Start a new thread for the user, in your folder (or in `folder` when given), whose lead takes `prompt` as" +
+    " the user's request; the user follows it in its own tab. Use it when the user asks you to start threads," +
+    " e.g. one per feature. Returns at once. Leads only.",
   parameters: Schema.Struct({
+    folder: Schema.optionalKey(Schema.NonEmptyString).annotate({
+      description:
+        "Project folder path to run the new work thread in (especially useful from Chat to start a work thread).",
+    }),
     workspace: Schema.optionalKey(WorkspaceChoice).annotate({
       description:
         "Reuse an existing checkout with path, or create one with baseRef and optional branch. sourceThreadId builds on another thread's branch and records the dependency.",
@@ -150,8 +161,25 @@ export const ListAgents = Tool.make("list_agents", {
 
 export const ListThreads = Tool.make("list_threads", {
   description:
-    "List the user's threads whose lead is working or idle, with each one's folder and lead agent, to find" +
-    " threads working in your folder or to message another thread's lead.",
+    "List the user's threads with each one's title, mode, folder, state, and lead agent. By default lists live" +
+    " threads (working or idle) for work threads, or recent threads when `includeInactive` is true.",
+  parameters: Schema.Struct({
+    includeInactive: Schema.optionalKey(Schema.Boolean).annotate({
+      description: "Also include stopped/finished threads, most recently updated first.",
+    }),
+    includeArchived: Schema.optionalKey(Schema.Boolean).annotate({
+      description: "Also include archived threads.",
+    }),
+    mode: Schema.optionalKey(Schema.Literals(["work", "chat"])).annotate({
+      description: "Filter to only work or chat threads.",
+    }),
+    folder: Schema.optionalKey(Schema.String).annotate({
+      description: "Filter to threads whose folder path contains this substring or project name.",
+    }),
+    limit: Schema.optionalKey(Schema.Int).annotate({
+      description: "Maximum threads to return (default 30, max 100).",
+    }),
+  }),
   success: Schema.Struct({
     threads: Schema.Array(
       Schema.Struct({
@@ -161,6 +189,8 @@ export const ListThreads = Tool.make("list_threads", {
         folder: Schema.optionalKey(Schema.String),
         leadAgentId: Schema.optionalKey(AgentId),
         leadState: Schema.optionalKey(Schema.String),
+        updatedAt: Schema.optionalKey(Schema.Finite),
+        archived: Schema.optionalKey(Schema.Boolean),
         yours: Schema.Boolean,
       }),
     ),
@@ -366,6 +396,10 @@ export const BusToolkit = Toolkit.make(
   ReviewChanges,
   MoveToWorkspace,
   LinkIssue,
+  ListProjects,
+  ReadThread,
+  ListPullRequests,
+  ListIssues,
   ListModels,
   SpawnAgent,
   ContinueAgent,
@@ -383,6 +417,29 @@ export const BusToolkit = Toolkit.make(
   ListTasks,
   ProjectRun,
   Push,
+);
+
+/** Chat leads get conversational, orchestration, and cross-workspace read tools without repo-mutation tools. */
+export const ChatToolkit = Toolkit.make(
+  ListProjects,
+  ListThreads,
+  ReadThread,
+  ListTasks,
+  AddTask,
+  RemoveTask,
+  ListPullRequests,
+  ListIssues,
+  ListModels,
+  SpawnAgent,
+  ContinueAgent,
+  CreateThread,
+  ListAgents,
+  SendMessage,
+  KillAgent,
+  AnswerPermission,
+  AskAdvisor,
+  AskUser,
+  ArtifactGuide,
 );
 
 /** Workers cannot delegate, answer other children's permissions or manage the user's threads/tasks. */
@@ -405,6 +462,7 @@ export const BusToolkitHandlers = BusToolkit.toLayer(
     const registry = yield* BusRegistry;
     const pushes = yield* PushHost;
     const sourceControl = yield* Effect.serviceOption(SourceControlHost);
+    const workspaceData = yield* Effect.serviceOption(WorkspaceDataHost);
 
     /** The agent making this call, from its per-session bearer token. */
     const caller = Effect.gen(function* () {
@@ -441,6 +499,46 @@ export const BusToolkitHandlers = BusToolkit.toLayer(
       unwatch_pull_request: (request) => source("unwatch", request),
       review_changes: (request) => source("diff", request),
       move_to_workspace: (request) => source("move", request),
+      list_projects: Effect.fn("Bus.list_projects")(function* () {
+        yield* caller;
+        if (Option.isNone(workspaceData)) {
+          return yield* new OrchestratorError({
+            reason: "unavailable",
+            message: "Project information isn't available here.",
+          });
+        }
+        return { projects: yield* workspaceData.value.listProjects() };
+      }),
+      list_pull_requests: Effect.fn("Bus.list_pull_requests")(function* (params) {
+        yield* caller;
+        if (Option.isNone(workspaceData)) {
+          return yield* new OrchestratorError({
+            reason: "unavailable",
+            message: "GitHub pull request data isn't available here.",
+          });
+        }
+        return yield* workspaceData.value.listPullRequests(params);
+      }),
+      list_issues: Effect.fn("Bus.list_issues")(function* (params) {
+        yield* caller;
+        if (Option.isNone(workspaceData)) {
+          return yield* new OrchestratorError({
+            reason: "unavailable",
+            message: "GitHub issue data isn't available here.",
+          });
+        }
+        return yield* workspaceData.value.listIssues(params);
+      }),
+      read_thread: Effect.fn("Bus.read_thread")(function* (params) {
+        yield* caller;
+        if (Option.isNone(workspaceData)) {
+          return yield* new OrchestratorError({
+            reason: "unavailable",
+            message: "Thread reading isn't available here.",
+          });
+        }
+        return yield* workspaceData.value.readThread(params);
+      }),
       list_models: () =>
         Effect.map(orchestrator.catalog, (catalog) => ({
           models: catalog.map(({ alias, provider, model, effort, speed, description, priority }) => ({
@@ -490,27 +588,47 @@ export const BusToolkitHandlers = BusToolkit.toLayer(
         };
       }),
 
-      list_threads: Effect.fn("Bus.list_threads")(function* () {
+      list_threads: Effect.fn("Bus.list_threads")(function* (params) {
         const self = yield* orchestrator.agent(yield* caller);
         const overviews = yield* orchestrator.threadOverviews;
+        const selfThread = overviews.find(({ thread }) => thread.id === self.threadId)?.thread;
+        const includeInactive = params.includeInactive ?? selfThread?.mode === "chat";
+        const includeArchived = params.includeArchived === true;
+        const folderFilter = params.folder?.trim().toLowerCase();
+        const limit = Math.min(100, Math.max(1, params.limit ?? 30));
         return {
-          threads: overviews.flatMap(({ thread, agents }) => {
-            const yours = thread.id === self.threadId;
-            const lead = agents.find((agent) => agent.parentId === undefined);
-            // Only a live lead takes messages; the user's dozens of finished threads would bury the few that do.
-            const live = lead !== undefined && lead.state !== "stopped" && lead.state !== "failed";
-            if (thread.archivedAt !== undefined || !(live || yours)) return [];
-            return [
-              {
-                threadId: thread.id,
-                title: thread.title,
-                mode: thread.mode,
-                ...(thread.cwd ? { folder: thread.cwd } : {}),
-                ...(lead ? { leadAgentId: lead.id, leadState: lead.state } : {}),
-                yours,
-              },
-            ];
-          }),
+          threads: [...overviews]
+            .toSorted((a, b) => b.thread.updatedAt - a.thread.updatedAt)
+            .flatMap(({ thread, agents }) => {
+              const yours = thread.id === self.threadId;
+              const lead = agents.find((agent) => agent.parentId === undefined);
+              const live = lead !== undefined && lead.state !== "stopped" && lead.state !== "failed";
+              if (!includeArchived && thread.archivedAt !== undefined) return [];
+              if (!includeInactive && !(live || yours)) return [];
+              if (params.mode !== undefined && thread.mode !== params.mode) return [];
+              if (
+                folderFilter &&
+                !(
+                  thread.cwd?.toLowerCase().includes(folderFilter) ||
+                  thread.worktree?.project.toLowerCase().includes(folderFilter)
+                )
+              ) {
+                return [];
+              }
+              return [
+                {
+                  threadId: thread.id,
+                  title: thread.title,
+                  mode: thread.mode,
+                  ...(thread.cwd ? { folder: thread.cwd } : {}),
+                  ...(lead ? { leadAgentId: lead.id, leadState: lead.state } : {}),
+                  updatedAt: thread.updatedAt,
+                  ...(thread.archivedAt !== undefined ? { archived: true } : {}),
+                  yours,
+                },
+              ];
+            })
+            .slice(0, limit),
         };
       }),
 

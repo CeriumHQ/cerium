@@ -113,7 +113,9 @@ export class StoreError extends Schema.TaggedError<StoreError>()("StoreError", {
  * `effort: null` clears the effort, for a model its harness offers no effort setting for; `speed: null`
  * the speed, for one with no speed setting.
  */
-export type AgentPatch = Partial<Pick<AgentInfo, "state" | "provider" | "model" | "autoEffort">> & {
+export type AgentPatch = Partial<
+  Pick<AgentInfo, "state" | "provider" | "model" | "autoEffort" | "access">
+> & {
   readonly effort?: AgentInfo["effort"] | null;
   readonly speed?: AgentInfo["speed"] | null;
   /** `null` forgets the session, as handing the agent to another harness does. */
@@ -123,6 +125,7 @@ export type AgentPatch = Partial<Pick<AgentInfo, "state" | "provider" | "model" 
 
 /** `archivedAt: null` restores an archived thread; `laterUntil: null` brings one put off back now. */
 export interface ThreadPatch {
+  readonly mode?: ThreadInfo["mode"];
   readonly cwd?: string;
   readonly title?: string;
   readonly archivedAt?: number | null;

@@ -23,7 +23,7 @@ import { useHighlightRange, useHighlightSource } from "../viewer/highlight.ts";
 import { Artifact } from "./Artifact.tsx";
 import { CopyButton } from "./CopyButton.tsx";
 import { codePreview, fenceText } from "./markdownBlocks.ts";
-import { FileChip, SkillChip, WorkspaceFolder } from "./FileChip.tsx";
+import { FileChip, ModelChip, ProjectChip, SkillChip, WorkspaceFolder } from "./FileChip.tsx";
 import { Formula } from "./MarkdownMath.tsx";
 import { Diagram } from "./MarkdownMermaid.tsx";
 import type { AlertKind, HtmlNode } from "./markdownPlugins.ts";
@@ -77,6 +77,10 @@ export function InlineCode({ children, node: _node, ...props }: Part<"code">) {
   const text = typeof children === "string" && !inLink ? children : undefined;
   const mention = text === undefined ? undefined : mentions.get(text);
   if (mention?._tag === "SkillMention") return <SkillChip name={mention.name} />;
+  if (mention?._tag === "ProjectMention") return <ProjectChip name={mention.name} path={mention.path} />;
+  if (mention?._tag === "ModelMention") {
+    return <ModelChip provider={mention.provider} model={mention.model} label={mention.label} />;
+  }
   if (mention?._tag === "FileMention") return <FileChip path={mention.path} folder={mention.folder} />;
   const reference = text === undefined ? undefined : pathReference(text);
   if (reference) return <FileChip {...reference} />;

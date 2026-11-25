@@ -89,15 +89,14 @@ export function useWorkspaceTabs({
   const registry = useContext(RegistryContext);
   const {
     mode,
-    setMode,
     current,
     blank,
     setBlank,
     openThread,
     setOpenThread,
     panes,
-    panesByMode,
-    setPanesByMode,
+    storedPanes,
+    setStoredPanes,
     split,
     pane,
     setPane,
@@ -109,21 +108,20 @@ export function useWorkspaceTabs({
     threads;
   const { focusComposer, routedDraftKey, scheduleFocus } = composer;
   /** Opens another machine's thread there: the window drives that machine, then shows it. */
-  const openOn = (device: DeviceInfo, threadId: string, threadMode: AppMode = mode, next?: Panes) => {
-    setOpenAfterSwitch({ mode: threadMode, id: threadId, ...(next === undefined ? {} : { panes: next }) });
+  const openOn = (device: DeviceInfo, threadId: string, next?: Panes) => {
+    setOpenAfterSwitch({ id: threadId, ...(next === undefined ? {} : { panes: next }) });
     setPane("main");
     driveMachine(registry, device.id === thisComputer ? undefined : { id: device.id, name: device.name });
   };
   const openSummary = (summary: ThreadSummary, next?: Panes) => {
     showThreads();
-    setMode(summary.mode);
     setHeldUnread(summary.unread ? summary.id : undefined);
     const home = reachableHome(summary);
     if (home) {
-      openOn(home, summary.id, summary.mode, next);
+      openOn(home, summary.id, next);
       return;
     }
-    setOpenThread((current) => ({ ...current, [summary.mode]: summary.id }));
+    setOpenThread(summary.id);
     setPane("main");
   };
   const tabs = useThreadTabs({
@@ -140,13 +138,13 @@ export function useWorkspaceTabs({
         return;
       }
       showThreads();
-      setOpenThread((current) => ({ ...current, [mode]: key }));
+      setOpenThread(key);
       setPane("main");
     },
     onFresh: (key, focus) => {
       showThreads();
-      setBlank((current) => ({ ...current, [mode]: key }));
-      setOpenThread((current) => ({ ...current, [mode]: undefined }));
+      setBlank(key);
+      setOpenThread(undefined);
       setPane("main");
       if (focus) focusComposer();
     },
@@ -159,7 +157,7 @@ export function useWorkspaceTabs({
       if (!isSplit(panes)) return undefined;
       const left = closeKeys(panes, keys);
       if (left === undefined) return undefined;
-      setPanesByMode((all) => ({ ...all, [mode]: left }));
+      setStoredPanes(left);
       return keys.includes(current) ? focusedKey(left) : undefined;
     },
   });
@@ -173,9 +171,9 @@ export function useWorkspaceTabs({
       blank,
       pane,
       tabs: tabs.strips,
-      panes: panesByMode,
+      ...(storedPanes === undefined ? {} : { panes: storedPanes }),
     });
-  }, [resumePending, solo, driven, mode, openThread, blank, pane, tabs.strips, panesByMode]);
+  }, [resumePending, solo, driven, mode, openThread, blank, pane, tabs.strips, storedPanes]);
 
   /** New threads there can have worktrees of their own. */
   const worktreesOk = drivenDevice === undefined || (drivenDevice.rpcVersion ?? 0) >= WORKTREE_VERSION;
@@ -187,14 +185,14 @@ export function useWorkspaceTabs({
   const showTab = (key: string) => {
     if (solo) {
       const next = besideThread(panes, solo.id, key, newPaneId());
-      setPanesByMode((all) => ({ ...all, [mode]: next }));
-      setOpenThread((open) => ({ ...open, [mode]: focusedKey(next) }));
+      setStoredPanes(next);
+      setOpenThread(focusedKey(next));
       return;
     }
     tabs.openAs(key, "tab");
     tabs.keep(key);
     showThreads();
-    setOpenThread((open) => ({ ...open, [mode]: key }));
+    setOpenThread(key);
     setPane("main");
     // The narrow window shows one pane: the tab takes the panel's place.
     if (compact) closeSide();
@@ -204,7 +202,7 @@ export function useWorkspaceTabs({
    * project with the brief in its message box, for the user to pick the model and send.
    */
   const startThreadFrom = ({ folder, text, worktree, workspace, taskId }: ThreadBrief) => {
-    const key = newDraftKey();
+    const key = newDraftKey("work");
     registry.set(
       draftsAtom,
       withDraft(registry.get(draftsAtom), key, () => ({
@@ -226,20 +224,19 @@ export function useWorkspaceTabs({
       return;
     }
     showThreads();
-    setMode("work");
     tabs.openAs(key, "tab");
-    setOpenThread((open) => ({ ...open, work: key }));
+    setOpenThread(key);
     setPane("main");
     if (compact) closeSide();
     focusComposer();
   };
   /**
-   * Opens a blank new thread in this mode, ready to type the first message: in a tab of its own, unless
-   * a tab already holds an empty one. One the user wrote in stays in the sidebar as a draft.
+   * Opens a blank new thread or chat, ready to type the first message: in a tab of its own, unless
+   * a tab already holds an empty one of that mode. One the user wrote in stays in the sidebar as a draft.
    */
-  const startNew = () => {
+  const startNew = (targetMode: AppMode = mode) => {
     showThreads();
-    tabs.newTab();
+    tabs.newTab(targetMode);
     focusComposer();
   };
 
@@ -249,11 +246,11 @@ export function useWorkspaceTabs({
     setPane("main");
     const home = draft.machine === thisComputer ? undefined : draft.machine;
     if (home !== driven?.id) {
-      setOpenAfterSwitch({ mode: draft.mode, id: draft.key });
+      setOpenAfterSwitch({ id: draft.key });
       driveMachine(registry, home === undefined ? undefined : { id: home as DeviceId, name: nameOf(home) });
       return;
     }
-    setOpenThread((current) => ({ ...current, [draft.mode]: draft.key }));
+    setOpenThread(draft.key);
   };
 
   /** Throws a draft away, and its tab with it. */
@@ -266,24 +263,23 @@ export function useWorkspaceTabs({
     tabs.drop(key);
   };
 
-  /** The user asked for a new thread: in the narrow window, that's its pane. */
-  const newThread = () => {
-    startNew();
+  /** The user asked for a new thread or chat: in the narrow window, that's its pane. */
+  const newThread = (targetMode: AppMode = mode) => {
+    startNew(targetMode);
     setPane("main");
   };
   /**
    * Lays the panes out as `next` and shows the focused pane's thread. The thread the focused pane
    * showed before stays in a tab of its own, so no later preview takes its tab while it shows.
    */
-  const applyPanes = (next: Panes, targetMode: AppMode = mode) => {
-    setPanesByMode((all) => ({ ...all, [targetMode]: next }));
+  const applyPanes = (next: Panes) => {
+    setStoredPanes(next);
     const shown = focusedKey(next);
-    if (shown === current && targetMode === mode) return;
-    tabs.keep(openThread[targetMode] ?? blank[targetMode], targetMode);
+    if (shown === current) return;
+    tabs.keep(openThread ?? blank);
     tabs.openAs(shown, "tab");
     showThreads();
-    setMode(targetMode);
-    setOpenThread((open) => ({ ...open, [targetMode]: shown }));
+    setOpenThread(shown);
     setPane("main");
   };
   const returnToComposer = (hideTerminal: () => void) => {
@@ -298,11 +294,10 @@ export function useWorkspaceTabs({
     if (isNonThreadKey(current)) {
       const thread = summaries.find((summary) => summary.id === routedDraftKey);
       if (thread) {
-        setMode(thread.mode);
         openSummary(thread);
       } else {
-        const key = solo?.id ?? routedDraftKey ?? blank[mode];
-        setOpenThread((open) => ({ ...open, [mode]: key }));
+        const key = solo?.id ?? routedDraftKey ?? blank;
+        setOpenThread(key);
       }
     }
     scheduleFocus();
@@ -327,17 +322,11 @@ export function useWorkspaceTabs({
     if (summary === undefined) return;
     const home = reachableHome(summary);
     if (as === "split" && !compact) {
-      const targetMode = summary.mode;
-      const target =
-        home !== undefined
-          ? singlePane(MAIN_PANE, newDraftKey())
-          : targetMode === mode
-            ? panes
-            : (panesByMode[targetMode] ?? singlePane(MAIN_PANE, openThread[targetMode] ?? blank[targetMode]));
+      const target = home !== undefined ? singlePane(MAIN_PANE, newDraftKey(summary.mode)) : panes;
       if (focusedKey(target) !== id && canSplit(paneSize(target.focused, target), "right", MIN_PANE)) {
         const next = splitPane(target, target.focused, "right", id, newPaneId());
         setHeldUnread(summary.unread ? id : undefined);
-        if (home === undefined) applyPanes(next, targetMode);
+        if (home === undefined) applyPanes(next);
         else {
           tabs.openAs(id, "tab");
           openSummary(summary, next);
@@ -346,7 +335,7 @@ export function useWorkspaceTabs({
       }
     }
     if (as !== "default") {
-      if (home === undefined && openThread[summary.mode] === id) tabs.keep(id, summary.mode);
+      if (home === undefined && openThread === id) tabs.keep(id);
       else tabs.openAs(id, "tab");
     }
     openSummary(summary);
@@ -358,7 +347,7 @@ export function useWorkspaceTabs({
   };
   /** A new thread on `side` of the pane `target`, ready to write in. */
   const splitNew = (target: string, side: Side) => {
-    if (splitWith(target, side, newDraftKey())) scheduleFocus();
+    if (splitWith(target, side, newDraftKey(mode))) scheduleFocus();
   };
   const closePaneOf = (id: string) => {
     // A thread's own window keeps its thread: closing the window is how it goes.
@@ -395,7 +384,6 @@ export function useWorkspaceTabs({
   const jumpNextWaiting = () => {
     const next = nextWaitingThread(summaries, current);
     if (next === undefined) return false;
-    setMode(next.mode);
     openSummary(next);
     if (compact) closeSide();
     return true;

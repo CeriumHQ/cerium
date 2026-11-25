@@ -345,12 +345,34 @@ export const Mention = Schema.Union([
     /** The skill's definition file, when its harness reports one. */
     path: Schema.optionalKey(Schema.NonEmptyString),
   }),
+  Schema.TaggedStruct("ProjectMention", {
+    name: Schema.NonEmptyString,
+    /** Absolute path to the saved project folder on the machine. */
+    path: Schema.NonEmptyString,
+  }),
+  Schema.TaggedStruct("ModelMention", {
+    provider: ProviderId,
+    model: Schema.NonEmptyString,
+    label: Schema.NonEmptyString,
+    /** Roster alias when the model is on the user's roster. */
+    alias: Schema.optionalKey(Schema.NonEmptyString),
+  }),
 ]);
 export type Mention = typeof Mention.Type;
 
-/** How a mention reads in the message: `@path` for a file, `@path/` for a folder, `$name` for a skill. */
-export const mentionToken = (mention: Mention): string =>
-  mention._tag === "FileMention" ? `@${mention.path}${mention.folder ? "/" : ""}` : `$${mention.name}`;
+/** How a mention reads in the message: `@path` for a file, `@path/` for a folder, `$name` for a skill, `@name` for a project, `@model` for a model. */
+export const mentionToken = (mention: Mention): string => {
+  switch (mention._tag) {
+    case "FileMention":
+      return `@${mention.path}${mention.folder ? "/" : ""}`;
+    case "SkillMention":
+      return `$${mention.name}`;
+    case "ProjectMention":
+      return `@${mention.name}`;
+    case "ModelMention":
+      return `@${mention.alias ?? mention.model}`;
+  }
+};
 
 /** A message the user sent an agent. */
 export const FromUser = Schema.TaggedStruct("FromUser", {

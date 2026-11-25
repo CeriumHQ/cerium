@@ -27,6 +27,7 @@ import { ThreadTabs } from "../features/tabs/ThreadTabs.tsx";
 import { nextWaitingThread, type ThreadSummary } from "../features/threads/model.ts";
 import { NextWaitingPill } from "../features/threads/NextWaitingPill.tsx";
 import { Sidebar } from "../features/threads/Sidebar.tsx";
+import { MoveToWorkDialog } from "../features/transcript/MoveToWorkDialog.tsx";
 import { TriageSheet } from "../features/threads/TriageSheet.tsx";
 import { THREAD_SEARCH_VERSION } from "../features/threads/threadSearch.ts";
 import { welcomeShownAtom } from "../features/onboarding/state.ts";
@@ -111,7 +112,7 @@ export function Workspace() {
   } = sessionState;
   const composer = useWorkspaceComposer(current, setActionError);
   const { focusComposer, messageBox } = composer;
-  const threads = useWorkspaceThreads({ driven, solo, mode, active: openThread[mode], filesOpen });
+  const threads = useWorkspaceThreads({ driven, solo, active: openThread, filesOpen });
   const {
     selected,
     viewed,
@@ -306,6 +307,7 @@ export function Workspace() {
     interruptFromInspector,
     stopFromInspector,
   } = paneControls;
+  const [moveChatId, setMoveChatId] = useState<string>();
   const { paletteCommands, slashCommands } = useWorkspaceCommands({
     solo,
     compact,
@@ -324,6 +326,7 @@ export function Workspace() {
     sidebarOpen,
     toggleSidebar,
     returnToComposer,
+    ...(paneActions.moveToWork ? { onMoveToWork: (threadId: string) => setMoveChatId(threadId) } : {}),
   });
 
   useWorkspaceShortcuts({
@@ -541,15 +544,16 @@ export function Workspace() {
             if (newTab) tabs.openAs(threadId, "tab");
             openSummary(summary);
           }}
-          onNewThread={newThread}
+          onNewThread={() => newThread(mode)}
           onMarkRead={markRead}
           onMarkUnread={markUnread}
           onNewThreadIn={(picked) => {
             chooseFolder(picked);
             void save({ payload: { path: picked } }).catch(() => undefined);
-            newThread();
+            newThread("work");
           }}
           {...sidebarActions}
+          {...(paneActions.moveToWork ? { onMoveToWork: (threadId: string) => setMoveChatId(threadId) } : {})}
           {...(openInWindow ? { onOpenWindow: openInWindow } : {})}
           open={tabs.tabs.map((tab) => tab.key)}
           searchOpen={searchOpen}
@@ -724,6 +728,21 @@ export function Workspace() {
       )}
       {stopAllDialog}
       {archiveDialog}
+      {moveChatId && paneActions.moveToWork ? (
+        <MoveToWorkDialog
+          open={moveChatId !== undefined}
+          onOpenChange={(open) => {
+            if (!open) setMoveChatId(undefined);
+          }}
+          actions={{
+            projects: sessionState.projects,
+            defaultFolder: sessionState.defaultFolder,
+            available: threads.available,
+            worktrees: tabView.worktreesOk,
+            onMove: (choice) => paneActions.moveToWork!(moveChatId as ThreadId, choice),
+          }}
+        />
+      ) : null}
     </AppFrame>
   );
   return (

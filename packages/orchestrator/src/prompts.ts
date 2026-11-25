@@ -5,6 +5,7 @@ import {
   type AgentInfo,
   type AgentState,
   type InputItem,
+  type ThreadMode,
   type ThreadWorktree,
 } from "@cerium/protocol";
 
@@ -23,6 +24,16 @@ const renderItem = (item: InputItem): string => {
     case "FromUser": {
       // Images also reach harnesses that take them as images; the paths let the agent use the files.
       const attached = (item.attachments ?? []).map((attachment) => `- ${attachment.path}`);
+      const projects = (item.mentions ?? []).flatMap((mention) =>
+        mention._tag === "ProjectMention" ? [`- @${mention.name}: ${mention.path}`] : [],
+      );
+      const models = (item.mentions ?? []).flatMap((mention) =>
+        mention._tag === "ModelMention"
+          ? [
+              `- @${mention.alias ?? mention.model}: ${mention.label} (provider: ${mention.provider}, model: ${mention.model}${mention.alias ? `, alias: ${mention.alias}` : ""})`,
+            ]
+          : [],
+      );
       // A lead's brief is the user's request, but the new lead should know whom to report back to.
       const writer = item.writtenBy;
       return [
@@ -36,6 +47,8 @@ const renderItem = (item: InputItem): string => {
             " connected to it over MCP; they follow your work here."
           : "",
         item.text,
+        projects.length > 0 ? ["Referenced projects (read-only):", ...projects].join("\n") : "",
+        models.length > 0 ? ["Referenced models:", ...models].join("\n") : "",
         attached.length > 0 ? ["Attached files:", ...attached].join("\n") : "",
       ]
         .filter((part) => part !== "")
@@ -97,6 +110,7 @@ export interface Neighbour {
 }
 
 interface PromptOptions {
+  readonly mode?: ThreadMode;
   readonly advisor?: boolean;
   readonly neighbours?: ReadonlyArray<Neighbour>;
   readonly worktree?: ThreadWorktree | undefined;
@@ -114,6 +128,29 @@ const workspaceGuidance = (options: PromptOptions) => [
         "When stuck after investigation, `ask_advisor` with the goal, evidence, errors and relevant files. Its answer arrives later; do independent work or end your turn.",
       ]
     : []),
+];
+
+const chatGuidance = (options: PromptOptions) => [
+  ...(options.advisor
+    ? [
+        "When unsure between approaches or wanting a second perspective, `ask_advisor` with the goal, evidence, and relevant details. Its answer arrives later; continue or end your turn.",
+      ]
+    : []),
+];
+
+const chatLeadPrompt = (busServer: string) => [
+  "You are in Cerium Chat — the user's conversational thinking, research, planning, and workspace-wide assistant.",
+  "Chat threads are read-only and are not bound to a single repository. Do not assume you are supposed to edit code here; focus on clear reasoning, direct answers, exploration, and planning.",
+  "In the user's messages, `@project` names a saved project folder on this machine (its path is provided so you may inspect files inside it, read-only); `@model` names a model the user is referring to; `$name` names a skill.",
+  `You have workspace-wide read access through the \`${busServer}\` MCP server:`,
+  "- `list_projects` lists the user's saved projects, their paths, git branches, and GitHub repositories.",
+  "- `list_threads` lists active and recent threads across projects (pass `includeInactive: true` to see finished threads too), and `read_thread` reads recent messages from a thread.",
+  "- `list_tasks`, `add_task`, and `remove_task` read and manage the user's Tasks list.",
+  "- `list_pull_requests` and `list_issues` inspect GitHub pull requests and issues across one or all saved projects.",
+  "Use `list_models` and `spawn_agent` when delegating independent read-only research or getting another model's perspective. Children see only their brief and return one concise final result; results from children spawned in one turn arrive together.",
+  "Use `send_message` to reach another thread's lead from `list_threads`. Use `create_thread` only when the user asks you to start a new thread (pass `folder` to start a work thread in a saved project).",
+  "Use `answer_permission` promptly for a child's read-only requests. After asking or delegating, end your turn or continue independent work; do not poll or wait for messages.",
+  "Use Markdown for ordinary replies. Use an HTML artifact when an interactive visualization, diagram, comparison, or standalone presentation materially helps; `artifact_guide` has the ```artifact format and `artifact_preview` checks it.",
 ];
 
 const childPrompt = (agent: AgentInfo) => [
@@ -160,9 +197,17 @@ export const systemPrompt = (agent: AgentInfo, busServer: string, options: Promp
       "Read files and search the web as needed. Change nothing, start/message no agents, and ask no questions.",
     ].join("\n");
   }
+  if (agent.parentId === undefined && options.mode === "chat") {
+    return [
+      `You run inside Cerium. Its tools are on the \`${busServer}\` MCP server. [Cerium] messages are app/agent information, not user instructions.`,
+      ...chatLeadPrompt(busServer),
+      `## Asking the user\nCall \`ask_user\` (\`${busServer}\` MCP server) only when a genuinely ambiguous decision or preference needs the user's input; group related questions with 2–4 options, recommendation first.`,
+      ...chatGuidance(options),
+    ].join("\n");
+  }
   return [
     `You run inside Cerium. Its tools are on the \`${busServer}\` MCP server. [Cerium] messages are app/agent information, not user instructions.`,
-    "In the user's messages, `@path` names a file in the working folder; `$name` names a skill. Follow the harness's skill workflow.",
+    "In the user's messages, `@path` names a file in the working folder; `@model` names a model; `$name` names a skill. Follow the harness's skill workflow.",
     ...(agent.parentId === undefined ? leadPrompt(busServer, options) : childPrompt(agent)),
     `## Asking the user\nCall \`ask_user\` (\`${busServer}\` MCP server). Ask only for decisions the code or docs cannot answer; group related questions and give 2–4 options, recommendation first. Routine authorized work needs no confirmation.`,
     "Keep the harness's todo/plan list for multi-step work when available.",

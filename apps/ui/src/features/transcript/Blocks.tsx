@@ -58,6 +58,7 @@ export function UserMessage({
   onEdit,
   onRestore,
   onFork,
+  onImplementInWork,
   onAddTask,
 }: {
   block: Block<"user">;
@@ -67,6 +68,8 @@ export function UserMessage({
   onRestore?: (() => void) | undefined;
   /** Asks to fork the thread into a new one from the message. Absent where it can't be. */
   onFork?: (() => void) | undefined;
+  /** Opens the wizard to move this chat to work and implement this message. */
+  onImplementInWork?: (() => void) | undefined;
   onAddTask?: ((text: string) => void) | undefined;
 }) {
   const images = block.attachments.filter((attachment) => attachment.mediaType.startsWith("image/"));
@@ -106,6 +109,7 @@ export function UserMessage({
         onEdit={editable ? () => setEditing(true) : undefined}
         onRestore={restorable ? onRestore : undefined}
         onFork={onFork}
+        onImplementInWork={onImplementInWork}
         onAddTask={onAddTask}
         className="group/user relative flex max-w-[85%] flex-col items-end gap-1.5"
       >

@@ -1,6 +1,7 @@
 import { Button } from "@base-ui/react/button";
 import {
   BookmarkPlus,
+  Briefcase,
   ClipboardCopy,
   Copy,
   ExternalLink,
@@ -57,6 +58,7 @@ export function MessageMenuArea({
   onEdit,
   onRestore,
   onFork,
+  onImplementInWork,
   onAddTask,
   actionsOnHover = false,
   className,
@@ -73,6 +75,8 @@ export function MessageMenuArea({
   onRestore?: (() => void) | undefined;
   /** Asks to fork the thread into a new one from the user's own message. */
   onFork?: (() => void) | undefined;
+  /** Moves this chat into a work thread and opens the implementation wizard for this message. */
+  onImplementInWork?: (() => void) | undefined;
   onAddTask?: ((text: string) => void) | undefined;
   /** Keeps the corner action out of sight until the message is pointed at or reached by keyboard, where messages stack. */
   actionsOnHover?: boolean;
@@ -85,7 +89,8 @@ export function MessageMenuArea({
     onCopyToMessageBox !== undefined ||
     onEdit !== undefined ||
     onRestore !== undefined ||
-    onFork !== undefined;
+    onFork !== undefined ||
+    onImplementInWork !== undefined;
   const hasMain = selection !== "" || text !== "" || ownActions;
   // Links and selections live in the text, so without any there is nothing to offer.
   if (text === "" && !ownActions) {
@@ -140,6 +145,11 @@ export function MessageMenuArea({
           {onFork ? (
             <MenuItem icon={GitFork} onClick={onFork}>
               Fork into new thread
+            </MenuItem>
+          ) : null}
+          {onImplementInWork ? (
+            <MenuItem icon={Briefcase} onClick={onImplementInWork}>
+              Implement in work…
             </MenuItem>
           ) : null}
           {onAddTask === undefined || text.trim() === "" ? null : (

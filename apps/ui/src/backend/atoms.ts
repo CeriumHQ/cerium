@@ -923,6 +923,7 @@ export const queueEventsAtom = Atom.family((threadId: ThreadId) => eventsOfKinds
 
 export const createThread = Backend.mutation("CreateThread");
 export const forkThread = Backend.mutation("ForkThread");
+export const moveChatToWork = Backend.mutation("MoveChatToWork");
 export const previewForkThread = Backend.mutation("PreviewForkThread");
 export const sendMessage = Backend.mutation("SendMessage");
 export const editMessage = Backend.mutation("EditMessage");

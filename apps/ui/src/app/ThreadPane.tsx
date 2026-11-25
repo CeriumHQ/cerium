@@ -89,6 +89,7 @@ import {
 } from "../features/transcript/model.ts";
 import { ThreadLog, type ThreadHistory, type AgentHistory } from "../backend/threadLog.ts";
 import type { ForkRequest } from "../features/transcript/fork.ts";
+import type { MoveToWorkChoice } from "../features/transcript/MoveToWorkDialog.tsx";
 import { Transcript } from "../features/transcript/Transcript.tsx";
 import type { PromptSteps } from "../features/transcript/PromptStepper.tsx";
 import { EmptyThread } from "./EmptyThread.tsx";
@@ -168,6 +169,8 @@ export interface ThreadPaneActions {
         readonly fork: (threadId: ThreadId, request: ForkRequest) => Promise<void>;
       }
     | undefined;
+  /** Moves an existing chat thread into a project as a work thread; absent when backend can't. */
+  readonly moveToWork?: ((threadId: ThreadId, choice: MoveToWorkChoice) => Promise<void>) | undefined;
   readonly restore?:
     | {
         readonly preview: (agentId: AgentId, messageId: string) => Promise<RestorePreview>;
@@ -272,6 +275,8 @@ export interface ThreadPaneProps {
   readonly draftKey: string;
   /** The folder a new thread starts in, unless its draft chose one. */
   readonly folder: string | undefined;
+  /** Saved project folders offered by the Move to Work wizard. */
+  readonly projects?: ReadonlyArray<string>;
   /** The providers ready to run a new thread. */
   readonly available: ReadonlySet<ProviderId>;
   /** The machine can give a new thread a worktree of its own. */
@@ -334,6 +339,7 @@ export function ThreadPane({
   loading,
   draftKey,
   folder,
+  projects = [],
   available,
   worktrees,
   bar,
@@ -662,6 +668,17 @@ export function ThreadPane({
                             available,
                             preview: (turn) => fork.preview(viewed.thread.id, turn),
                             fork: (request) => fork.fork(viewed.thread.id, request),
+                          },
+                        })}
+                    {...(cloud || away || viewed.thread.mode !== "chat" || !actions.moveToWork
+                      ? {}
+                      : {
+                          moveToWork: {
+                            projects,
+                            defaultFolder: folder,
+                            available,
+                            worktrees,
+                            onMove: (choice) => actions.moveToWork!(viewed.thread.id, choice),
                           },
                         })}
                     {...(cloud || !turnFiles || viewed.thread.cwd === undefined

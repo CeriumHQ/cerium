@@ -8,6 +8,7 @@ import {
   Columns2,
   GitPullRequestArrow,
   History,
+  MessagesSquare,
   PenLine,
   Pin,
   Plus,
@@ -51,6 +52,8 @@ export interface TabView {
   readonly title: string;
   /** A thread not started yet: there's nothing running, only a draft. */
   readonly draft: boolean;
+  /** Whether this tab holds a chat thread or new-chat draft (vs. a work thread). */
+  readonly chat?: boolean;
   /** The preview tab, which the next thread opened from the sidebar replaces. */
   readonly preview: boolean;
   readonly status?: ThreadSummary["status"];
@@ -525,7 +528,11 @@ function TabFace({
             aria-hidden
             className="grid size-3.5 place-items-center rounded-[4px] border border-dashed border-current opacity-70"
           >
-            <PenLine size={8} strokeWidth={2.25} />
+            {tab.chat ? (
+              <MessagesSquare size={8} strokeWidth={2.25} />
+            ) : (
+              <PenLine size={8} strokeWidth={2.25} />
+            )}
           </span>
         ) : tab.thread ? (
           <span className={active || unread || tab.thread.status !== "idle" ? "" : "opacity-80"}>

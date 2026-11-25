@@ -31,6 +31,9 @@ import { readyProviders } from "./ModelGroups.tsx";
 import { SettingsList, SettingsNote, SettingsPage, SettingsRow, SettingsSection } from "./parts.tsx";
 import {
   accessAtom,
+  chatEffortAtom,
+  chatModelAtom,
+  chatSpeedAtom,
   effortAtom,
   inboxCapAtom,
   inboxCaps,
@@ -80,11 +83,18 @@ export function ThreadSettings({
   const { models, model, setModelId } = useLeadModel(harnesses);
   const [effort, setEffort] = useAtom(effortAtom);
   const [speed, setSpeed] = useAtom(speedAtom);
+  const [chatModelId, setChatModelId] = useAtom(chatModelAtom);
+  const [chatEffort, setChatEffort] = useAtom(chatEffortAtom);
+  const [chatSpeed, setChatSpeed] = useAtom(chatSpeedAtom);
   const [access, setAccess] = useAtom(accessAtom);
   const [workplace, setWorkplace] = useAtom(workplaceAtom);
+  const ready = readyProviders(harnesses);
+  const chatModel = chatModelId ? pickModel(models, chatModelId, ready) : model;
   // Like the composer, a level the model lacks reads as its default or strongest one.
   const activeEffort = model ? effortFor(model, effort) : undefined;
   const activeSpeed = model ? speedFor(model, speed) : undefined;
+  const activeChatEffort = chatModel ? effortFor(chatModel, chatEffort) : undefined;
+  const activeChatSpeed = chatModel ? speedFor(chatModel, chatSpeed) : undefined;
   const accessOption = accessOptions.find((option) => option.value === access);
 
   return (
@@ -96,11 +106,12 @@ export function ThreadSettings({
       <SettingsSection title="Model">
         <SettingsList>
           <SettingsRow
-            label="Default model"
-            hint={model?.description}
+            label="Work default"
+            hint={model?.description ?? "Used for new work threads and automations."}
             className="pr-2.5"
             control={() => (
               <ModelSelect
+                ariaLabel="Work default model"
                 value={model}
                 onChange={setModelId}
                 models={models}
@@ -112,6 +123,40 @@ export function ThreadSettings({
                 onSpeed={setSpeed}
                 {...(onOpen ? { onOpenHarnesses: onOpen } : {})}
               />
+            )}
+          />
+          <SettingsRow
+            label="Chat default"
+            hint={
+              chatModelId
+                ? (chatModel?.description ?? "Used for new chats without changing your work default.")
+                : "Follows your work model with its own effort and speed until changed."
+            }
+            className="pr-2.5"
+            control={() => (
+              <div className="flex items-center gap-1.5">
+                {chatModelId ? (
+                  <Button
+                    onClick={() => setChatModelId("")}
+                    className="h-7 rounded-md px-2 text-meta text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-primary"
+                  >
+                    Follow work
+                  </Button>
+                ) : null}
+                <ModelSelect
+                  ariaLabel="Chat default model"
+                  value={chatModel}
+                  onChange={setChatModelId}
+                  models={models}
+                  harnesses={harnesses}
+                  effort={chatEffort}
+                  activeEffort={activeChatEffort}
+                  onEffort={setChatEffort}
+                  activeSpeed={activeChatSpeed}
+                  onSpeed={setChatSpeed}
+                  {...(onOpen ? { onOpenHarnesses: onOpen } : {})}
+                />
+              </div>
             )}
           />
         </SettingsList>
@@ -288,6 +333,7 @@ export function AdvisorSettings({ harnesses }: { harnesses: ReadonlyArray<Harnes
  * why: the lists are still arriving, a harness listed none, or no harness can run.
  */
 function ModelSelect({
+  ariaLabel = "Default model",
   value,
   onChange,
   models,
@@ -299,6 +345,7 @@ function ModelSelect({
   onSpeed,
   onOpenHarnesses,
 }: {
+  ariaLabel?: string;
   value: ModelInfo | undefined;
   onChange: (model: string) => void;
   models: ReadonlyArray<ModelInfo>;
@@ -322,7 +369,7 @@ function ModelSelect({
         variant="select"
         side="bottom"
         align="end"
-        ariaLabel="Default model"
+        ariaLabel={ariaLabel}
         models={models}
         providers={OFFERED_PROVIDERS}
         available={ready}

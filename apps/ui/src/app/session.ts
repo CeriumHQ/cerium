@@ -2,7 +2,7 @@ import { Option, Schema } from "effect";
 
 import { newDraftKey } from "../features/composer/drafts.ts";
 import { closeKeys, leavesOf, type PaneNode as PaneNodeType } from "../features/split/model.ts";
-import { closeTabs } from "../features/tabs/model.ts";
+import { closeTabs, type TabStrip as TabStripModel } from "../features/tabs/model.ts";
 import { rememberForTab, storedForTab } from "../lib/storage.ts";
 import type { AppMode } from "./mode.ts";
 
@@ -32,93 +32,149 @@ const PaneNode = Schema.Union([
 
 const Panes = Schema.Struct({ root: PaneNode, focused: Schema.String, shown: Schema.String });
 
-const Session = Schema.fromJsonString(
+const UnifiedSession = Schema.Struct({
+  /** The machine the window drove; none for this computer. */
+  machine: Schema.optionalKey(Schema.String),
+  /** Which sidebar list is open (Home vs. Chat); tabs and panes are shared across both. */
+  mode: Mode,
+  /** The open thread, file, PR/issue, or draft key. */
+  open: Schema.optionalKey(Schema.String),
+  /** The fallback blank new-thread draft key. */
+  blank: Schema.String,
+  pane: Schema.Literals(["list", "main"]),
+  /** Each machine's unified open tabs (work threads, chats, drafts, files, GitHub). */
+  tabs: Schema.optionalKey(Schema.Record(Schema.String, TabStrip)),
+  /** How the main area is split into panes. */
+  panes: Schema.optionalKey(Panes),
+});
+export type Session = typeof UnifiedSession.Type;
+
+const SessionJson = Schema.fromJsonString(UnifiedSession);
+
+/** Older sessions stored `open`, `blank`, `tabs`, and `panes` separately per mode. */
+const LegacySessionJson = Schema.fromJsonString(
   Schema.Struct({
-    /** The machine the window drove; none for this computer. */
     machine: Schema.optionalKey(Schema.String),
     mode: Mode,
-    /** The thread, or the draft of a thread not started yet, open per mode. */
     open: Schema.Struct({ work: Schema.optionalKey(Schema.String), chat: Schema.optionalKey(Schema.String) }),
-    /** Each mode's blank new thread: the draft "New thread" writes into. */
     blank: Schema.Struct({ work: Schema.String, chat: Schema.String }),
     pane: Schema.Literals(["list", "main"]),
-    /** Each machine's open tabs per mode. */
     tabs: Schema.optionalKey(
       Schema.Record(
         Schema.String,
         Schema.Struct({ work: Schema.optionalKey(TabStrip), chat: Schema.optionalKey(TabStrip) }),
       ),
     ),
-    /** How each mode's main area is split into panes. */
     panes: Schema.optionalKey(
       Schema.Struct({ work: Schema.optionalKey(Panes), chat: Schema.optionalKey(Panes) }),
     ),
   }),
 );
-export type Session = typeof Session.Type;
 
-/** A blank new thread per mode, each with a draft of its own. */
-export const freshBlank = (): Record<AppMode, string> => ({ work: newDraftKey(), chat: newDraftKey() });
+const dedupe = (keys: ReadonlyArray<string>): Array<string> => [...new Set(keys)];
+
+const mergeStrips = (
+  primary: TabStripModel | undefined,
+  secondary: TabStripModel | undefined,
+): TabStripModel | undefined => {
+  if (primary === undefined) return secondary;
+  if (secondary === undefined) return primary;
+  const keys = dedupe([...primary.keys, ...secondary.keys]);
+  const open = new Set(keys);
+  const closed = dedupe([...primary.closed, ...secondary.closed]).filter((key) => !open.has(key));
+  const active = primary.active ?? secondary.active;
+  const preview = primary.preview ?? secondary.preview;
+  return {
+    keys,
+    closed,
+    ...(active === undefined ? {} : { active }),
+    ...(preview === undefined ? {} : { preview }),
+  };
+};
+
+const migrateLegacy = (legacy: typeof LegacySessionJson.Type): Session => {
+  const other: AppMode = legacy.mode === "work" ? "chat" : "work";
+  const open = legacy.open[legacy.mode] ?? legacy.open[other];
+  const blank = legacy.blank[legacy.mode] ?? freshBlank(legacy.mode);
+  const panes = legacy.panes?.[legacy.mode] ?? legacy.panes?.[other];
+  const tabs =
+    legacy.tabs === undefined
+      ? undefined
+      : Object.fromEntries(
+          Object.entries(legacy.tabs).flatMap(([machine, strips]) => {
+            const merged = mergeStrips(strips[legacy.mode], strips[other]);
+            return merged === undefined ? [] : [[machine, merged]];
+          }),
+        );
+  return {
+    ...(legacy.machine === undefined ? {} : { machine: legacy.machine }),
+    mode: legacy.mode,
+    ...(open === undefined ? {} : { open }),
+    blank,
+    pane: legacy.pane,
+    ...(tabs === undefined ? {} : { tabs }),
+    ...(panes === undefined ? {} : { panes }),
+  };
+};
+
+/** A fresh blank draft key for `mode`. */
+export const freshBlank = (mode: AppMode = "work"): string => newDraftKey(mode);
 
 /** The key a thread's browser had while it was a tab of its own, which an older session may hold. */
 const BROWSER_TAB = "preview:";
 const isBrowserTab = (key: string) => key.startsWith(BROWSER_TAB);
 
-const eachMode = <A>(
-  modes: { readonly work?: A; readonly chat?: A },
-  change: (value: A) => A | undefined,
-): { work?: A; chat?: A } => {
-  const work = modes.work === undefined ? undefined : change(modes.work);
-  const chat = modes.chat === undefined ? undefined : change(modes.chat);
-  return { ...(work === undefined ? {} : { work }), ...(chat === undefined ? {} : { chat }) };
-};
-
 /**
  * `session` without the browser tabs and panes an older Cerium kept: each thread's browser docks
- * beside it now. A mode that showed one shows its thread instead.
+ * beside it now. A session that showed one shows its thread instead.
  */
-export const withoutBrowserTabs = (session: Session): Session => ({
-  ...session,
-  open: eachMode(session.open, (key) => (isBrowserTab(key) ? key.slice(BROWSER_TAB.length) : key)),
-  ...(session.tabs === undefined
-    ? {}
-    : {
-        tabs: Object.fromEntries(
-          Object.entries(session.tabs).map(([machine, strips]) => [
-            machine,
-            eachMode(strips, (strip) => {
+export const withoutBrowserTabs = (session: Session): Session => {
+  const { open: prevOpen, panes: prevPanes, tabs: prevTabs, ...rest } = session;
+  const open =
+    prevOpen === undefined
+      ? undefined
+      : isBrowserTab(prevOpen)
+        ? prevOpen.slice(BROWSER_TAB.length)
+        : prevOpen;
+  const panes =
+    prevPanes === undefined
+      ? undefined
+      : closeKeys(
+          prevPanes,
+          leavesOf(prevPanes.root)
+            .map((leaf) => leaf.key)
+            .filter(isBrowserTab),
+        );
+  return {
+    ...rest,
+    ...(open === undefined ? {} : { open }),
+    ...(prevTabs === undefined
+      ? {}
+      : {
+          tabs: Object.fromEntries(
+            Object.entries(prevTabs).map(([machine, strip]) => {
               const left = closeTabs(strip, strip.keys.filter(isBrowserTab), { remember: false }).strip;
-              return { ...left, closed: left.closed.filter((key) => !isBrowserTab(key)) };
+              return [machine, { ...left, closed: left.closed.filter((key) => !isBrowserTab(key)) }];
             }),
-          ]),
-        ),
-      }),
-  ...(session.panes === undefined
-    ? {}
-    : {
-        panes: eachMode(session.panes, (panes) =>
-          closeKeys(
-            panes,
-            leavesOf(panes.root)
-              .map((leaf) => leaf.key)
-              .filter(isBrowserTab),
           ),
-        ),
-      }),
-});
+        }),
+    ...(panes === undefined ? {} : { panes }),
+  };
+};
 
 /** Where this tab was before it reloaded, if it was anywhere. */
-export const restoredSession = (): Session | undefined =>
-  Option.getOrUndefined(
-    Schema.decodeUnknownOption(Session)(storedForTab(SESSION_KEY)).pipe(Option.map(withoutBrowserTabs)),
+export const restoredSession = (): Session | undefined => {
+  const raw = storedForTab(SESSION_KEY);
+  const decoded = Schema.decodeUnknownOption(SessionJson)(raw).pipe(
+    Option.orElse(() => Schema.decodeUnknownOption(LegacySessionJson)(raw).pipe(Option.map(migrateLegacy))),
+    Option.map(withoutBrowserTabs),
   );
+  return Option.getOrUndefined(decoded);
+};
 
 /** Remembers where the window is; like any remembered preference, failing never breaks the window. */
-export const rememberSession = (
-  session: Omit<Session, "open"> & { open: Partial<Record<AppMode, string | undefined>> },
-) =>
-  Schema.encodeOption(Session)({
-    ...session,
-    // A mode showing its blank new thread has nothing open.
-    open: Object.fromEntries(Object.entries(session.open).filter(([, id]) => id !== undefined)),
-  }).pipe(Option.map((encoded) => rememberForTab(SESSION_KEY, encoded)));
+export const rememberSession = ({ open, ...rest }: Omit<Session, "open"> & { open: string | undefined }) =>
+  Schema.encodeOption(SessionJson)({
+    ...rest,
+    ...(open === undefined ? {} : { open }),
+  }).pipe(Option.map((json) => rememberForTab(SESSION_KEY, json)));

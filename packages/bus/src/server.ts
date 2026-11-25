@@ -8,7 +8,7 @@ import { BrowserTools } from "./browser.ts";
 import { ComputerTools } from "./computer.ts";
 import { ArtifactPreviewTool } from "./preview.ts";
 import { BUS_PATH, BUS_SERVER_NAME, BusRegistry } from "./registry.ts";
-import { BusToolkit, ChildToolkit, BusToolkitHandlers } from "./tools.ts";
+import { BusToolkit, ChatToolkit, ChildToolkit, BusToolkitHandlers } from "./tools.ts";
 
 /** Loopback only, on a free port: the bus is reachable from this machine's harness processes alone. */
 export const BusHttpServer = NodeHttpServer.layer(createServer, { host: "127.0.0.1", port: 0 });
@@ -40,6 +40,26 @@ const LeadRoutes = Layer.mergeAll(
   ),
 );
 
+const ChatLeadRoutes = Layer.mergeAll(
+  McpServer.toolkit(ChatToolkit),
+  Layer.fresh(ArtifactPreviewTool),
+  Layer.fresh(BrowserTools),
+  Layer.fresh(ComputerTools),
+).pipe(
+  Layer.provide(BusToolkitHandlers),
+  Layer.provideMerge(
+    McpServer.layerHttp({
+      name: BUS_SERVER_NAME,
+      version: "0.0.0",
+      instructions:
+        "Cerium tools for workspace-wide projects, threads, tasks, GitHub PRs and issues, delegation, browser checks, and artifacts.",
+      path: `${BUS_PATH}/chat`,
+      protocols: [McpProtocol.v2025_11_25, McpProtocol.v2025_06_18, McpProtocol.v2025_03_26],
+    }),
+  ),
+  Layer.fresh,
+);
+
 const ChildRoutes = Layer.mergeAll(
   McpServer.toolkit(ChildToolkit),
   Layer.fresh(ArtifactPreviewTool),
@@ -59,7 +79,7 @@ const ChildRoutes = Layer.mergeAll(
   Layer.fresh,
 );
 
-export const BusRoutes = Layer.mergeAll(LeadRoutes, ChildRoutes);
+export const BusRoutes = Layer.mergeAll(LeadRoutes, ChatLeadRoutes, ChildRoutes);
 
 /** The MCP endpoint served on its own, on `BusHttpServer`. */
 export const BusServer = HttpRouter.serve(BusRoutes, { disableListenLog: true, disableLogger: true });

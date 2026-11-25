@@ -31,11 +31,21 @@ export type Drafts = Readonly<Record<string, Draft>>;
 
 const DRAFTS_KEY = "cerium:drafts";
 const NEW_PREFIX = "new:";
+const NEW_CHAT_PREFIX = "new:chat:";
 
-/** The key of a thread not started yet. */
-export const newDraftKey = (): string => `${NEW_PREFIX}${crypto.randomUUID()}`;
+/** The key of a thread not started yet, carrying its mode so blank tabs stay distinct in a unified strip. */
+export const newDraftKey = (mode: "work" | "chat" = "work"): string =>
+  `${mode === "chat" ? NEW_CHAT_PREFIX : NEW_PREFIX}${crypto.randomUUID()}`;
 
 export const isNewDraftKey = (key: string | undefined): key is string => key?.startsWith(NEW_PREFIX) === true;
+
+/** The mode encoded in a draft key (`new:chat:...` is a chat; older `new:...` keys are work). */
+export const draftKeyMode = (key: string | undefined): "work" | "chat" =>
+  key?.startsWith(NEW_CHAT_PREFIX) === true ? "chat" : "work";
+
+/** The mode of a new-thread draft, preferring its stored start metadata when present. */
+export const draftModeOf = (key: string | undefined, startMode?: "work" | "chat"): "work" | "chat" =>
+  startMode ?? draftKeyMode(key);
 
 const StoredSegment = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("text"), text: Schema.String }),
@@ -362,11 +372,13 @@ export const newThreadDraftsAtom = Atom.make((get) => newThreadDrafts(get(drafts
  * name a draft read its title from `newThreadDraftTitleAtom` themselves.
  */
 export const newThreadDraftTabsAtom = Atom.make((get) =>
-  get(newThreadDraftsAtom).map(({ key, folder }) => (folder === undefined ? { key } : { key, folder })),
-).pipe(
-  Atom.withEquality<ReadonlyArray<{ readonly key: string; readonly folder?: string }>>(
-    (a, b) => JSON.stringify(a) === JSON.stringify(b),
+  get(newThreadDraftsAtom).map(({ key, mode, folder }) =>
+    folder === undefined ? { key, mode } : { key, mode, folder },
   ),
+).pipe(
+  Atom.withEquality<
+    ReadonlyArray<{ readonly key: string; readonly mode: DraftStart["mode"]; readonly folder?: string }>
+  >((a, b) => JSON.stringify(a) === JSON.stringify(b)),
 );
 
 /** What the thread not started yet `key` would be called; undefined for any other key. */

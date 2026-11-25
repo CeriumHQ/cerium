@@ -7,6 +7,7 @@ import {
   ArrowUp,
   ArchiveRestore,
   Bot,
+  Briefcase,
   Columns2,
   ClipboardCopy,
   Compass,
@@ -92,6 +93,7 @@ export function useWorkspaceCommands({
   sidebarOpen,
   toggleSidebar,
   returnToComposer,
+  onMoveToWork,
 }: {
   readonly solo: SoloThread | undefined;
   readonly compact: boolean;
@@ -110,6 +112,7 @@ export function useWorkspaceCommands({
   readonly sidebarOpen: boolean;
   readonly toggleSidebar: () => void;
   readonly returnToComposer: () => void;
+  readonly onMoveToWork?: ((threadId: string) => void) | undefined;
 }) {
   const registry = useContext(RegistryContext);
   const { mode, setMode, current, panes, savedProjects, projects, defaultFolder, chooseFolder } =
@@ -167,7 +170,14 @@ export function useWorkspaceCommands({
     label: mode === "work" ? "New thread" : "New chat",
     icon: SquarePen,
     keys: keys("new-thread"),
-    run: newThread,
+    run: () => newThread(mode),
+  };
+  const otherNewCommand: PaletteCommand = {
+    id: mode === "work" ? "new-chat" : "new-work-thread",
+    group: "Actions",
+    label: mode === "work" ? "New chat" : "New thread",
+    icon: mode === "work" ? MessagesSquare : SquarePen,
+    run: () => newThread(mode === "work" ? "chat" : "work"),
   };
   const findCommand: PaletteCommand = {
     // The focused pane's thread finds the text: the files panel, when it has focus, finds files instead.
@@ -233,6 +243,7 @@ export function useWorkspaceCommands({
     .filter((path) => !savedProjects.some((project) => project.path === path && project.missing === true));
   const paletteCommands: ReadonlyArray<PaletteCommand> = [
     newThreadCommand,
+    otherNewCommand,
     ...projectCommands(projectChoices).map(({ folder, ...command }) => ({
       ...command,
       run: () => {
@@ -335,6 +346,23 @@ export function useWorkspaceCommands({
     },
     compactCommand,
     continueCommand,
+    {
+      id: "move-chat-to-work",
+      group: "Actions",
+      label: "Move chat to work…",
+      icon: Briefcase,
+      keywords: "implement work project convert promote chat",
+      when:
+        onMoveToWork !== undefined &&
+        selected !== undefined &&
+        cloudSelected === undefined &&
+        selected.thread.mode === "chat" &&
+        selectedSummary !== undefined &&
+        canArchive(selectedSummary),
+      run: () => {
+        if (selected && onMoveToWork) onMoveToWork(selected.thread.id);
+      },
+    },
     {
       id: "export-markdown",
       group: "Actions",
@@ -595,6 +623,23 @@ export function useWorkspaceCommands({
     findCommand,
     compactCommand,
     continueCommand,
+    {
+      id: "move-chat-to-work",
+      group: "Actions",
+      label: "Move chat to work…",
+      icon: Briefcase,
+      keywords: "implement work project convert promote chat",
+      when:
+        onMoveToWork !== undefined &&
+        selected !== undefined &&
+        cloudSelected === undefined &&
+        selected.thread.mode === "chat" &&
+        selectedSummary !== undefined &&
+        canArchive(selectedSummary),
+      run: () => {
+        if (selected && onMoveToWork) onMoveToWork(selected.thread.id);
+      },
+    },
     settingsCommand,
   ];
 

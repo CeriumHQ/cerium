@@ -10,7 +10,16 @@ import { AsyncResult } from "effect/reactivity";
 
 import { harnessesAtom, settingsAtom } from "../../backend/atoms.ts";
 import { gitBranchAtom } from "../../backend/projects.ts";
-import { accessAtom, effortAtom, modelAtom, speedAtom, workplaceAtom } from "../settings/preferences.ts";
+import {
+  accessAtom,
+  chatEffortAtom,
+  chatModelAtom,
+  chatSpeedAtom,
+  effortAtom,
+  modelAtom,
+  speedAtom,
+  workplaceAtom,
+} from "../settings/preferences.ts";
 import type { ComposerTarget } from "./composerTypes.ts";
 import type { Draft, DraftStart } from "./draft.ts";
 import {
@@ -59,11 +68,22 @@ export function useStartChoices({
   /** Opens the model menu, which multi agent opens on to add more models. */
   readonly onOpenModels: () => void;
 }) {
-  // New threads start with the model, effort and speed the last one was given, which are also the
-  // defaults in settings. Access always starts from the settings default. A pick here stays with the draft.
-  const [defaultModel, setDefaultModel] = useAtom(modelAtom);
-  const [defaultEffort, setDefaultEffort] = useAtom(effortAtom);
-  const [defaultSpeed, setDefaultSpeed] = useAtom(speedAtom);
+  // Work and chat each remember their own model, effort and speed defaults, so changing one in a
+  // chat composer never overwrites the coding default (and vice versa). Until a chat model is picked,
+  // chat falls back to the work model while keeping its own lighter effort default.
+  const isChat = target.kind === "new" && target.mode === "chat";
+  const [workModel, setWorkModel] = useAtom(modelAtom);
+  const [chatModel, setChatModel] = useAtom(chatModelAtom);
+  const [workEffort, setWorkEffort] = useAtom(effortAtom);
+  const [chatEffort, setChatEffort] = useAtom(chatEffortAtom);
+  const [workSpeed, setWorkSpeed] = useAtom(speedAtom);
+  const [chatSpeed, setChatSpeed] = useAtom(chatSpeedAtom);
+  const defaultModel = isChat ? chatModel || workModel : workModel;
+  const setDefaultModel = isChat ? setChatModel : setWorkModel;
+  const defaultEffort = isChat ? chatEffort : workEffort;
+  const setDefaultEffort = isChat ? setChatEffort : setWorkEffort;
+  const defaultSpeed = isChat ? chatSpeed : workSpeed;
+  const setDefaultSpeed = isChat ? setChatSpeed : setWorkSpeed;
   const defaultAccess = useAtomValue(accessAtom);
   const modelId = draft.start?.model ?? defaultModel;
   const effort = draft.start?.effort ?? defaultEffort;

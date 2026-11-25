@@ -50,6 +50,27 @@ export interface ForkThreadInput {
   readonly model?: string;
 }
 
+/** Moves an existing chat thread into a project as a work thread, optionally kicking off implementation. */
+export interface MoveChatToWorkInput {
+  readonly threadId: ThreadId;
+  readonly cwd: string;
+  readonly worktree?: boolean;
+  readonly workspace?: WorkspaceChoice;
+  readonly lead: {
+    readonly provider: ProviderId;
+    readonly model: string;
+    readonly effort?: ReasoningEffort;
+    readonly autoEffort?: boolean;
+    readonly speed?: ModelSpeed;
+    readonly access: AccessMode;
+  };
+  /** When present, immediately starts implementing this message/instruction in the moved work thread. */
+  readonly implement?: {
+    readonly message?: string;
+    readonly note?: string;
+  };
+}
+
 /** What the user sent beside the text of a message. */
 export interface UserMessageExtras {
   readonly attachments?: ReadonlyArray<Attachment>;
@@ -105,6 +126,8 @@ export interface ThreadRequest {
   readonly effort?: ReasoningEffort;
   /** Never more than the caller's own. */
   readonly access?: AccessMode;
+  /** A project folder; lets a chat lead start a work thread in a saved project when asked. */
+  readonly folder?: string;
   /** Whether it runs in a worktree of its own; as the caller's thread does without it. */
   readonly worktree?: boolean;
   readonly workspace?: WorkspaceChoice;

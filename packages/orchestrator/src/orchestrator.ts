@@ -42,6 +42,7 @@ import type {
   ForkThreadInput,
   HandoffTarget,
   ModelChoice,
+  MoveChatToWorkInput,
   PutAwayOptions,
   SpawnApproval,
   SpawnOutcome,
@@ -71,6 +72,7 @@ export type {
   ForkThreadInput,
   HandoffTarget,
   ModelChoice,
+  MoveChatToWorkInput,
   PutAwayOptions,
   SpawnApproval,
   SpawnOutcome,
@@ -236,6 +238,10 @@ export class Orchestrator extends Context.Service<
       choice: WorkspaceChoice,
       options?: { readonly carryOn?: boolean },
     ): Effect.Effect<ThreadInfo, OrchestratorError>;
+    /** Moves an existing chat thread into a project as a work thread, optionally starting implementation. */
+    moveChatToWork(
+      input: MoveChatToWorkInput,
+    ): Effect.Effect<{ readonly thread: ThreadInfo; readonly lead: AgentInfo }, OrchestratorError>;
     /** Renames a thread; the title is trimmed and must be 1 to `MAX_THREAD_TITLE` characters. */
     renameThread(threadId: ThreadId, title: string): Effect.Effect<ThreadInfo, OrchestratorError>;
     /**
@@ -451,7 +457,7 @@ export class Orchestrator extends Context.Service<
       const controls = makeAgentControls(ctx, turns, requests);
       const tasks = makeUserTasks(ctx);
       const threads = makeThreadCreation(ctx, sessions, workspace, inbox);
-      const lifecycle = makeThreadLifecycle(ctx, sessions, workspace);
+      const lifecycle = makeThreadLifecycle(ctx, sessions, workspace, inbox);
       const projectRun = makeProjectRun(ctx, requests.requestApproval);
 
       yield* workspace.forwardScriptNews;
@@ -494,6 +500,7 @@ export class Orchestrator extends Context.Service<
         stopThread: controls.stopThread,
         listThreads: lifecycle.listThreads,
         moveThread: lifecycle.moveThread,
+        moveChatToWork: lifecycle.moveChatToWork,
         renameThread: lifecycle.renameThread,
         setThreadArchived: lifecycle.setThreadArchived,
         continueThread: threads.continueThread,

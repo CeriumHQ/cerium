@@ -2,7 +2,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { useState } from "react";
 
 import type { AppMode } from "../../app/mode.ts";
-import { isNewDraftKey, newDraftKey, newThreadDraftTabsAtom } from "../composer/drafts.ts";
+import { draftModeOf, isNewDraftKey, newDraftKey, newThreadDraftTabsAtom } from "../composer/drafts.ts";
 import type { ThreadSummary } from "../threads/model.ts";
 import { githubOfKey } from "../github/model.ts";
 import { githubTitlesAtom } from "../github/tabs.ts";
@@ -24,15 +24,16 @@ import {
 } from "./model.ts";
 import type { TabActions, TabView } from "./ThreadTabs.tsx";
 
-/** Every machine's tabs, per mode: switching to another computer and back finds its tabs as they were. */
-export type TabStrips = Readonly<Record<string, Partial<Record<AppMode, TabStrip>>>>;
+/** Every machine's unified tabs: switching to another computer and back finds its tabs as they were. */
+export type TabStrips = Readonly<Record<string, TabStrip>>;
 
 const baseName = (path: string) => path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
 
 /**
- * The open threads' tabs for the window. The strip follows whatever the window shows: a thread opened
- * any way at all (the sidebar, search, a notification) takes the preview tab, unless `openAs` asked
- * for a tab of its own first. A file always takes a tab of its own, so it never replaces the thread.
+ * The open threads' tabs for the window. Work threads, chats, drafts, files, and GitHub items all
+ * share one strip per machine. The strip follows whatever the window shows: a thread opened any way
+ * at all (the sidebar, search, a notification) takes the preview tab, unless `openAs` asked for a
+ * tab of its own first. A file always takes a tab of its own, so it never replaces the thread.
  * The window still decides what's shown; the tabs ask it through `onShow`.
  */
 export function useThreadTabs({
@@ -48,6 +49,7 @@ export function useThreadTabs({
 }: {
   /** The machine the window drives, whose tabs show. */
   machine: string;
+  /** The sidebar's active mode, deciding whether the "+" button opens a new work thread or a new chat. */
   mode: AppMode;
   /** The thread, or the key of the thread not started yet, the window shows. */
   active: string;
@@ -71,16 +73,17 @@ export function useThreadTabs({
   const [opening, setOpening] = useState<{ readonly key: string; readonly as: OpenAs }>();
   const drafts = useAtomValue(newThreadDraftTabsAtom);
   const githubTitles = useAtomValue(githubTitlesAtom);
-  const strip = strips[machine]?.[mode] ?? emptyStrip;
-  const update = (change: (strip: TabStrip) => TabStrip, targetMode: AppMode = mode) =>
+  const strip = strips[machine] ?? emptyStrip;
+  const update = (change: (strip: TabStrip) => TabStrip) =>
     setStrips((all) => ({
       ...all,
-      [machine]: { ...all[machine], [targetMode]: change(all[machine]?.[targetMode] ?? emptyStrip) },
+      [machine]: change(all[machine] ?? emptyStrip),
     }));
 
   /** A tab that holds a new thread with nothing in it yet, which can be replaced or reused without loss. */
   const isEmpty = (key: string) => isNewDraftKey(key) && !drafts.some((draft) => draft.key === key);
-  const threadOf = (key: string) => threads.find((thread) => thread.id === key && thread.mode === mode);
+  const isEmptyOfMode = (key: string, targetMode: AppMode) => isEmpty(key) && draftModeOf(key) === targetMode;
+  const threadOf = (key: string) => threads.find((thread) => thread.id === key);
 
   // Whatever the window shows has a tab.
   if (strip.active !== active) {
@@ -103,7 +106,6 @@ export function useThreadTabs({
       key === active || !loaded || isNewDraftKey(key) || isNonThreadKey(key) || threadOf(key) !== undefined,
   );
   const visible = { ...strip, keys };
-  const newTitle = mode === "work" ? "New thread" : "New chat";
   const tabs: ReadonlyArray<TabView> = keys.map((key) => {
     const preview = strip.preview === key;
     const github = githubOfKey(key);
@@ -144,37 +146,46 @@ export function useThreadTabs({
         title: thread.title,
         draft: false,
         preview,
+        chat: thread.mode === "chat",
         status: thread.status,
         unread: thread.unread,
         ...(thread.providers[0] ? { provider: thread.providers[0] } : {}),
-        ...(thread.project ? { project: thread.project } : {}),
+        ...(thread.project ? { project: thread.project } : thread.mode === "chat" ? { project: "Chat" } : {}),
         thread,
       };
     const draft = drafts.find((candidate) => candidate.key === key);
+    const tabMode = draftModeOf(key, draft?.mode);
     return {
       key,
       // A thread the list hasn't brought yet says nothing rather than something wrong. A draft's own
       // title is read where it shows (`newThreadDraftTitleAtom`), so typing doesn't render the window.
-      title: isNewDraftKey(key) ? newTitle : "",
+      title: isNewDraftKey(key) ? (tabMode === "work" ? "New thread" : "New chat") : "",
       draft: isNewDraftKey(key),
+      chat: tabMode === "chat",
       preview,
-      ...(draft?.folder ? { project: baseName(draft.folder) } : {}),
+      ...(draft?.folder
+        ? { project: baseName(draft.folder) }
+        : tabMode === "chat"
+          ? { project: "Chat" }
+          : {}),
     };
   });
 
   const show = (key: string | undefined) => {
     if (key !== undefined && key !== active) onShow(key);
   };
-  /** Opens a blank new thread in a tab of its own. */
-  const fresh = (focus = true) => {
-    const key = newDraftKey();
+  /** Opens a blank new thread or chat in a tab of its own. */
+  const fresh = (focus = true, targetMode: AppMode = mode) => {
+    const key = newDraftKey(targetMode);
     setOpening({ key, as: "tab" });
     onFresh(key, focus);
   };
-  /** A tab holding an empty new thread, which "New thread" reuses rather than opening another. */
-  const emptyTab = isEmpty(active) ? active : keys.find(isEmpty);
-  const newTab = () => {
-    if (emptyTab === undefined) fresh();
+  /** Opens a new thread/chat: reuses an empty tab of the same mode if one exists, else opens a fresh one. */
+  const newTab = (targetMode: AppMode = mode) => {
+    const emptyTab = isEmptyOfMode(active, targetMode)
+      ? active
+      : keys.find((key) => isEmptyOfMode(key, targetMode));
+    if (emptyTab === undefined) fresh(true, targetMode);
     else show(emptyTab);
   };
 
@@ -186,7 +197,7 @@ export function useThreadTabs({
     const instead = onClosed(closing);
     if (!closing.includes(active)) return;
     const shown = replacement ?? instead ?? next;
-    if (shown === undefined) fresh(remember);
+    if (shown === undefined) fresh(remember, mode);
     else onShow(shown);
   };
   const canReopen = (key: string) =>
@@ -206,7 +217,7 @@ export function useThreadTabs({
     onClose: (closing) => close(closing),
     onKeep: (key) => update((current) => keepTab(current, key)),
     onMove: (key, index) => update((current) => moveTab({ ...current, keys }, key, index)),
-    onNewTab: newTab,
+    onNewTab: () => newTab(mode),
     ...(reopenable ? { onReopen: reopen } : {}),
   };
 
@@ -217,7 +228,7 @@ export function useThreadTabs({
     /** Asks for the next thread shown to open as `as`: the sidebar's Ctrl click wants a tab of its own. */
     openAs: (key: string, as: OpenAs) => setOpening({ key, as }),
     /** The user worked in the tab: it's no longer the preview. */
-    keep: (key: string, targetMode?: AppMode) => update((current) => keepTab(current, key), targetMode),
+    keep: (key: string) => update((current) => keepTab(current, key)),
     /**
      * A new thread started: its tab is now the thread's, and the threads started with it (multi
      * agent) open in tabs right after it.
@@ -234,7 +245,7 @@ export function useThreadTabs({
       if (background) update((current) => closeTabs(current, archived, { remember: false }).strip);
       else close(archived, false, replacement);
     },
-    /** Opens a new thread: in the tab of an empty one if there is one, else in a tab of its own. */
+    /** Opens a new thread or chat: in an empty tab of that mode if one exists, else in a tab of its own. */
     newTab,
     // The shortcuts.
     closeActive: () => close([active]),

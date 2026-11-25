@@ -36,7 +36,7 @@ export class BusRegistry extends Context.Service<
               tokens.set(agentId, token);
               return {
                 type: "http" as const,
-                url: profile === "child" ? `${url}/child` : url,
+                url: profile === "child" ? `${url}/child` : profile === "chatLead" ? `${url}/chat` : url,
                 headers: { Authorization: `Bearer ${token}` },
               };
             }),

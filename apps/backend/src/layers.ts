@@ -58,6 +58,7 @@ import { ThreadEnv } from "./threadEnv.ts";
 import { EffortRouter } from "./effortRouter.ts";
 import { fileEffortRouterKey, fileVault, type EffortRouterKey } from "./vault.ts";
 import { Workspace } from "./workspace.ts";
+import { WorkspaceDataLive } from "./workspaceData.ts";
 import { worktreesLayer } from "./worktree.ts";
 import { SourceControl } from "./sourceControl.ts";
 
@@ -157,9 +158,12 @@ export const backendLayer = (options: BackendOptions) => {
     )
     .pipe(
       Layer.provideMerge(
-        SourceControl.host.pipe(
-          Layer.provideMerge(
-            SourceControl.layer({ file: join(options.dataDirectory, "source-control.json") }),
+        Layer.mergeAll(
+          WorkspaceDataLive,
+          SourceControl.host.pipe(
+            Layer.provideMerge(
+              SourceControl.layer({ file: join(options.dataDirectory, "source-control.json") }),
+            ),
           ),
         ),
       ),

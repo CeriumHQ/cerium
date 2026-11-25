@@ -26,6 +26,7 @@ const preference = <A extends string>(key: string, options: ReadonlyArray<A>, fa
   ).pipe(Atom.keepAlive);
 
 const MODEL_KEY = "cerium:model";
+const CHAT_MODEL_KEY = "cerium:chat:model";
 
 const INBOX_CAP_KEY = "cerium:inboxCap";
 export const inboxCaps = [INBOX_CAP, 12, 20, 50, 0] as const;
@@ -157,7 +158,7 @@ export const cueSoundsAtom = preference<"on" | "off">("cerium:cueSounds", ["on",
 /** The taskbar icon counts the threads that notified since the user last looked at them. */
 export const notifyBadgeAtom = preference<"on" | "off">("cerium:notifyBadge", ["on", "off"], "on");
 
-// What a new thread starts with. The composer offers the same choices and remembers the last one.
+// What a new work thread starts with. The composer offers the same choices and remembers the last one.
 /** The chosen model's `modelKey`; the harnesses decide which models exist, so any value is kept. */
 export const modelAtom = Atom.writable(
   () => stored(MODEL_KEY) ?? "",
@@ -173,7 +174,7 @@ export const effortAtom = preference<ReasoningEffort>(
 );
 const SPEED_KEY = "cerium:speed";
 /**
- * The speed new threads start at, once one is picked; until then each model runs at its harness's own
+ * The speed new work threads start at, once one is picked; until then each model runs at its harness's own
  * default, as the user configured it there.
  */
 export const speedAtom = Atom.writable(
@@ -182,6 +183,31 @@ export const speedAtom = Atom.writable(
   (context, value: ModelSpeed) => {
     context.setSelf(value);
     remember(SPEED_KEY, value);
+  },
+).pipe(Atom.keepAlive);
+
+// What a new chat starts with, remembered independently from work threads so quick chats never
+// overwrite the coding model or effort (and start lighter at medium effort by default).
+/** Empty falls back to the work default model until the user picks one for chat. */
+export const chatModelAtom = Atom.writable(
+  () => stored(CHAT_MODEL_KEY) ?? "",
+  (context, value: string) => {
+    context.setSelf(value);
+    remember(CHAT_MODEL_KEY, value);
+  },
+).pipe(Atom.keepAlive);
+export const chatEffortAtom = preference<ReasoningEffort>(
+  "cerium:chat:effort",
+  Object.keys(effortLabel) as ReadonlyArray<ReasoningEffort>,
+  "medium",
+);
+const CHAT_SPEED_KEY = "cerium:chat:speed";
+export const chatSpeedAtom = Atom.writable(
+  (): ModelSpeed | undefined =>
+    (Object.keys(speedLabel) as ReadonlyArray<ModelSpeed>).find((speed) => speed === stored(CHAT_SPEED_KEY)),
+  (context, value: ModelSpeed) => {
+    context.setSelf(value);
+    remember(CHAT_SPEED_KEY, value);
   },
 ).pipe(Atom.keepAlive);
 /**

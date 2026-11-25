@@ -1,7 +1,17 @@
 import { describe, expect, it } from "@effect/vitest";
 import { AtomRegistry } from "effect/reactivity";
 
-import { inboxCapAtom, isSendKey, stepScale } from "../src/features/settings/preferences.ts";
+import {
+  chatEffortAtom,
+  chatModelAtom,
+  chatSpeedAtom,
+  effortAtom,
+  inboxCapAtom,
+  isSendKey,
+  modelAtom,
+  speedAtom,
+  stepScale,
+} from "../src/features/settings/preferences.ts";
 
 describe("Inbox cap preference", () => {
   it("defaults to 8, persists supported caps and Off, and falls back for invalid storage", () => {
@@ -63,5 +73,44 @@ describe("isSendKey", () => {
   it("never sends other keys, or the Enter that confirms an IME composition", () => {
     expect(isSendKey(press("a", { ctrl: true }), "ctrlEnter")).toBe(false);
     expect(isSendKey(press("Enter", { composing: true }), "enter")).toBe(false);
+  });
+});
+
+describe("Per-mode model defaults", () => {
+  it("keeps chat model, effort, and speed independent from work defaults", () => {
+    const storage = new Map<string, string>();
+    const original = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+    Object.defineProperty(globalThis, "localStorage", {
+      configurable: true,
+      value: {
+        getItem: (key: string) => storage.get(key) ?? null,
+        setItem: (key: string, value: string) => storage.set(key, value),
+      },
+    });
+    try {
+      const registry = AtomRegistry.make();
+      expect(registry.get(effortAtom)).toBe("high");
+      expect(registry.get(chatEffortAtom)).toBe("medium");
+      expect(registry.get(chatModelAtom)).toBe("");
+
+      registry.set(modelAtom, "codex:gpt-5.4");
+      registry.set(effortAtom, "xhigh");
+      registry.set(speedAtom, "standard");
+
+      registry.set(chatModelAtom, "claude:sonnet");
+      registry.set(chatEffortAtom, "low");
+      registry.set(chatSpeedAtom, "fast");
+
+      const fresh = AtomRegistry.make();
+      expect(fresh.get(modelAtom)).toBe("codex:gpt-5.4");
+      expect(fresh.get(effortAtom)).toBe("xhigh");
+      expect(fresh.get(speedAtom)).toBe("standard");
+      expect(fresh.get(chatModelAtom)).toBe("claude:sonnet");
+      expect(fresh.get(chatEffortAtom)).toBe("low");
+      expect(fresh.get(chatSpeedAtom)).toBe("fast");
+    } finally {
+      if (original) Object.defineProperty(globalThis, "localStorage", original);
+      else Reflect.deleteProperty(globalThis, "localStorage");
+    }
   });
 });

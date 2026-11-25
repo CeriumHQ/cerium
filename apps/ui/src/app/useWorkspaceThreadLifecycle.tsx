@@ -42,14 +42,14 @@ export function useWorkspaceThreadLifecycle({
   readonly errors: ReturnType<typeof useWorkspaceErrors>;
 }) {
   const registry = useContext(RegistryContext);
-  const { mode, setPanesByMode, setOpenThread, setPane } = sessionState;
+  const { setStoredPanes, setOpenThread, setPane } = sessionState;
   const { summaries, drivenId, drivenDevice, refreshThreads, beginPutAway, settlePutAway, undoPutAway } =
     threads;
   const { tabs, openSummary } = tabView;
   const { attempt, setActionError } = errors;
-  const comparisonView = useRef({ drivenId, mode, dropMany: tabs.dropMany });
+  const comparisonView = useRef({ drivenId, dropMany: tabs.dropMany });
   useLayoutEffect(() => {
-    comparisonView.current = { drivenId, mode, dropMany: tabs.dropMany };
+    comparisonView.current = { drivenId, dropMany: tabs.dropMany };
   });
   const rename = useAtomSet(renameThread, { mode: "promise" });
   const setArchived = useAtomSet(setThreadArchived, { mode: "promise" });
@@ -133,22 +133,16 @@ export function useWorkspaceThreadLifecycle({
     const archived = result.act.map((thread) => thread.id);
     if (archived.length === 0) return result;
     const view = comparisonView.current;
-    if (view.drivenId === drivenId && view.mode === winner.mode) {
+    if (view.drivenId === drivenId) {
       view.dropMany(archived, winnerId);
     } else {
       tabs.dropMany(archived, winnerId, true);
-      if (view.drivenId === drivenId) {
-        setPanesByMode((all) => {
-          const previous = all[winner.mode];
-          if (previous === undefined) return all;
-          const left = closeKeys(previous, archived);
-          if (left === undefined) return { ...all, [winner.mode]: singlePane(MAIN_PANE, winnerId) };
-          return { ...all, [winner.mode]: left };
-        });
-        setOpenThread((all) =>
-          archived.includes(all[winner.mode] ?? "") ? { ...all, [winner.mode]: winnerId } : all,
-        );
-      }
+      setStoredPanes((previous) => {
+        if (previous === undefined) return previous;
+        const left = closeKeys(previous, archived);
+        return left === undefined ? singlePane(MAIN_PANE, winnerId) : left;
+      });
+      setOpenThread((current) => (archived.includes(current ?? "") ? winnerId : current));
     }
     return result;
   };
@@ -170,14 +164,9 @@ export function useWorkspaceThreadLifecycle({
           })),
         );
         tabs.started(threadId, thread.id);
-        setPanesByMode((all) => {
-          const stored = all[thread.mode];
-          return stored === undefined
-            ? all
-            : { ...all, [thread.mode]: renameKey(stored, threadId, thread.id) };
-        });
+        setStoredPanes((stored) => (stored === undefined ? stored : renameKey(stored, threadId, thread.id)));
         showThreads();
-        setOpenThread((open) => ({ ...open, [thread.mode]: thread.id }));
+        setOpenThread(thread.id);
         setPane("main");
         refreshThreads();
         requestAnimationFrame(focusComposer);

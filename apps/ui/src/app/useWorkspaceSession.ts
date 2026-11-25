@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 import { machineKey } from "../backend/machine.ts";
 import { savedProjectsAtom } from "../backend/projects.ts";
-import { draftStartAtom, isNewDraftKey } from "../features/composer/drafts.ts";
+import { draftModeOf, draftStartAtom, isNewDraftKey } from "../features/composer/drafts.ts";
 import { followShown, isSplit, singlePane, type Panes } from "../features/split/model.ts";
 import { commitFileOfKey, fileOfKey } from "../features/viewer/model.ts";
 import { remember, stored } from "../lib/storage.ts";
@@ -35,18 +35,16 @@ export function useWorkspaceSession({
   const sameMachine = session?.machine === driven?.id;
   const resumed = sameMachine ? session : undefined;
   const [resumePending, setResumePending] = useState(() => session !== undefined && resumed === undefined);
+  /** Which sidebar list is shown (Home vs. Chat); open tabs and panes are unified across both. */
   const [mode, setMode] = useState<AppMode>(() => solo?.mode ?? session?.mode ?? "work");
-  /**
-   * The open thread per mode, or the draft of a thread not started yet; none means the mode's blank
-   * new thread.
-   */
-  const [openThread, setOpenThread] = useState<Partial<Record<AppMode, string>>>(() =>
-    solo ? { [solo.mode]: solo.id } : (resumed?.open ?? {}),
+  /** The open thread, file, PR/issue, or draft key; none means the blank new-thread draft. */
+  const [openThread, setOpenThread] = useState<string | undefined>(() => solo?.id ?? resumed?.open);
+  /** The fallback blank draft key: once written into, "New thread" / "New chat" starts another. */
+  const [blank, setBlank] = useState(
+    () => resumed?.blank ?? freshBlank(solo?.mode ?? session?.mode ?? "work"),
   );
-  /** Each mode's blank new thread: once it has something in it, "New thread" starts another. */
-  const [blank, setBlank] = useState(() => resumed?.blank ?? freshBlank());
-  /** How each mode's main area is split into panes, once the user split it; the open thread is the focused pane's. */
-  const [panesByMode, setPanesByMode] = useState<Partial<Record<AppMode, Panes>>>(() => resumed?.panes ?? {});
+  /** How the main area is split into panes, once split; the open item is the focused pane's. */
+  const [storedPanes, setStoredPanes] = useState<Panes | undefined>(() => resumed?.panes);
   /** The narrow window's pane: the threads, or the open (or new) thread. */
   const [pane, setPane] = useState<"list" | "main">(() => resumed?.pane ?? "list");
   const folderKey = machineKey(FOLDER_KEY, driven);
@@ -55,7 +53,6 @@ export function useWorkspaceSession({
   const [shownFolderKey, setShownFolderKey] = useState(folderKey);
   /** A thread on another machine the user opened, which opens once the window drives that machine. */
   const [openAfterSwitch, setOpenAfterSwitch] = useState<{
-    readonly mode: AppMode;
     readonly id: string;
     readonly panes?: Panes;
   }>();
@@ -63,15 +60,15 @@ export function useWorkspaceSession({
     const back = resumePending ? resumed : undefined;
     setShownFolderKey(folderKey);
     setFolder(stored(folderKey));
-    setOpenThread(openAfterSwitch ? { [openAfterSwitch.mode]: openAfterSwitch.id } : (back?.open ?? {}));
-    setBlank(back?.blank ?? freshBlank());
-    setPanesByMode(openAfterSwitch ? { [openAfterSwitch.mode]: openAfterSwitch.panes } : (back?.panes ?? {}));
+    setOpenThread(openAfterSwitch ? openAfterSwitch.id : back?.open);
+    setBlank(back?.blank ?? freshBlank(mode));
+    setStoredPanes(openAfterSwitch ? openAfterSwitch.panes : back?.panes);
     if (back) setPane(back.pane);
     setOpenAfterSwitch(undefined);
     setResumePending(false);
   }
   /** The thread not started yet the new-thread view shows: one opened from the sidebar, or the blank one. */
-  const openDraft = isNewDraftKey(openThread[mode]) ? openThread[mode] : blank[mode];
+  const openDraft = isNewDraftKey(openThread) ? openThread : blank;
   const savedProjects = AsyncResult.getOrElse(useAtomValue(savedProjectsAtom), () => []);
   const refreshProjects = useAtomRefresh(savedProjectsAtom);
   useEffect(() => {
@@ -81,20 +78,21 @@ export function useWorkspaceSession({
   const latestProject = projects[0];
   /** The folder a new thread starts in, unless its draft chose one: the last one, else the project used most recently. */
   const defaultFolder = folder ?? latestProject;
-  /** What the window shows: the open thread, or the draft of one not started yet. */
-  const current = openThread[mode] ?? blank[mode];
+  /** What the window shows: the open thread/file/PR, or the draft of one not started yet. */
+  const current = openThread ?? blank;
   const currentStart = useAtomValue(draftStartAtom(current));
   /**
    * The project the work thread not started yet that the window shows would start in: its files,
    * changes, GitHub repository and terminals are there to use before the first message.
    */
   const newProject =
-    mode === "work" && isNewDraftKey(current) ? (currentStart?.folder ?? defaultFolder) : undefined;
+    isNewDraftKey(current) && draftModeOf(current, currentStart?.mode) === "work"
+      ? (currentStart?.folder ?? defaultFolder)
+      : undefined;
   // The panes follow whatever the window shows: the focused pane takes it, or the pane showing it takes focus.
-  const storedPanes = panesByMode[mode];
   const panes = storedPanes ? followShown(storedPanes, current) : singlePane(MAIN_PANE, current);
   if (storedPanes !== undefined && panes !== storedPanes) {
-    setPanesByMode((all) => ({ ...all, [mode]: panes }));
+    setStoredPanes(panes);
   }
   const split = !compact && isSplit(panes);
   /** The file the open tab shows, when it shows one. */
@@ -115,8 +113,8 @@ export function useWorkspaceSession({
     setOpenThread,
     blank,
     setBlank,
-    panesByMode,
-    setPanesByMode,
+    storedPanes,
+    setStoredPanes,
     panes,
     split,
     pane,

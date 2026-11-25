@@ -1,8 +1,10 @@
-import { AtSign, Copy, FolderOpen, SquareArrowOutUpRight } from "lucide-react";
+import type { ProviderId } from "@cerium/protocol";
+import { AtSign, Copy, FolderGit2, FolderOpen, SquareArrowOutUpRight } from "lucide-react";
 import { createContext, useContext } from "react";
 
 import { revealPlace, shellBridge } from "../../backend/shell.ts";
 import { FileIcon } from "../../components/FileIcon.tsx";
+import { ProviderLogo } from "../../components/ProviderLogo.tsx";
 import { baseName } from "../../components/fileIcons/index.ts";
 import { ContextMenuArea, MenuItem, MenuSeparator } from "../../components/ui/Menu.tsx";
 import { Tooltip } from "../../components/ui/Tooltip.tsx";
@@ -24,6 +26,38 @@ export function SkillChip({ name }: { name: string }) {
       <span className={chipClass}>
         <FileIcon skill className="size-[1.1em]" />
         <span className="min-w-0 truncate">{name}</span>
+      </span>
+    </Tooltip>
+  );
+}
+
+/** A saved project folder the user tagged with `@` in Chat. */
+export function ProjectChip({ name, path }: { name: string; path: string }) {
+  return (
+    <Tooltip label={path} side="top">
+      <span className={chipClass}>
+        <FolderGit2 size={12} strokeWidth={1.75} className="shrink-0 text-fg-secondary" />
+        <span className="min-w-0 truncate">{name}</span>
+      </span>
+    </Tooltip>
+  );
+}
+
+/** A model the user tagged with `@` in Work or Chat. */
+export function ModelChip({
+  provider,
+  model,
+  label,
+}: {
+  provider: ProviderId;
+  model: string;
+  label: string;
+}) {
+  return (
+    <Tooltip label={`${provider} · ${model}`} side="top">
+      <span className={chipClass}>
+        <ProviderLogo provider={provider} size={12} />
+        <span className="min-w-0 truncate">{label}</span>
       </span>
     </Tooltip>
   );

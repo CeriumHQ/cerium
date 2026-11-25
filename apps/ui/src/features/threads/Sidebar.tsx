@@ -5,6 +5,7 @@ import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import {
   AppWindow,
   Archive,
+  Briefcase,
   ChevronRight,
   CornerDownRight,
   Pencil,
@@ -67,6 +68,8 @@ interface SidebarProps {
   readonly onLater?: (threadId: string, until: number | undefined) => Promise<boolean>;
   /** Goes on with a thread in a new one that starts small; absent where the machine can't. */
   readonly onContinue?: (threadId: string) => Promise<boolean>;
+  /** Opens the wizard to move a chat into a project as a work thread. */
+  readonly onMoveToWork?: (threadId: string) => void;
   /** The threads open in tabs. */
   readonly open?: ReadonlyArray<string>;
   /** Deletes a thread for good, once the user has confirmed it. */
@@ -106,6 +109,7 @@ export function Sidebar({
   onRestore,
   onLater,
   onContinue,
+  onMoveToWork,
   open = [],
   onDelete,
   onOpenWindow,
@@ -201,6 +205,7 @@ export function Sidebar({
           onRename={onRename}
           onArchive={onArchive}
           onContinue={onContinue}
+          onMoveToWork={onMoveToWork}
           onDelete={onDelete}
           onOpenWindow={onOpenWindow}
           onMarkRead={onMarkRead}
@@ -218,6 +223,7 @@ interface ChatActions {
   /** Each resolves whether the thread went, so the bulk bar reports what worked. */
   readonly onArchive: (threadId: string) => Promise<boolean>;
   readonly onContinue: ((threadId: string) => Promise<boolean>) | undefined;
+  readonly onMoveToWork: ((threadId: string) => void) | undefined;
   readonly onDelete: (threadId: string) => Promise<boolean>;
   readonly onOpenWindow: ((threadId: string) => void) | undefined;
 }
@@ -371,6 +377,7 @@ function ChatRow({
   onRename,
   onArchive,
   onContinue,
+  onMoveToWork,
   onDelete,
   onOpenWindow,
 }: {
@@ -410,6 +417,15 @@ function ChatRow({
                 <MenuItem icon={Pencil} onClick={rename}>
                   Rename
                 </MenuItem>
+                {onMoveToWork ? (
+                  <MenuItem
+                    icon={Briefcase}
+                    disabled={!canArchive(thread)}
+                    onClick={() => onMoveToWork(thread.id)}
+                  >
+                    Move to work…
+                  </MenuItem>
+                ) : null}
                 {onContinue ? (
                   <MenuItem
                     icon={CornerDownRight}

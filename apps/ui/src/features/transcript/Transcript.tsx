@@ -70,6 +70,7 @@ import { PushCard } from "./PushCard.tsx";
 import { previewFailure } from "./restore.ts";
 import { ForkDialog } from "./ForkDialog.tsx";
 import type { ForkActions, ForkCheck } from "./fork.ts";
+import { MoveToWorkDialog, type MoveToWorkActions } from "./MoveToWorkDialog.tsx";
 import { RestoreDialog, type RestoreCheck } from "./RestoreDialog.tsx";
 import { SelectionReply } from "./SelectionReply.tsx";
 import { TranscriptFind } from "./FindBar.tsx";
@@ -129,6 +130,8 @@ interface TranscriptProps {
   readonly onRestoreMessage?: (messageId: string) => Promise<boolean>;
   /** Forks the thread into a new one from one of the user's messages; without it, messages offer no fork. */
   readonly onFork?: ForkActions | undefined;
+  /** Moves this chat into a work thread and implements a message via the wizard. */
+  readonly moveToWork?: MoveToWorkActions | undefined;
   /** Opens the files a turn changed and undoes them; without it, a turn's files are only listed. */
   readonly turnFiles?: TurnFileActions | undefined;
   /** The thread the conversation is of, which a message a palette search picked is found in. */
@@ -283,6 +286,7 @@ export function Transcript({
   onPreviewRestore,
   onRestoreMessage,
   onFork,
+  moveToWork,
   turnFiles,
   threadId,
   onAddTask,
@@ -366,6 +370,7 @@ export function Transcript({
     ...(onEditMessage ? { onEditMessage } : {}),
     onAddTask,
     ...(onFork ? { fork: onFork } : {}),
+    ...(moveToWork ? { moveToWork } : {}),
     ...(turnFiles ? { turnFiles } : {}),
     ...(threadId === undefined ? {} : { threadId }),
     ...(onPreviewRestore && onRestoreMessage
@@ -547,6 +552,7 @@ interface TranscriptActions {
     readonly harness: string;
   };
   readonly fork?: ForkActions;
+  readonly moveToWork?: MoveToWorkActions;
   readonly turnFiles?: TurnFileActions | undefined;
   /** The thread shown, whose pushes its push cards follow. */
   readonly threadId?: string | undefined;
@@ -956,14 +962,17 @@ function ReplyMessage({
   quiet: boolean;
   replaced: boolean;
 }) {
-  const { onAddTask } = use(Actions);
+  const { onAddTask, moveToWork } = use(Actions);
   const fork = useTurnFork(replaced ? undefined : block.forkTurn, text);
+  const [implementOpen, setImplementOpen] = useState(false);
+  const canImplement = moveToWork !== undefined && !replaced;
   return (
     <>
       <MessageMenuArea
         text={text}
         className="select-text"
         onFork={fork.open}
+        onImplementInWork={canImplement ? () => setImplementOpen(true) : undefined}
         onAddTask={onAddTask}
         actionsOnHover
       >
@@ -972,6 +981,14 @@ function ReplyMessage({
         </div>
       </MessageMenuArea>
       {fork.dialog}
+      {canImplement && implementOpen ? (
+        <MoveToWorkDialog
+          open={implementOpen}
+          onOpenChange={setImplementOpen}
+          message={text}
+          actions={moveToWork}
+        />
+      ) : null}
     </>
   );
 }
@@ -1014,13 +1031,15 @@ function useTurnFork(turn: string | undefined, message: string) {
  * unless a rewind replaced it.
  */
 function EditableMessage({ block, replaced }: { block: Block<"user">; replaced: boolean }) {
-  const { onEditMessage, onAddTask, restore } = use(Actions);
+  const { onEditMessage, onAddTask, restore, moveToWork } = use(Actions);
   const messageBox = useMessageBox();
   const [restoreOpen, setRestoreOpen] = useState(false);
+  const [implementOpen, setImplementOpen] = useState(false);
   const [check, setCheck] = useState<RestoreCheck>({ status: "loading" });
   /** The latest preview asked for, so an earlier one answering late is dropped. */
   const asked = useRef(0);
   const restorable = restore !== undefined && !replaced;
+  const canImplement = moveToWork !== undefined && !replaced;
   const fork = useTurnFork(replaced ? undefined : block.forkTurn, block.text);
 
   const openRestore = () => {
@@ -1049,9 +1068,18 @@ function EditableMessage({ block, replaced }: { block: Block<"user">; replaced: 
         }
         onRestore={restorable ? openRestore : undefined}
         onFork={fork.open}
+        onImplementInWork={canImplement ? () => setImplementOpen(true) : undefined}
         onAddTask={onAddTask}
       />
       {fork.dialog}
+      {canImplement && implementOpen ? (
+        <MoveToWorkDialog
+          open={implementOpen}
+          onOpenChange={setImplementOpen}
+          message={block.text.trim()}
+          actions={moveToWork}
+        />
+      ) : null}
       {restorable ? (
         <RestoreDialog
           open={restoreOpen}

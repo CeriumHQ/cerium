@@ -68,7 +68,7 @@ export class BusEndpoint extends Context.Service<
   {
     /** The server name sessions see the bus under. */
     readonly serverName: string;
-    register(agentId: AgentId, profile?: "lead" | "child"): Effect.Effect<McpServerSpec>;
+    register(agentId: AgentId, profile?: "lead" | "chatLead" | "child"): Effect.Effect<McpServerSpec>;
     unregister(agentId: AgentId): Effect.Effect<void>;
   }
 >()("cerium/orchestrator/BusEndpoint") {}
