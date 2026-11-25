@@ -41,4 +41,28 @@ describe("projectOptions and modelOptions", () => {
     const all = modelOptions(models, new Set(["codex:gpt-6.1-sol"]), "");
     expect(all[0]?.label).toBe("GPT-6.1 Sol");
   });
+
+  it("matches model ids and labels across separators, keeping literal matches first", () => {
+    const gemini: ModelInfo = {
+      provider: "antigravity",
+      id: "gemini-3.5-flash",
+      label: "Gemini 3.5 Flash",
+      efforts: [],
+    };
+    const similar: ModelInfo = { ...gemini, id: "gemini3.5-pro", label: "Gemini 3.5 Pro" };
+    const roster = new Set(["antigravity:gemini-3.5-flash"]);
+    expect(modelOptions([gemini, similar], roster, "GEMINI3.5").map(({ label }) => label)).toEqual([
+      similar.label,
+      gemini.label,
+    ]);
+    expect(modelOptions([gemini], roster, "3_5flash")[0]?.label).toBe(gemini.label);
+    expect(modelOptions([gemini], roster, "gemini3.1")).toEqual([]);
+    expect(modelOptions([gemini], roster, "_")).toEqual([]);
+  });
+
+  it("matches saved project names and paths across separators", () => {
+    const project: ProjectInfo = { path: "/Users/dev/my-projects/web_site", usedAt: 0 };
+    expect(projectOptions([project], "website")[0]?.label).toBe("web_site");
+    expect(projectOptions([project], "myprojects/web-site")[0]?.label).toBe("web_site");
+  });
 });

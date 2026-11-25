@@ -47,6 +47,26 @@ const noSkills = Atom.make(AsyncResult.success<ReadonlyArray<SkillInfo>>([]));
 const parentOf = (path: string) => path.slice(0, Math.max(0, path.lastIndexOf("/")));
 const nameOf = (path: string) => path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
 
+const withoutSeparators = (value: string) => value.replace(/[\s._-]+/g, "");
+
+/** Rank literal matches first, then retry with common separators stripped from both sides. */
+const mentionRanker = (wanted: string) => {
+  const compact = withoutSeparators(wanted);
+  return (names: ReadonlyArray<string>, details: ReadonlyArray<string> = []): number | undefined => {
+    const rank = (query: string, normalize: (value: string) => string) => {
+      const normalizedNames = names.map(normalize);
+      if (normalizedNames.some((name) => name.startsWith(query))) return 0;
+      if (normalizedNames.some((name) => name.includes(query))) return 1;
+      if (details.some((detail) => normalize(detail).includes(query))) return 2;
+      return undefined;
+    };
+    const literal = rank(wanted, (value) => value.toLowerCase());
+    if (literal !== undefined || compact === "") return literal;
+    const loose = rank(compact, (value) => withoutSeparators(value.toLowerCase()));
+    return loose === undefined ? undefined : loose + 3;
+  };
+};
+
 const fileOption = (entry: WorkspaceEntry): MentionOption => ({
   key: `${entry.folder ? "d" : "f"}:${entry.path}`,
   group: "files",
@@ -60,23 +80,12 @@ export const projectOptions = (
   projects: ReadonlyArray<ProjectInfo>,
   query: string,
 ): ReadonlyArray<MentionOption> => {
-  const wanted = query.trim().toLowerCase();
+  const rankMatch = mentionRanker(query.trim().toLowerCase());
   return projects
     .filter((project) => project.missing !== true)
     .flatMap((project) => {
       const name = nameOf(project.path);
-      const lowerName = name.toLowerCase();
-      const lowerPath = project.path.toLowerCase();
-      const rank =
-        wanted === ""
-          ? 0
-          : lowerName.startsWith(wanted)
-            ? 0
-            : lowerName.includes(wanted)
-              ? 1
-              : lowerPath.includes(wanted)
-                ? 2
-                : undefined;
+      const rank = rankMatch([name], [project.path]);
       return rank === undefined ? [] : [{ project, name, rank }];
     })
     .toSorted((a, b) => a.rank - b.rank || a.name.localeCompare(b.name))
@@ -96,24 +105,16 @@ export const modelOptions = (
   query: string,
 ): ReadonlyArray<MentionOption> => {
   const wanted = query.trim().toLowerCase();
+  const rankMatch = mentionRanker(wanted);
   return models
     .flatMap((model) => {
       const onRoster = rosterKeys.has(`${model.provider}:${model.id}`);
-      const id = model.id.toLowerCase();
-      const label = model.label.toLowerCase();
-      const provider = providerName[model.provider].toLowerCase();
       const rank =
         wanted === ""
           ? onRoster
             ? 0
             : 1
-          : id.startsWith(wanted) || label.startsWith(wanted)
-            ? 0
-            : id.includes(wanted) || label.includes(wanted)
-              ? 1
-              : provider.includes(wanted) || model.provider.includes(wanted)
-                ? 2
-                : undefined;
+          : rankMatch([model.id, model.label], [providerName[model.provider], model.provider]);
       return rank === undefined ? [] : [{ model, onRoster, rank }];
     })
     .toSorted(
@@ -137,13 +138,11 @@ export const modelOptions = (
     }));
 };
 
-/** Skills whose name starts with the query first, then those containing it. */
 const skillOptions = (skills: ReadonlyArray<SkillInfo>, query: string): ReadonlyArray<MentionOption> => {
-  const wanted = query.toLowerCase();
+  const rankMatch = mentionRanker(query.toLowerCase());
   return skills
     .flatMap((skill) => {
-      const name = skill.name.toLowerCase();
-      const rank = name.startsWith(wanted) ? 0 : name.includes(wanted) ? 1 : undefined;
+      const rank = rankMatch([skill.name]);
       return rank === undefined ? [] : [{ skill, rank }];
     })
     .toSorted((a, b) => a.rank - b.rank || a.skill.name.localeCompare(b.skill.name))
