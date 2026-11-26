@@ -303,6 +303,7 @@ All notable changes to Cerium are recorded here. The format follows
 
 ### Removed
 
+- Cerium no longer checks or displays Google Antigravity subscription limits.
 - The repository's `social-preview.png`: GitHub's social preview is managed through Settings → Social preview.
 
 - Harness versions are no longer judged: the "tested with Cerium" label, the "too old for Cerium" block that refused older harnesses, and each adapter's tested range are gone. Whatever version is installed, Cerium drives it. The backend still tells viewers before `RPC_VERSION` 20 every version is "supported".

@@ -25,7 +25,6 @@ import {
   loginRequired,
 } from "./probe.ts";
 import { antigravityTranslator, startAntigravitySession } from "./session.ts";
-import { readAntigravityUsage } from "./usage.ts";
 
 /** Defaults to finding the user's `agy` on PATH. A caller may supply its absolute path instead. */
 export const makeAntigravityAdapter = (executable?: string) =>
@@ -109,9 +108,6 @@ export const makeAntigravityAdapter = (executable?: string) =>
           Effect.scoped,
           Effect.provide(platform),
         ),
-      usage: ready.pipe(
-        Effect.flatMap(({ executable }) => readAntigravityUsage(executable).pipe(Effect.provide(platform))),
-      ),
       // ACP exposes neither a tool-free, unsaved completion nor a way to delete a helper session.
       complete: () => Effect.fail(failure("Antigravity does not support private background completions")),
       startSession: (options: SessionOptions) =>

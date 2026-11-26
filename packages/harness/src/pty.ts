@@ -5,8 +5,7 @@ import type { IPty } from "node-pty";
 
 import { HarnessFailure } from "./adapter.ts";
 
-// A headless pseudoterminal backed by @xterm/headless, for reading interactive CLI panels
-// (like `/usage`) or triggering TUI statusLine hooks without ever touching a harness's credentials.
+// A headless pseudoterminal backed by @xterm/headless, for reading interactive CLI panels like `/usage`.
 
 /** How long a CLI gets to end once its processes were ended, before its pseudoterminal is closed. */
 const GRACE = Duration.millis(1_500);

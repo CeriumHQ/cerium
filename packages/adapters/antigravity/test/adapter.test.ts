@@ -64,6 +64,7 @@ describe.skipIf(process.platform === "win32")("Antigravity adapter over ACP", ()
     Effect.runPromise(
       Effect.gen(function* () {
         const { adapter, cwd } = yield* fixture();
+        expect(adapter).not.toHaveProperty("usage");
         expect(yield* adapter.probe).toMatchObject({
           _tag: "HarnessInstalled",
           version: "1.5.12",
